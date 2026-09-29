@@ -13,7 +13,7 @@ import pyglet
 from pyglet.gl import *
 from pyglet.math import Mat4, Vec3
 
-from core.geometry import make_cube_list, make_ground
+from core.geometry import make_box_list, make_cube_list, make_ground
 from core.resources import load_model
 
 WIDTH, HEIGHT = 960, 540
@@ -89,6 +89,21 @@ class WorldRenderer:
     def set_cube_model(self, index, matrix):
         self.cube_models[index] = matrix
 
+    # ---- M5：层级骨骼臂（枢轴在关节的盒体段，矩阵来自逻辑层节点树） ----
+    def build_arm(self, base):
+        """底座（静态）+ 两段臂（seg1 长 2.4 / seg2 长 1.8，枢轴在关节）。"""
+        self.arm_lists = [
+            make_cube_list(self.cube_program, base.x, 0.3, base.z, 1.0, (0.45, 0.47, 0.52)),
+            make_box_list(self.cube_program, 0.4, 2.4, 0.4, 0, 1.2, 0, (0.55, 0.58, 0.85)),
+            make_box_list(self.cube_program, 0.3, 1.8, 0.3, 0, 0.9, 0, (0.85, 0.65, 0.25)),
+        ]
+        self.arm_models = [Mat4(), Mat4(), Mat4()]
+        # 索引约定：0=底座(静态)，1=seg1，2=seg2
+        self.set_arm_model = self._set_arm_model
+
+    def _set_arm_model(self, index, matrix):
+        self.arm_models[index] = matrix
+
     # ---- 投影（on_resize 时由表现层调用） ----
     def apply_projection(self):
         self.window.viewport = (0, 0, self.window.width, self.window.height)
@@ -115,9 +130,13 @@ class WorldRenderer:
 
     def draw(self):
         self.window.clear()
-        self.batch.draw()                    # 地面（默认着色器）
+        self.batch.draw()                    # 地面 + 外部模型（各自着色器）
         prog = self.cube_program
         prog.use()
         for vl, model in zip(self.cube_lists, self.cube_models):
             prog['model'] = model
             vl.draw(GL_TRIANGLES)
+        if hasattr(self, 'arm_lists'):
+            for vl, model in zip(self.arm_lists, self.arm_models):
+                prog['model'] = model
+                vl.draw(GL_TRIANGLES)

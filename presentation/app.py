@@ -10,11 +10,14 @@ import pyglet
 from pyglet.math import Mat4, Vec3
 
 from core.renderer import WorldRenderer
-from logic.animation import build_demo_timeline, quat_to_mat4
+from logic.animation import Timeline, build_demo_timeline, quat_to_mat4
 from logic.camera import OrbitCamera
 from logic.events import EventBus
 from logic.playback import PlaybackController
+from logic.skeleton import Skeleton, build_arm, build_arm_channels
 from presentation.timeline_ui import TimelineUI
+
+ARM_BASE = Vec3(-6, 0, -3)                    # 机械臂底座位置（地面上）
 
 
 class WorldApp:
@@ -25,9 +28,14 @@ class WorldApp:
         self.time = 0.0
         self._ui_captured = False            # 本帧鼠标事件是否被 UI 消费
 
-        # 逻辑层：时间轴 + 播放控制（含外部模型节点）
-        self.timeline = build_demo_timeline(
+        # 逻辑层：时间轴（世界编排 + 机械臂层级摆动）+ 播放控制
+        demo_tl = build_demo_timeline(
             self.renderer.cube_meta, self.renderer.model_meta, duration=4.0)
+        self.skeleton = Skeleton()            # M5：层级骨骼臂
+        build_arm(self.skeleton, ARM_BASE)
+        self.renderer.build_arm(ARM_BASE)
+        self.timeline = Timeline(demo_tl.duration,
+                                 demo_tl.channels + build_arm_channels())
         self.playback = PlaybackController(self.timeline, looping=True)
 
         # 表现层：时间轴 UI 面板
@@ -90,6 +98,11 @@ class WorldApp:
             if q is not None:
                 model = model @ quat_to_mat4(q)
             self.renderer.models[m_idx].matrix = model
+        # 层级骨骼臂（M5）：采样写入节点局部 TRS → 计算世界矩阵（父子继承）
+        self.skeleton.apply_sample(sampled)
+        self.skeleton.compute()
+        self.renderer.set_arm_model(1, self.skeleton.nodes['seg1'].world_matrix)
+        self.renderer.set_arm_model(2, self.skeleton.nodes['seg2'].world_matrix)
         self._on_view_changed()
 
     def _on_timeline_end(self):

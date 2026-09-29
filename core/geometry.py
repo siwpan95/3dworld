@@ -19,24 +19,40 @@ def _face_shade(normal):
     return sum(a * b for a, b in zip(normal, light)) / (nl * ll)
 
 
-def cube_data(cx, cy, cz, s, rgb):
-    """以 (cx,cy,cz) 为中心、边长 s 的立方体几何数据（36 顶点，法线调亮度）。"""
-    h = s / 2.0
+def box_data(sx, sy, sz, ox, oy, oz, rgb):
+    """盒体几何数据：尺寸 (sx,sy,sz)，中心偏移 (ox,oy,oz)，法线调亮度。
+
+    骨骼段用法：局部原点设在关节（枢轴），几何沿 +Y 展开——
+    例如 make_box_list(0.4, 2.4, 0.4, 0, 1.2, 0) 的旋转枢轴在盒体底部。
+    """
+    hx, hy, hz = sx / 2.0, sy / 2.0, sz / 2.0
     faces = [
-        ((0, 0, 1),  (-h, -h, h), (h, -h, h), (h, h, h), (-h, h, h)),    # 前
-        ((0, 0, -1), (h, -h, -h), (-h, -h, -h), (-h, h, -h), (h, h, -h)),# 后
-        ((0, 1, 0),  (-h, h, h), (h, h, h), (h, h, -h), (-h, h, -h)),    # 上
-        ((0, -1, 0), (-h, -h, -h), (h, -h, -h), (h, -h, h), (-h, -h, h)),# 下
-        ((1, 0, 0),  (h, -h, h), (h, -h, -h), (h, h, -h), (h, h, h)),    # 右
-        ((-1, 0, 0), (-h, -h, -h), (-h, -h, h), (-h, h, h), (-h, h, -h)),# 左
+        ((0, 0, 1),  (-hx, -hy, hz), (hx, -hy, hz), (hx, hy, hz), (-hx, hy, hz)),
+        ((0, 0, -1), (hx, -hy, -hz), (-hx, -hy, -hz), (-hx, hy, -hz), (hx, hy, -hz)),
+        ((0, 1, 0),  (-hx, hy, hz), (hx, hy, hz), (hx, hy, -hz), (-hx, hy, -hz)),
+        ((0, -1, 0), (-hx, -hy, -hz), (hx, -hy, -hz), (hx, -hy, hz), (-hx, -hy, hz)),
+        ((1, 0, 0),  (hx, -hy, hz), (hx, -hy, -hz), (hx, hy, -hz), (hx, hy, hz)),
+        ((-1, 0, 0), (-hx, -hy, -hz), (-hx, -hy, hz), (-hx, hy, hz), (-hx, hy, -hz)),
     ]
     verts, colors = [], []
     for n, a, b, c, d in faces:
         k = 0.4 + 0.6 * abs(_face_shade(n))
         for x, y, z in (a, b, c, a, c, d):
-            verts += [cx + x, cy + y, cz + z]
+            verts += [ox + x, oy + y, oz + z]
             colors += [rgb[0] * k, rgb[1] * k, rgb[2] * k, 1.0]
     return verts, colors
+
+
+def cube_data(cx, cy, cz, s, rgb):
+    """以 (cx,cy,cz) 为中心、边长 s 的立方体几何数据（36 顶点，法线调亮度）。"""
+    return box_data(s, s, s, cx, cy, cz, rgb)
+
+
+def make_box_list(program, sx, sy, sz, ox, oy, oz, rgb):
+    """创建带枢轴偏移的盒体顶点列表（不入 Batch，model 矩阵逐帧驱动）。"""
+    verts, colors = box_data(sx, sy, sz, ox, oy, oz, rgb)
+    return program.vertex_list(36, GL_TRIANGLES,
+                               position=('f', verts), colors=('f', colors))
 
 
 def make_cube_list(program, cx, cy, cz, s, rgb):

@@ -255,6 +255,46 @@ def test_obj_asset_decode():
     print('  ok: assets/gem.obj decoded headless ->', type(scene).__name__)
 
 
+def test_skeleton_hierarchy():
+    """M5：父节点旋转必须带动子节点世界原点（骨骼继承的核心性质）。"""
+    from logic.skeleton import Skeleton, build_arm
+    skel = Skeleton()
+    build_arm(skel, base=Vec3(-6, 0, -3))
+    assert skel.nodes['seg2'].parent is skel.nodes['seg1']
+    # seg1 绕 Z 转 90°：子节点局部 (0,2.4,0) 应被带到 (-6-2.4, 0, -3)
+    skel.apply_sample({'seg1': {'rotation': quat_from_axis_angle((0, 0, 1), 90.0)}})
+    skel.compute()
+    wt = skel.nodes['seg2'].world_translation()
+    assert all(abs(a - b) < 1e-6 for a, b in zip(wt, (-8.4, 0.0, -3.0))), wt
+    # 未旋转时 seg2 世界原点 = base + (0, 2.4, 0)
+    skel2 = Skeleton(); build_arm(skel2, base=Vec3(-6, 0, -3)); skel2.compute()
+    wt2 = skel2.nodes['seg2'].world_translation()
+    assert all(abs(a - b) < 1e-6 for a, b in zip(wt2, (-6.0, 2.4, -3.0))), wt2
+    print('  ok: parent rotation propagates to child world origin')
+
+
+def test_arm_channels():
+    from logic.skeleton import build_arm_channels
+    chs = build_arm_channels()
+    names = {c.node for c in chs}
+    assert names == {'seg1', 'seg2'} and all(c.prop == 'rotation' for c in chs)
+    tl = Timeline(4.0, chs)
+    tl.seek(0.0)
+    s = tl.sample()
+    q = s['seg1']['rotation']                     # t=0 恒等旋转
+    assert abs(q.w - 1.0) < 1e-9 and abs(q.z) < 1e-9
+    print('  ok: arm channels (seg1/seg2 rotation) present, t=0 identity')
+
+
+def test_box_data_pivot():
+    from core.geometry import box_data
+    v, c = box_data(0.4, 2.4, 0.4, 0, 1.2, 0, (1, 1, 1))
+    assert len(v) == 108 and len(c) == 144        # position vec3 / colors vec4
+    ys = v[1::3]                                  # y 分量
+    assert abs(min(ys) - 0.0) < 1e-9 and abs(max(ys) - 2.4) < 1e-9  # 枢轴在底部
+    print('  ok: pivot box spans y in [0, 2.4]')
+
+
 if __name__ == '__main__':
     print('test_camera_initial_pose');     test_camera_initial_pose()
     print('test_camera_clamps');           test_camera_clamps()
@@ -273,4 +313,7 @@ if __name__ == '__main__':
     print('test_ui_hit_testing');                 test_ui_hit_testing()
     print('test_model_timeline_channels');        test_model_timeline_channels()
     print('test_obj_asset_decode');               test_obj_asset_decode()
+    print('test_skeleton_hierarchy');             test_skeleton_hierarchy()
+    print('test_arm_channels');                   test_arm_channels()
+    print('test_box_data_pivot');                 test_box_data_pivot()
     print('ALL_LOGIC_TESTS_PASSED')
