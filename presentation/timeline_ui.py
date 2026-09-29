@@ -65,7 +65,7 @@ class TimelineUI:
         lx = bx + BTN + 10
         self.btn_loop_bg = shapes.Rectangle(lx, by, BTN + 14, BTN,
                                             color=(60, 64, 72, 255), batch=self.batch)
-        self.lbl_loop = text.Label('LOOP', font_size=9, bold=True,
+        self.lbl_loop = text.Label('LOOP', font_size=9, weight='bold',
                                    x=lx + (BTN + 14) / 2, y=by + BTN / 2,
                                    anchor_x='center', anchor_y='center',
                                    batch=self.batch)
