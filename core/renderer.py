@@ -97,13 +97,19 @@ class WorldRenderer:
         self.window.projection = self.perspective
 
     # ---- 2D UI 屏幕空间切换（M3 时间轴面板用） ----
-    def apply_screen_projection(self):
-        w, h = self.window.width, self.window.height
-        self.window.projection = Mat4.orthogonal_projection(0, w, 0, h, -255, 255)
-        self.window.view = Mat4()
+    def begin_ui(self):
+        """切入 UI 状态：正交投影 + 关闭深度测试。
 
-    def restore_3d_projection(self):
-        self.window.projection = self.perspective
+        深度测试必须关闭——3D 场景写入的深度缓冲会剔除 UI 的 z=0 片元，
+        表现为面板区域被地面"掏空"、控件不可见。
+        """
+        self.apply_screen_projection()
+        glDisable(GL_DEPTH_TEST)
+
+    def end_ui(self):
+        """还原 3D 状态：重新开启深度测试 + 透视投影（视图矩阵由表现层恢复）。"""
+        glEnable(GL_DEPTH_TEST)
+        self.restore_3d_projection()
 
     def draw(self):
         self.window.clear()

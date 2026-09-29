@@ -133,11 +133,11 @@ class WorldApp:
 
     def _on_draw(self):
         self.renderer.draw()                  # 3D 视口（透视 + 相机）
-        self.renderer.apply_screen_projection()
+        self.renderer.begin_ui()              # 正交投影 + 关深度测试
         self.ui.update(self.timeline.playhead,
                        self.playback.playing, self.playback.looping)
         self.ui.draw()                        # 时间轴面板（屏幕空间）
-        self.renderer.restore_3d_projection()
+        self.renderer.end_ui()                # 恢复深度测试 + 透视投影
         self._on_view_changed()               # 还原相机视图矩阵
 
     # ---- 供外部（main）使用 ----

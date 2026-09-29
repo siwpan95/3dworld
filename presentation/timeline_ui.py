@@ -17,15 +17,18 @@ PANEL_HEIGHT = 64
 BTN = 40
 TRACK_H = 10
 TIME_LABEL_W = 130
+BORDER = 2
 
-COL_PANEL = (15, 17, 22, 220)
-COL_BTN = (52, 58, 68, 255)
-COL_BTN_ON = (34, 150, 88, 255)
-COL_TRACK = (95, 100, 112, 255)
-COL_PROGRESS = (0, 170, 255, 255)
-COL_ICON = (240, 244, 248, 255)
-COL_TEXT = (235, 238, 243, 255)
-COL_TEXT_DIM = (160, 165, 172, 255)
+COL_PANEL = (18, 20, 26, 235)
+COL_PANEL_BORDER = (185, 192, 205, 150)
+COL_BTN = (58, 64, 76, 255)
+COL_BTN_BORDER = (165, 172, 184, 170)
+COL_BTN_ON = (28, 148, 84, 255)
+COL_TRACK = (46, 50, 60, 255)
+COL_PROGRESS = (0, 165, 255, 255)
+COL_ICON = (255, 255, 255, 255)
+COL_TEXT = (245, 247, 250, 255)
+COL_TEXT_DIM = (152, 157, 165, 255)
 
 
 class TimelineUI:
@@ -53,14 +56,18 @@ class TimelineUI:
         y0 = PANEL_MARGIN
         pw = width - 2 * PANEL_MARGIN
 
-        self.panel = shapes.Rectangle(x0, y0, pw, PANEL_HEIGHT,
-                                      color=COL_PANEL, batch=self.batch)
+        self.panel = shapes.BorderedRectangle(x0, y0, pw, PANEL_HEIGHT, BORDER,
+                                              color=COL_PANEL,
+                                              border_color=COL_PANEL_BORDER,
+                                              batch=self.batch)
 
         # 播放/暂停按钮
         bx = x0 + 14
         by = y0 + (PANEL_HEIGHT - BTN) / 2
-        self.btn_play_bg = shapes.Rectangle(bx, by, BTN, BTN,
-                                            color=COL_BTN, batch=self.batch)
+        self.btn_play_bg = shapes.BorderedRectangle(bx, by, BTN, BTN, BORDER,
+                                                    color=COL_BTN,
+                                                    border_color=COL_BTN_BORDER,
+                                                    batch=self.batch)
         cx, cy = bx + BTN / 2, by + BTN / 2
         self.icon_play = shapes.Triangle(cx - 8, cy - 11, cx - 8, cy + 11, cx + 12, cy,
                                          color=COL_ICON, batch=self.batch)
@@ -72,8 +79,10 @@ class TimelineUI:
         # 循环按钮
         lx = bx + BTN + 12
         loop_w = BTN + 18
-        self.btn_loop_bg = shapes.Rectangle(lx, by, loop_w, BTN,
-                                            color=COL_BTN, batch=self.batch)
+        self.btn_loop_bg = shapes.BorderedRectangle(lx, by, loop_w, BTN, BORDER,
+                                                    color=COL_BTN,
+                                                    border_color=COL_BTN_BORDER,
+                                                    batch=self.batch)
         self.lbl_loop = text.Label('LOOP', font_size=13, weight='bold',
                                    x=lx + loop_w / 2, y=by + BTN / 2,
                                    anchor_x='center', anchor_y='center',
