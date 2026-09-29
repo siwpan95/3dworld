@@ -10,6 +10,7 @@
 """
 import math
 
+import pyglet
 from pyglet import shapes, text
 
 PANEL_MARGIN = 12
