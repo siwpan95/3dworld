@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
-"""几何构建：立方体与棋盘地面（pyglet 2.x ShaderProgram.vertex_list API）。
+"""几何构建（pyglet 2.x ShaderProgram.vertex_list API）。
 
 注意：默认着色器属性为 position(vec3) / colors(vec4 RGBA)，
 1.x 的 Batch.add/c3f 已在 2.1.16 移除，勿回退。
+
+- make_ground：静态地面，入 Batch（默认着色器）
+- make_cube_list：可动立方体，不入 Batch（动画着色器 + model 矩阵逐帧驱动）
 """
 import math
 from pyglet.gl import GL_TRIANGLES
@@ -16,8 +19,8 @@ def _face_shade(normal):
     return sum(a * b for a, b in zip(normal, light)) / (nl * ll)
 
 
-def make_cube(program, batch, cx, cy, cz, s, rgb):
-    """以 (cx,cy,cz) 为中心、边长 s 的立方体：12 个三角形，返回顶点列表。"""
+def cube_data(cx, cy, cz, s, rgb):
+    """以 (cx,cy,cz) 为中心、边长 s 的立方体几何数据（36 顶点，法线调亮度）。"""
     h = s / 2.0
     faces = [
         ((0, 0, 1),  (-h, -h, h), (h, -h, h), (h, h, h), (-h, h, h)),    # 前
@@ -33,7 +36,13 @@ def make_cube(program, batch, cx, cy, cz, s, rgb):
         for x, y, z in (a, b, c, a, c, d):
             verts += [cx + x, cy + y, cz + z]
             colors += [rgb[0] * k, rgb[1] * k, rgb[2] * k, 1.0]
-    return program.vertex_list(36, GL_TRIANGLES, batch=batch,
+    return verts, colors
+
+
+def make_cube_list(program, cx, cy, cz, s, rgb):
+    """创建独立顶点列表（不进 Batch，由动画着色器逐帧 model 矩阵驱动）。"""
+    verts, colors = cube_data(cx, cy, cz, s, rgb)
+    return program.vertex_list(36, GL_TRIANGLES,
                                position=('f', verts), colors=('f', colors))
 
 

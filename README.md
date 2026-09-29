@@ -22,6 +22,7 @@ core/            核心层：窗口/渲染/几何/资源（允许 pyglet.gl）
   renderer.py        窗口、透视投影、Batch 上传与绘制
 logic/           逻辑层：场景与动画（禁止 pyglet.gl，可无窗口单测）
   camera.py          轨道相机状态机 + 手写 look-at 矩阵
+  animation.py       时间轴/关键帧/插值（glTF 对齐，四元数 slerp）
   events.py          事件总线（pyglet EventDispatcher）
 presentation/    表现层：装配窗口事件 → 逻辑层 → 渲染
   app.py             WorldApp 装配与事件接线

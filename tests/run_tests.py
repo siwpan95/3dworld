@@ -12,7 +12,9 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from pyglet.math import Vec3
+from pyglet.math import Vec3, Quaternion
+from logic.animation import (Sampler, Channel, Timeline, quat_from_axis_angle,
+                             quat_to_mat4, slerp, build_demo_timeline)
 from logic.camera import OrbitCamera, look_at_matrix, PITCH_MIN, PITCH_MAX, DIST_MIN, DIST_MAX
 from logic.events import EventBus
 
@@ -86,15 +88,79 @@ def test_look_at_matches_multiple_poses():
 
 def test_event_bus():
     bus = EventBus()
-    frames, views = [], []
+    frames, views, ends = [], [], []
     bus.push_handlers(on_frame=frames.append,
-                      on_view_changed=lambda: views.append(True))
+                      on_view_changed=lambda: views.append(True),
+                      on_timeline_end=lambda: ends.append(True))
     bus.dispatch_event('on_frame', 0.016)
     bus.dispatch_event('on_frame', 0.016)
     bus.dispatch_event('on_view_changed')
+    bus.dispatch_event('on_timeline_end')
     assert frames == [0.016, 0.016]
-    assert len(views) == 1
-    print('  ok: on_frame x2, on_view_changed x1 delivered')
+    assert len(views) == 1 and len(ends) == 1
+    print('  ok: on_frame x2, on_view_changed x1, on_timeline_end x1 delivered')
+
+
+def test_quat_axis_angle_and_slerp():
+    q90 = quat_from_axis_angle((0, 1, 0), 90.0)
+    m = quat_to_mat4(q90)
+    def apply_x(mat):  # 变换 +X 单位向量
+        return (mat[0], mat[1], mat[2])
+    x, y, z = apply_x(m)
+    assert abs(x) < 1e-6 and abs(y) < 1e-6 and abs(z + 1.0) < 1e-6, (x, y, z)
+    # slerp 中点：identity -> 90°Y 应为 45°Y
+    mid = slerp(Quaternion(), q90, 0.5)
+    q45 = quat_from_axis_angle((0, 1, 0), 45.0)
+    assert all(abs(a - b) < 1e-6 for a, b in zip(mid, q45)), (mid, q45)
+    # 端点
+    assert all(abs(a - b) < 1e-9 for a, b in zip(slerp(Quaternion(), q90, 0.0), Quaternion()))
+    assert all(abs(a - b) < 1e-9 for a, b in zip(slerp(Quaternion(), q90, 1.0), q90))
+    print('  ok: axis-angle 90Y maps X->-Z; slerp midpoint=endpoints')
+
+
+def test_sampler_linear_step():
+    s_lin = Sampler([0.0, 2.0], [Vec3(0, 0, 0), Vec3(2, 4, -2)], 'LINEAR')
+    v = s_lin.sample(1.0)
+    assert all(abs(a - b) < 1e-9 for a, b in zip(v, (1, 2, -1))), v
+    assert s_lin.sample(-1.0) == Vec3(0, 0, 0)          # 下界钳制
+    assert s_lin.sample(9.0) == Vec3(2, 4, -2)          # 上界钳制
+    s_step = Sampler([0.0, 1.0, 2.0], [10.0, 20.0, 30.0], 'STEP')
+    assert s_step.sample(0.5) == 10.0 and s_step.sample(1.5) == 20.0
+    print('  ok: LINEAR midpoint + clamps; STEP holds previous key')
+
+
+def test_timeline_wrap_and_sample():
+    ch = Channel('cube_0', 'translation',
+                 Sampler([0.0, 1.0, 2.0], [Vec3(0, 0, 0), Vec3(0, 1, 0), Vec3(0, 0, 0)]))
+    tl = Timeline(2.0, [ch])
+    assert tl.advance(0.5) is False and abs(tl.playhead - 0.5) < 1e-9
+    assert tl.advance(2.0) is True                      # 越过时长 -> 回绕
+    assert abs(tl.playhead - 0.5) < 1e-9                # 2.5 -> 0.5
+    out = tl.sample()
+    assert 'cube_0' in out and 'translation' in out['cube_0']
+    print('  ok: advance wrap returns True; sample dict keyed by node/prop')
+
+
+def test_demo_timeline_choreography():
+    meta = [(f'ring_{i}', Vec3(5 * (1 if i % 2 else -1) if i < 2 else 0, 0.5, 0)) for i in range(10)]
+    meta[0] = ('ring_0', Vec3(5, 0.5, 0))
+    meta.append(('center', Vec3(0, 1.0, 0)))
+    tl = build_demo_timeline(meta, duration=4.0)
+    assert tl.duration == 4.0
+    s0 = tl.sample()
+    # 环形立方体：translation.y 在 [0.5, 1.0] 内浮动
+    for i in range(10):
+        y = s0[f'ring_{i}']['translation'].y
+        assert 0.5 - 1e-9 <= y <= 1.0 + 1e-9, (i, y)
+        assert 'rotation' in s0[f'ring_{i}']
+    assert 'rotation' in s0['center'] and 'translation' not in s0['center']
+    # 回绕连续性：t=4-ε 与 t=0 的 y 值一致（首尾关键帧相同）
+    tl.seek(4.0 - 1e-6)
+    y_end = tl.sample()['ring_0']['translation'].y
+    tl.seek(0.0)
+    y_start = tl.sample()['ring_0']['translation'].y
+    assert abs(y_end - y_start) < 1e-3, (y_end, y_start)
+    print('  ok: demo timeline ranges, channels, wrap continuity')
 
 
 if __name__ == '__main__':
@@ -104,4 +170,8 @@ if __name__ == '__main__':
     print('test_view_matrix_maps_eye_to_origin'); test_view_matrix_maps_eye_to_origin()
     print('test_look_at_matches_multiple_poses'); test_look_at_matches_multiple_poses()
     print('test_event_bus');               test_event_bus()
+    print('test_quat_axis_angle_and_slerp');      test_quat_axis_angle_and_slerp()
+    print('test_sampler_linear_step');            test_sampler_linear_step()
+    print('test_timeline_wrap_and_sample');       test_timeline_wrap_and_sample()
+    print('test_demo_timeline_choreography');     test_demo_timeline_choreography()
     print('ALL_LOGIC_TESTS_PASSED')
