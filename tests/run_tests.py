@@ -218,6 +218,18 @@ def test_playback_speed_and_seek():
     print('  ok: speed 2x/0.5x and arbitrary seek')
 
 
+def test_ui_hit_testing():
+    """UI 命中测试（staticmethod，无需 GL 实例）——回归 M3 的漏参缺陷。"""
+    from presentation.timeline_ui import TimelineUI
+    f = TimelineUI._in_rect
+    assert f(50, 30, 12, 12, 100, 46, pad=0)       # 面板内部
+    assert not f(5, 300, 12, 12, 100, 46, pad=0)   # 面板外
+    assert not f(150, 30, 12, 12, 100, 46, pad=0)  # 右侧越界
+    assert f(11, 11, 12, 12, 26, 26)               # pad=4 默认外扩命中
+    assert not f(5, 5, 12, 12, 26, 26)             # pad 外扩仍不命中
+    print('  ok: _in_rect point-in-rect with pad')
+
+
 if __name__ == '__main__':
     print('test_camera_initial_pose');     test_camera_initial_pose()
     print('test_camera_clamps');           test_camera_clamps()
@@ -233,4 +245,5 @@ if __name__ == '__main__':
     print('test_playback_loop_wrap');             test_playback_loop_wrap()
     print('test_playback_end_pause');             test_playback_end_pause()
     print('test_playback_speed_and_seek');        test_playback_speed_and_seek()
+    print('test_ui_hit_testing');                 test_ui_hit_testing()
     print('ALL_LOGIC_TESTS_PASSED')

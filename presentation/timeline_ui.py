@@ -109,7 +109,9 @@ class TimelineUI:
         self.batch.draw()
 
     # ------------------------------------------------------------ 交互 --
-    def _in_rect(self, x, y, rx, ry, rw, rh, pad=4):
+    @staticmethod
+    def _in_rect(x, y, rx, ry, rw, rh, pad=4):
+        """点 (x,y) 是否落在矩形 (rx,ry,rw,rh) 内（含 pad 外扩）。"""
         return rx - pad <= x <= rx + rw + pad and ry - pad <= y <= ry + rh + pad
 
     def _t_from_x(self, x):
@@ -122,12 +124,12 @@ class TimelineUI:
         """左键按下。命中面板返回 True（拦截相机），否则 False。"""
         if not self._layout_ready:
             return False
-        if not self._in_rect(self.panel.x, self.panel.y, self.panel.width,
-                             self.panel.height, pad=0):
+        if not self._in_rect(x, y, self.panel.x, self.panel.y,
+                             self.panel.width, self.panel.height, pad=0):
             return False
-        if self._in_rect(self.btn_play_bg.x, self.btn_play_bg.y, BTN, BTN):
+        if self._in_rect(x, y, self.btn_play_bg.x, self.btn_play_bg.y, BTN, BTN):
             self.on_toggle_play()
-        elif self._in_rect(self.btn_loop_bg.x, self.btn_loop_bg.y,
+        elif self._in_rect(x, y, self.btn_loop_bg.x, self.btn_loop_bg.y,
                            self.btn_loop_bg.width, self.btn_loop_bg.height):
             self.on_toggle_loop()
         elif x >= self.track_x0 - 8:
