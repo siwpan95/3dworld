@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# 虚拟环境（依赖不入库，用 requirements.txt 复现）
+.venv/
+venv/
+
+# 构建与IDE
+build/
+dist/
+.vscode/
+.idea/
+
+# 系统文件
+Thumbs.db
+.DS_Store

@@ -1,0 +1,3 @@
+# pyglet 1.x 锁版清单（cocos2d 兼容路线备用）
+# 用法：python -m venv .venv1x && .venv1x\Scripts\activate && pip install -r requirements-pyglet1x.txt
+pyglet==1.5.30
