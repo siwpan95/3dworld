@@ -20,6 +20,7 @@
 core/            核心层：窗口/渲染/几何/资源（允许 pyglet.gl）
   geometry.py        立方体与棋盘地面构建（ShaderProgram.vertex_list）
   renderer.py        窗口、透视投影、Batch 上传与绘制
+  resources.py       外部模型加载（当前 .obj；pyglet 升级后 .glb 即插即用）
 logic/           逻辑层：场景与动画（禁止 pyglet.gl，可无窗口单测）
   camera.py          轨道相机状态机 + 手写 look-at 矩阵
   animation.py       时间轴/关键帧/插值（glTF 对齐，四元数 slerp）

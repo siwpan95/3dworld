@@ -25,8 +25,9 @@ class WorldApp:
         self.time = 0.0
         self._ui_captured = False            # 本帧鼠标事件是否被 UI 消费
 
-        # 逻辑层：时间轴 + 播放控制
-        self.timeline = build_demo_timeline(self.renderer.cube_meta, duration=4.0)
+        # 逻辑层：时间轴 + 播放控制（含外部模型节点）
+        self.timeline = build_demo_timeline(
+            self.renderer.cube_meta, self.renderer.model_meta, duration=4.0)
         self.playback = PlaybackController(self.timeline, looping=True)
 
         # 表现层：时间轴 UI 面板
@@ -80,6 +81,15 @@ class WorldApp:
             if q is not None:
                 model = model @ quat_to_mat4(q)
             self.renderer.set_cube_model(idx, model)
+        # 外部模型（M4）：矩阵写入 pyglet Model（经 group 传播到 GPU）
+        for m_idx, (name, _base) in enumerate(self.renderer.model_meta):
+            node = sampled.get(name, {})
+            t = node.get('translation', _base)
+            q = node.get('rotation')
+            model = Mat4.from_translation(t)
+            if q is not None:
+                model = model @ quat_to_mat4(q)
+            self.renderer.models[m_idx].matrix = model
         self._on_view_changed()
 
     def _on_timeline_end(self):

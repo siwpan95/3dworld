@@ -230,6 +230,31 @@ def test_ui_hit_testing():
     print('  ok: _in_rect point-in-rect with pad')
 
 
+def test_model_timeline_channels():
+    """M4：外部模型节点应有 translation/rotation 通道并参与采样。"""
+    meta = [('ring_0', Vec3(5, 0.5, 0)), ('center', Vec3(0, 1.0, 0))]
+    model_bases = [('model_0', Vec3(-3.5, 1.3, -3.5))]
+    tl = build_demo_timeline(meta, model_bases, duration=4.0)
+    tl.seek(1.0)
+    s = tl.sample()['model_0']
+    assert 'translation' in s and 'rotation' in s
+    assert abs(s['translation'].x - (-3.5)) < 1e-9          # x 固定
+    assert 1.3 - 1e-9 <= s['translation'].y <= 1.3 + 0.5 + 1e-9
+    assert s['translation'].z == -3.5
+    print('  ok: model_0 channels present, base anchored, y in bob range')
+
+
+def test_obj_asset_decode():
+    """M4：assets/gem.obj 应可被 pyglet 2.1.16 内置 OBJ 解码器解析（CPU 端，无窗口）。"""
+    import os
+    import pyglet
+    path = os.path.join('assets', 'gem.obj')
+    assert os.path.exists(path), 'assets/gem.obj 缺失（先跑 scripts/make_gem_obj.py）'
+    scene = pyglet.model.load(path)
+    assert scene is not None
+    print('  ok: assets/gem.obj decoded headless ->', type(scene).__name__)
+
+
 if __name__ == '__main__':
     print('test_camera_initial_pose');     test_camera_initial_pose()
     print('test_camera_clamps');           test_camera_clamps()
@@ -246,4 +271,6 @@ if __name__ == '__main__':
     print('test_playback_end_pause');             test_playback_end_pause()
     print('test_playback_speed_and_seek');        test_playback_speed_and_seek()
     print('test_ui_hit_testing');                 test_ui_hit_testing()
+    print('test_model_timeline_channels');        test_model_timeline_channels()
+    print('test_obj_asset_decode');               test_obj_asset_decode()
     print('ALL_LOGIC_TESTS_PASSED')

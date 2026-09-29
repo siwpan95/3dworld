@@ -1,23 +1,31 @@
 # -*- coding: utf-8 -*-
-"""时间轴 UI 面板（M3）：播放/暂停、循环开关、可拖动时间指针、时间读数。
+"""时间轴 UI 面板（M3/M4）：播放/暂停、循环开关、可拖动时间指针、时间读数。
 
 绘制在屏幕空间（正交投影下），与 3D 视口解耦。
+尺寸与对比度按"小窗口可读"校准：大按钮、粗轨道、高亮度文字。
 交互契约：
   on_press(x, y) -> bool   命中面板返回 True（拦截相机拖动）
   on_drag(x, y)            拖动中（仅刷取时间指针时生效）
   on_release()             松开
 回调由装配层注入：on_toggle_play / on_toggle_loop / on_seek(t)
 """
-import math
-
 import pyglet
 from pyglet import shapes, text
 
-PANEL_MARGIN = 12
-PANEL_HEIGHT = 46
-BTN = 26
-TRACK_H = 6
-TIME_LABEL_W = 110
+PANEL_MARGIN = 14
+PANEL_HEIGHT = 64
+BTN = 40
+TRACK_H = 10
+TIME_LABEL_W = 130
+
+COL_PANEL = (15, 17, 22, 220)
+COL_BTN = (52, 58, 68, 255)
+COL_BTN_ON = (34, 150, 88, 255)
+COL_TRACK = (95, 100, 112, 255)
+COL_PROGRESS = (0, 170, 255, 255)
+COL_ICON = (240, 244, 248, 255)
+COL_TEXT = (235, 238, 243, 255)
+COL_TEXT_DIM = (160, 165, 172, 255)
 
 
 class TimelineUI:
@@ -46,46 +54,47 @@ class TimelineUI:
         pw = width - 2 * PANEL_MARGIN
 
         self.panel = shapes.Rectangle(x0, y0, pw, PANEL_HEIGHT,
-                                      color=(25, 28, 34, 210), batch=self.batch)
+                                      color=COL_PANEL, batch=self.batch)
 
         # 播放/暂停按钮
-        bx = x0 + 10
+        bx = x0 + 14
         by = y0 + (PANEL_HEIGHT - BTN) / 2
         self.btn_play_bg = shapes.Rectangle(bx, by, BTN, BTN,
-                                            color=(60, 64, 72, 255), batch=self.batch)
+                                            color=COL_BTN, batch=self.batch)
         cx, cy = bx + BTN / 2, by + BTN / 2
-        self.icon_play = shapes.Triangle(cx - 6, cy - 8, cx - 6, cy + 8, cx + 9, cy,
-                                         color=(235, 235, 235, 255), batch=self.batch)
-        self.icon_pause_l = shapes.Rectangle(cx - 5, cy - 8, 4, 16,
-                                             color=(235, 235, 235, 255), batch=self.batch)
-        self.icon_pause_r = shapes.Rectangle(cx + 2, cy - 8, 4, 16,
-                                             color=(235, 235, 235, 255), batch=self.batch)
+        self.icon_play = shapes.Triangle(cx - 8, cy - 11, cx - 8, cy + 11, cx + 12, cy,
+                                         color=COL_ICON, batch=self.batch)
+        self.icon_pause_l = shapes.Rectangle(cx - 7, cy - 11, 6, 22,
+                                             color=COL_ICON, batch=self.batch)
+        self.icon_pause_r = shapes.Rectangle(cx + 2, cy - 11, 6, 22,
+                                             color=COL_ICON, batch=self.batch)
 
         # 循环按钮
-        lx = bx + BTN + 10
-        self.btn_loop_bg = shapes.Rectangle(lx, by, BTN + 14, BTN,
-                                            color=(60, 64, 72, 255), batch=self.batch)
-        self.lbl_loop = text.Label('LOOP', font_size=9, weight='bold',
-                                   x=lx + (BTN + 14) / 2, y=by + BTN / 2,
+        lx = bx + BTN + 12
+        loop_w = BTN + 18
+        self.btn_loop_bg = shapes.Rectangle(lx, by, loop_w, BTN,
+                                            color=COL_BTN, batch=self.batch)
+        self.lbl_loop = text.Label('LOOP', font_size=13, weight='bold',
+                                   x=lx + loop_w / 2, y=by + BTN / 2,
                                    anchor_x='center', anchor_y='center',
-                                   batch=self.batch)
+                                   color=COL_TEXT_DIM, batch=self.batch)
 
         # 轨道 + 进度 + 播头
-        self.track_x0 = lx + BTN + 14 + 16
-        self.track_x1 = x0 + pw - TIME_LABEL_W - 10
+        self.track_x0 = lx + loop_w + 18
+        self.track_x1 = x0 + pw - TIME_LABEL_W - 12
         ty = y0 + PANEL_HEIGHT / 2 - TRACK_H / 2
         self.track = shapes.Rectangle(self.track_x0, ty, self.track_x1 - self.track_x0,
-                                      TRACK_H, color=(70, 74, 84, 255), batch=self.batch)
+                                      TRACK_H, color=COL_TRACK, batch=self.batch)
         self.progress = shapes.Rectangle(self.track_x0, ty, 0, TRACK_H,
-                                         color=(80, 180, 255, 255), batch=self.batch)
-        self.handle = shapes.Circle(self.track_x0, ty + TRACK_H / 2, 7,
-                                    color=(240, 244, 248, 255), batch=self.batch)
+                                         color=COL_PROGRESS, batch=self.batch)
+        self.handle = shapes.Circle(self.track_x0, ty + TRACK_H / 2, 9,
+                                    color=COL_ICON, batch=self.batch)
 
         # 时间读数
-        self.lbl_time = text.Label('', font_size=10,
-                                   x=self.track_x1 + 10, y=ty + TRACK_H / 2 + 2,
+        self.lbl_time = text.Label('', font_size=14,
+                                   x=self.track_x1 + 12, y=ty + TRACK_H / 2 + 2,
                                    anchor_x='left', anchor_y='center',
-                                   color=(200, 205, 212, 255), batch=self.batch)
+                                   color=COL_TEXT, batch=self.batch)
         self._layout_ready = True
         self.update(self.playhead, self.playing, self.looping)
 
@@ -96,13 +105,14 @@ class TimelineUI:
         if not self._layout_ready:
             return
         frac = 0.0 if self.duration <= 0 else min(1.0, playhead / self.duration)
-        self.progress.width = (self.track_x1 - self.track_x0) * frac
-        self.handle.x = self.track_x0 + (self.track_x1 - self.track_x0) * frac
+        span = self.track_x1 - self.track_x0
+        self.progress.width = span * frac
+        self.handle.x = self.track_x0 + span * frac
         self.icon_play.visible = not playing
         self.icon_pause_l.visible = playing
         self.icon_pause_r.visible = playing
-        self.btn_loop_bg.color = (40, 120, 70, 255) if looping else (60, 64, 72, 255)
-        self.lbl_loop.color = (235, 245, 238, 255) if looping else (150, 154, 160, 255)
+        self.btn_loop_bg.color = COL_BTN_ON if looping else COL_BTN
+        self.lbl_loop.color = COL_TEXT if looping else COL_TEXT_DIM
         self.lbl_time.text = f'{playhead:5.2f} / {self.duration:.2f} s'
 
     def draw(self):
@@ -132,7 +142,7 @@ class TimelineUI:
         elif self._in_rect(x, y, self.btn_loop_bg.x, self.btn_loop_bg.y,
                            self.btn_loop_bg.width, self.btn_loop_bg.height):
             self.on_toggle_loop()
-        elif x >= self.track_x0 - 8:
+        elif x >= self.track_x0 - 10:
             self.scrubbing = True
             self.on_seek(self._t_from_x(x))
         return True

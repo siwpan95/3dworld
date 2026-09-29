@@ -7,12 +7,14 @@
 渲染器不持有动画状态——矩阵由表现层从逻辑层采样结果写入。
 """
 import math
+import os
 
 import pyglet
 from pyglet.gl import *
 from pyglet.math import Mat4, Vec3
 
 from core.geometry import make_cube_list, make_ground
+from core.resources import load_model
 
 WIDTH, HEIGHT = 960, 540
 SKY_COLOR = (0.53, 0.81, 0.92, 1.0)
@@ -69,6 +71,19 @@ class WorldRenderer:
             self.cube_lists.append(
                 make_cube_list(self.cube_program, pos.x, pos.y, pos.z, size, rgb))
             self.cube_models.append(Mat4())
+
+        # --- 外部模型（M4）：assets/ 下存在 .obj 则加载，参与时间轴 ---
+        self.model_meta = []                 # [(name, base_pos: Vec3)]
+        self.models = []                     # [pyglet.model.Model]
+        model_path = os.path.join('assets', 'gem.obj')
+        if os.path.exists(model_path):
+            try:
+                for i, model in enumerate(load_model(model_path, self.batch)):
+                    base = Vec3(-3.5, 1.3, -3.5 + i * 1.6)
+                    self.models.append(model)
+                    self.model_meta.append((f'model_{i}', base))
+            except Exception as e:           # 模型缺失/损坏不阻断启动
+                print(f'[renderer] 模型加载失败 {model_path}: {e}')
 
     # ---- 逻辑层写入模型矩阵 ----
     def set_cube_model(self, index, matrix):
