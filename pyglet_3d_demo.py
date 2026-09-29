@@ -50,16 +50,16 @@ def dot(n):
     ll = math.sqrt(sum(c * c for c in light))
     return sum(a * b for a, b in zip(n, light)) / (nl * ll)
 
-def add_colored_cube(batch, cx, cy, cz, s, rgb):
+def add_colored_cube(program, batch, cx, cy, cz, s, rgb):
     flat, shade = cube_vertices(cx, cy, cz, s)
     colors = []
     for k in shade:
-        colors += [rgb[0] * k, rgb[1] * k, rgb[2] * k]
-    batch.add(36, GL_TRIANGLES, None,
-              ('v3f', flat),
-              ('c3f', colors))
+        colors += [rgb[0] * k, rgb[1] * k, rgb[2] * k, 1.0]  # 默认着色器 colors 为 vec4(RGBA)
+    return program.vertex_list(36, GL_TRIANGLES, batch=batch,
+                               position=('f', flat),
+                               colors=('f', colors))
 
-def add_ground(batch, half=10, tile=1.0):
+def add_ground(program, batch, half=10, tile=1.0):
     """以原点为中心铺一块棋盘格地面（GL_TRIANGLES）。"""
     verts, colors = [], []
     for ix in range(-half, half):
@@ -72,9 +72,9 @@ def add_ground(batch, half=10, tile=1.0):
                     (x0, y, z0), (x1, y, z1), (x0, y, z1)]
             verts += [c for p in quad for c in p]
             g = 0.55 if (ix + iz) % 2 == 0 else 0.35
-            colors += [g * 0.8, g, g * 0.8] * 6
-    batch.add(len(verts) // 3, GL_TRIANGLES, None,
-              ('v3f', verts), ('c3f', colors))
+            colors += [g * 0.8, g, g * 0.8, 1.0] * 6
+    return program.vertex_list(len(verts) // 3, GL_TRIANGLES, batch=batch,
+                               position=('f', verts), colors=('f', colors))
 
 # ------------------------------------------------------------------- 窗口 --
 def look_at_matrix(eye, target, up):
@@ -109,19 +109,20 @@ class WorldWindow(pyglet.window.Window):
         super().__init__(WIDTH, HEIGHT, caption='pyglet 简单三维世界',
                          resizable=True, vsync=True, **kw)
         self.batch = pyglet.graphics.Batch()
+        self.program = pyglet.graphics.get_default_shader()  # 2.x：顶点列表挂在着色器程序上
         glEnable(GL_DEPTH_TEST)          # 深度测试：保证近处遮挡远处
         glClearColor(0.53, 0.81, 0.92, 1)  # 天空蓝背景
 
         # --- 场景内容：地面 + 一圈彩色立方体 ---
-        add_ground(self.batch, half=10)
+        add_ground(self.program, self.batch, half=10)
         palette = [(0.9, 0.3, 0.3), (0.3, 0.6, 0.9), (0.95, 0.75, 0.2),
                    (0.4, 0.75, 0.4), (0.7, 0.5, 0.85)]
         for i in range(10):
             ang = i / 10 * 2 * math.pi
-            add_colored_cube(self.batch,
+            add_colored_cube(self.program, self.batch,
                              math.cos(ang) * 5, 0.5, math.sin(ang) * 5,
                              1.0, palette[i % len(palette)])
-        add_colored_cube(self.batch, 0, 1.0, 0, 2.0, (0.95, 0.95, 0.95))
+        add_colored_cube(self.program, self.batch, 0, 1.0, 0, 2.0, (0.95, 0.95, 0.95))
 
         # --- 轨道相机参数 ---
         self.yaw, self.pitch, self.dist = 45.0, 30.0, 18.0
