@@ -17,6 +17,7 @@ from logic.animation import (Sampler, Channel, Timeline, quat_from_axis_angle,
                              quat_to_mat4, slerp, build_demo_timeline)
 from logic.camera import OrbitCamera, look_at_matrix, PITCH_MIN, PITCH_MAX, DIST_MIN, DIST_MAX
 from logic.events import EventBus
+from logic.playback import PlaybackController
 
 
 def test_camera_initial_pose():
@@ -163,6 +164,60 @@ def test_demo_timeline_choreography():
     print('  ok: demo timeline ranges, channels, wrap continuity')
 
 
+def _make_linear_timeline(duration=2.0):
+    ch = Channel('cube_0', 'translation',
+                 Sampler([0.0, duration], [Vec3(0, 0, 0), Vec3(0, 2, 0)]))
+    return Timeline(duration, [ch])
+
+
+def test_playback_states():
+    tl = _make_linear_timeline()
+    pb = PlaybackController(tl, looping=True)
+    assert pb.playing is False
+    assert pb.advance(0.5) is None                      # 暂停时不推进
+    assert abs(tl.playhead) < 1e-9
+    pb.play()
+    assert pb.advance(0.5) is None and abs(tl.playhead - 0.5) < 1e-9
+    pb.pause(); pb.play()                               # toggle 等价
+    assert pb.playing is True
+    print('  ok: paused no-op; play/toggle advance playhead')
+
+
+def test_playback_loop_wrap():
+    tl = _make_linear_timeline(duration=2.0)
+    pb = PlaybackController(tl, looping=True)
+    pb.play()
+    assert pb.advance(1.2) is None
+    assert pb.advance(1.2) == PlaybackController.WRAPPED  # 2.4 -> 0.4
+    assert abs(tl.playhead - 0.4) < 1e-9
+    print('  ok: looping wraps and returns WRAPPED')
+
+
+def test_playback_end_pause():
+    tl = _make_linear_timeline(duration=2.0)
+    pb = PlaybackController(tl, looping=False)
+    pb.play()
+    assert pb.advance(3.0) == PlaybackController.ENDED  # 越界 -> 停在末尾
+    assert pb.playing is False
+    assert tl.playhead >= tl.duration - 1e-6
+    assert abs(tl.sample()['cube_0']['translation'].y - 2.0) < 1e-3  # 末姿态
+    print('  ok: non-loop clamps at end, auto-pauses, last pose sampled')
+
+
+def test_playback_speed_and_seek():
+    tl = _make_linear_timeline(duration=2.0)
+    pb = PlaybackController(tl, looping=True, speed=2.0)
+    pb.play()
+    pb.advance(0.5)
+    assert abs(tl.playhead - 1.0) < 1e-9                # 2x 速
+    pb.set_speed(0.5)
+    pb.advance(1.0)
+    assert abs(tl.playhead - 1.5) < 1e-9                # 0.5x 速
+    pb.seek(0.25)
+    assert abs(tl.playhead - 0.25) < 1e-9               # 任意时刻 seek
+    print('  ok: speed 2x/0.5x and arbitrary seek')
+
+
 if __name__ == '__main__':
     print('test_camera_initial_pose');     test_camera_initial_pose()
     print('test_camera_clamps');           test_camera_clamps()
@@ -174,4 +229,8 @@ if __name__ == '__main__':
     print('test_sampler_linear_step');            test_sampler_linear_step()
     print('test_timeline_wrap_and_sample');       test_timeline_wrap_and_sample()
     print('test_demo_timeline_choreography');     test_demo_timeline_choreography()
+    print('test_playback_states');                test_playback_states()
+    print('test_playback_loop_wrap');             test_playback_loop_wrap()
+    print('test_playback_end_pause');             test_playback_end_pause()
+    print('test_playback_speed_and_seek');        test_playback_speed_and_seek()
     print('ALL_LOGIC_TESTS_PASSED')

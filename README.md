@@ -23,9 +23,11 @@ core/            核心层：窗口/渲染/几何/资源（允许 pyglet.gl）
 logic/           逻辑层：场景与动画（禁止 pyglet.gl，可无窗口单测）
   camera.py          轨道相机状态机 + 手写 look-at 矩阵
   animation.py       时间轴/关键帧/插值（glTF 对齐，四元数 slerp）
+  playback.py        播放控制器：播放/暂停/循环/倍速/seek
   events.py          事件总线（pyglet EventDispatcher）
 presentation/    表现层：装配窗口事件 → 逻辑层 → 渲染
   app.py             WorldApp 装配与事件接线
+  timeline_ui.py     底部时间轴面板（播放/循环/拖动刷取）
 tests/           逻辑层无窗口单测：python -m tests.run_tests
 main.py          入口（pyglet_3d_demo.py 为兼容 shim）
 docs/            设计文档

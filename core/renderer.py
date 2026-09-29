@@ -77,8 +77,18 @@ class WorldRenderer:
     # ---- 投影（on_resize 时由表现层调用） ----
     def apply_projection(self):
         self.window.viewport = (0, 0, self.window.width, self.window.height)
-        self.window.projection = Mat4.perspective_projection(
+        self.perspective = Mat4.perspective_projection(
             self.window.aspect_ratio, z_near=0.1, z_far=255, fov=60)
+        self.window.projection = self.perspective
+
+    # ---- 2D UI 屏幕空间切换（M3 时间轴面板用） ----
+    def apply_screen_projection(self):
+        w, h = self.window.width, self.window.height
+        self.window.projection = Mat4.orthogonal_projection(0, w, 0, h, -255, 255)
+        self.window.view = Mat4()
+
+    def restore_3d_projection(self):
+        self.window.projection = self.perspective
 
     def draw(self):
         self.window.clear()
