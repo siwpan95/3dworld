@@ -14,6 +14,24 @@
 > 2.x 版示例不依赖 `Mat4.look_at`（部分过渡版有 `cross_product` 改名缺陷），
 > 相机矩阵为内置纯算术实现，任何 2.x 小版本均可运行。
 
+## 项目结构（M1 分层重构后）
+
+```
+core/            核心层：窗口/渲染/几何/资源（允许 pyglet.gl）
+  geometry.py        立方体与棋盘地面构建（ShaderProgram.vertex_list）
+  renderer.py        窗口、透视投影、Batch 上传与绘制
+logic/           逻辑层：场景与动画（禁止 pyglet.gl，可无窗口单测）
+  camera.py          轨道相机状态机 + 手写 look-at 矩阵
+  events.py          事件总线（pyglet EventDispatcher）
+presentation/    表现层：装配窗口事件 → 逻辑层 → 渲染
+  app.py             WorldApp 装配与事件接线
+tests/           逻辑层无窗口单测：python -m tests.run_tests
+main.py          入口（pyglet_3d_demo.py 为兼容 shim）
+docs/            设计文档
+```
+
+依赖方向：presentation → logic → core，反向禁止。
+
 ## 快速开始（推荐：项目级 venv 隔离）
 
 ```bat
@@ -21,7 +39,7 @@
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
-python pyglet_3d_demo.py
+python main.py
 ```
 
 - `requirements.txt` 锁定 pyglet 2.1.16（2.x 版示例）。
