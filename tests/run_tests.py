@@ -44,6 +44,39 @@ def test_camera_clamps():
           (PITCH_MIN, PITCH_MAX, DIST_MIN, DIST_MAX))
 
 
+def test_camera_custom_ranges():
+    """M7：钳制范围可按实例放宽（太空场景要贴近黄道面、要拉得很远）。
+
+    默认值必须原样不变——其余 demo 都依赖它（相机不入地、不贴脸）。
+    """
+    from logic.camera import OrbitCamera
+    # 默认：与模块常量一致
+    cam = OrbitCamera()
+    assert cam.pitch_range == (PITCH_MIN, PITCH_MAX)
+    assert cam.dist_range == (DIST_MIN, DIST_MAX)
+    # 放宽：太阳系那种范围（近黄道面 + 装得下海王星轨道）
+    wide = OrbitCamera(pitch_range=(2.0, 89.0), dist_range=(1.5, 200.0))
+    wide.orbit(0.0, -10000.0)
+    assert wide.pitch == 2.0, wide.pitch        # 能压到 2°（默认只能到 5°）
+    wide.orbit(0.0, 10000.0)
+    assert wide.pitch == 89.0, wide.pitch
+    wide.zoom(-10000.0)
+    assert wide.dist == 200.0, wide.dist        # 能拉到 200（默认 60）
+    wide.zoom(10000.0)
+    assert wide.dist == 1.5, wide.dist
+    # 非法范围要立刻炸：pitch 上限到 90° 会让 look-at 的 up 与视线共线
+    for kwargs in ({'pitch_range': (10.0, 90.0)},
+                   {'pitch_range': (30.0, 10.0)},
+                   {'dist_range': (5.0, 5.0)}):
+        try:
+            OrbitCamera(**kwargs)
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError(f'{kwargs} 应被拒绝')
+    print('  ok: custom pitch/dist ranges applied; defaults unchanged; bad ranges rejected')
+
+
 def test_camera_advance():
     cam = OrbitCamera()
     before = cam.yaw
@@ -604,9 +637,111 @@ def test_waves_math():
           f'RMS {rms[0]:.2f}<{rms[1]:.2f}<{rms[2]:.2f}')
 
 
+def test_terrain_row_emitter():
+    """地形的逐行三角形装配（渐进重建的核心）：行序拼接 == 整块拼接。
+
+    这是"渐进重建不会改变结果"的数学保证——每帧啃几行，与一次性建完的
+    顶点/颜色数组必须逐位相同，否则重建完的地形会与同步版本不一致。
+    """
+    import array
+    import sys as _sys
+    _sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), 'demos'))
+    from terrain_flyover import (LIGHT_DIR, _hash01, emit_row, height_at,
+                                 terrain_color)
+
+    n, step = 8, 2.0
+    ox = oz = -0.5 * (n - 1) * step
+    seed = 4242
+    hs = [height_at(ox + i * step, oz + j * step, seed)
+          for j in range(n) for i in range(n)]
+    # 顶点色（与 demo 内 _vertex_color 同式，独立算一遍做交叉验证）
+    lx, ly, lz = LIGHT_DIR
+    ll = math.sqrt(lx * lx + ly * ly + lz * lz)
+    cols = []
+    for j in range(n):
+        for i in range(n):
+            k = j * n + i
+            il, ir = max(0, i - 1), min(n - 1, i + 1)
+            jd, ju = max(0, j - 1), min(n - 1, j + 1)
+            dx = (hs[j * n + ir] - hs[j * n + il]) / ((ir - il) * step)
+            dz = (hs[ju * n + i] - hs[jd * n + i]) / ((ju - jd) * step)
+            nx, ny, nz = -dx, 1.0, -dz
+            nl = math.sqrt(nx * nx + ny * ny + nz * nz)
+            lam = max(0.0, (nx * lx + ny * ly + nz * lz) / (nl * ll))
+            r, g, b = terrain_color(hs[k], 1.0 - 1.0 / nl, lam,
+                                    _hash01(i, j, seed + 4241))
+            cols.append((r, g, b, 1.0))
+    # 逐行（渐进路径）
+    pos_a, col_a = array.array('f'), array.array('f')
+    for j in range(n - 1):
+        emit_row(pos_a, col_a, hs, cols, n, step, ox, oz, j)
+    # 逐格（朴素路径，直接展开四边形）
+    pos_b, col_b = array.array('f'), array.array('f')
+    for j in range(n - 1):
+        z0, z1 = oz + j * step, oz + (j + 1) * step
+        for i in range(n - 1):
+            x0, x1 = ox + i * step, ox + (i + 1) * step
+            a, b = j * n + i, j * n + i + 1
+            c, d = a + n, b + n
+            pos_b.extend((x0, hs[a], z0, x1, hs[b], z0, x1, hs[d], z1,
+                          x0, hs[a], z0, x1, hs[d], z1, x0, hs[c], z1))
+            for k in (a, b, d, a, d, c):
+                col_b.extend(cols[k])
+    assert pos_a == pos_b and col_a == col_b, '逐行拼接必须与朴素拼接逐位一致'
+    assert len(pos_a) == (n - 1) ** 2 * 18 and len(col_a) == (n - 1) ** 2 * 24
+    # 颜色必须是 4 元组：3 元组会让顶点缓冲少 1/4 的 float（踩过一次）
+    assert all(len(c) == 4 for c in cols)
+    # 高程确定性：同 seed 同点同值，换 seed 变值
+    assert height_at(3.0, -7.0, seed) == height_at(3.0, -7.0, seed)
+    assert height_at(3.0, -7.0, seed) != height_at(3.0, -7.0, seed + 1)
+    print(f'  ok: terrain row emitter == naive ({len(pos_a)} floats), '
+          f'colors vec4, deterministic heights')
+
+
+def test_voxel_mesh_invariants():
+    """体素世界（R 键换种子的底层）：换种子真的换世界，且面剔除必须成立。
+
+    纯函数层直测（build_heights / build_mesh 不需要 GL），
+    这样"R 键重建"这条交互也有回归保护。
+    """
+    import sys as _sys
+    _sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), 'demos'))
+    from voxel_terrain import MAXH, W, build_heights, build_mesh
+
+    h1 = build_heights(1234)
+    h2 = build_heights(1234)
+    h3 = build_heights(5678)
+    assert h1 == h2, '同种子必须完全可复现'
+    assert h1 != h3, '换种子必须真的换地形'
+    assert len(h1) == W * W and all(1 <= h <= MAXH for h in h1), \
+        (len(h1), min(h1), max(h1))
+
+    pos_c, col_c, faces_c = build_mesh(h1, 1234, True)     # 剔除（只画暴露面）
+    pos_a, col_a, faces_a = build_mesh(h1, 1234, False)    # 全部面
+    assert faces_c < faces_a, (faces_c, faces_a)
+    assert len(pos_c) // 3 == faces_c * 6 and len(pos_a) // 3 == faces_a * 6
+    assert len(col_c) == faces_c * 24 and len(col_a) == faces_a * 24
+    cut = 1.0 - faces_c / faces_a
+    assert cut > 0.5, f'剔除率 {cut:.2%} 明显偏低，面剔除可能失效'
+    # 分段装配（R 键渐进重建走的路径）必须与整块装配逐位一致
+    import array as _array
+    seg_p, seg_c, seg_f = _array.array('f'), _array.array('f'), 0
+    for z0 in range(0, W, 3):                      # 故意用不整除的段长
+        _p, _c, _f = build_mesh(h1, 1234, True, seg_p, seg_c, z0, min(W, z0 + 3))
+        seg_f += _f
+    assert seg_f == faces_c, (seg_f, faces_c)
+    assert list(seg_p) == list(pos_c) and list(seg_c) == list(col_c), \
+        '分段装配必须与整块装配逐位一致'
+    print(f'  ok: voxel seeds change world; culling {faces_c}/{faces_a} '
+          f'= {cut:.1%} removed; arrays sized consistently')
+
+
 if __name__ == '__main__':
     print('test_camera_initial_pose');     test_camera_initial_pose()
     print('test_camera_clamps');           test_camera_clamps()
+    print('test_camera_custom_ranges');   test_camera_custom_ranges()
     print('test_camera_advance');          test_camera_advance()
     print('test_view_matrix_maps_eye_to_origin'); test_view_matrix_maps_eye_to_origin()
     print('test_look_at_matches_multiple_poses'); test_look_at_matches_multiple_poses()
@@ -630,6 +765,8 @@ if __name__ == '__main__':
     print('test_box_data_pivot');                 test_box_data_pivot()
     print('test_boids_flock');                    test_boids_flock()
     print('test_waves_math');                     test_waves_math()
+    print('test_terrain_row_emitter');            test_terrain_row_emitter()
+    print('test_voxel_mesh_invariants');          test_voxel_mesh_invariants()
     print('test_kkrieger_timeline');              test_kkrieger_timeline()
     print('test_kkrieger_camera_path_clearance'); test_kkrieger_camera_path_clearance()
     print('ALL_LOGIC_TESTS_PASSED')

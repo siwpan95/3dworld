@@ -94,6 +94,7 @@ uniform sampler2D u_shadow;
 uniform float u_bias;
 uniform float u_texel;
 uniform int   u_shadow_on;
+uniform int   u_pcf;          // PCF 半径：1 → 3x3，2 → 5x5
 
 float shadow_factor(float ndl) {
     vec3 p = v_light.xyz / v_light.w * 0.5 + 0.5;
@@ -103,13 +104,18 @@ float shadow_factor(float ndl) {
     // 斜率偏移：法线越背光，深度比较的容差越大（压住自阴影条纹）
     float bias = u_bias * (1.0 + 2.0 * (1.0 - ndl));
     float sum = 0.0;
-    for (int y = -1; y <= 1; ++y) {
-        for (int x = -1; x <= 1; ++x) {
+    float cnt = 0.0;
+    // 固定跑 5x5 的循环范围，用半径 r 裁掉外圈：GLSL 330 的循环边界必须是
+    // 常量，这样写才能让 3x3 / 5x5 共用一份代码（P 键切换）。
+    for (int y = -2; y <= 2; ++y) {
+        for (int x = -2; x <= 2; ++x) {
+            if (abs(x) > u_pcf || abs(y) > u_pcf) { continue; }
             float d = texture(u_shadow, p.xy + vec2(float(x), float(y)) * u_texel).r;
             sum += (p.z - bias > d) ? 0.0 : 1.0;
+            cnt += 1.0;
         }
     }
-    return sum / 9.0;
+    return sum / cnt;
 }
 
 void main() {
@@ -207,9 +213,9 @@ BIASES = (0.0008, 0.0018, 0.0035)
 
 
 class ShadowDemo(DemoApp):
-    TITLE = '阴影贴图 · 离屏深度图(R32F) + 3x3 PCF (pyglet Framebuffer)'
-    HELP = ('L 光源方位 +15°   B 切换 bias   S 阴影开关   A 自动环绕   '
-            '鼠标拖动/滚轮   SPACE 暂停   ESC 退出')
+    TITLE = '阴影贴图 · 离屏深度图(R32F) + PCF 软阴影 (pyglet Framebuffer)'
+    HELP = ('L 光源方位 +15°   B 切换 bias   P 切换 PCF 3x3/5x5   S 阴影开关   '
+            'A 自动环绕   鼠标拖动/滚轮   SPACE 暂停   ESC 退出')
     DURATION = 30.0
     MAP_SIZE = 1024
     LIGHT_RANGE = 14.0          # 光源正交视锥半宽（越小 → 深度精度越高）
@@ -266,8 +272,8 @@ class ShadowDemo(DemoApp):
         self.fbo.attach_renderbuffer(self.depth_rb, attachment=GL_DEPTH_ATTACHMENT)
         self.fbo_ok = bool(self.fbo.is_complete)
         if not self.fbo_ok:
-            print('[shadow_map] 警告：Framebuffer 不完整 →', self.fbo.get_status(),
-                  '（阴影关闭，仅渲染场景）')
+            print('[shadow_map] WARNING: framebuffer incomplete ->',
+                  self.fbo.get_status(), '(shadows disabled, scene only)')
 
         self.camera = OrbitCamera(target=Vec3(0, 1.0, -1.5),
                                   yaw=35.0, pitch=26.0, dist=17.0)
@@ -275,7 +281,15 @@ class ShadowDemo(DemoApp):
         self.light_offset = 0.0
         self.bias_i = 1
         self.shadow_on = 1
+        self.pcf = 1                         # 1 = 3x3，2 = 5x5（P 键切换）
         self.auto_orbit = True
+        # 命令行起始状态：--flag pcf5 / --flag nobias-… 便于无人值守验证
+        if 'pcf5' in self.args.flags:
+            self.pcf = 2
+        if 'noshadow' in self.args.flags:
+            self.shadow_on = 0
+        if 'noon' in self.args.flags:
+            self.auto_orbit = False
 
     # ------------------------------------------------------------ 帧 --
     def on_key(self, symbol, modifiers):
@@ -286,6 +300,8 @@ class ShadowDemo(DemoApp):
             self.bias_i = (self.bias_i + 1) % len(BIASES)
         elif symbol == key.S:
             self.shadow_on = 0 if self.shadow_on else 1
+        elif symbol == key.P:
+            self.pcf = 2 if self.pcf == 1 else 1      # 3x3 ↔ 5x5
         elif symbol == key.A:
             self.auto_orbit = not self.auto_orbit
 
@@ -353,6 +369,7 @@ class ShadowDemo(DemoApp):
         prog['u_bias'] = BIASES[self.bias_i]
         prog['u_texel'] = 1.0 / float(self.MAP_SIZE)
         prog['u_shadow_on'] = self.shadow_on if self.fbo_ok else 0
+        prog['u_pcf'] = self.pcf
         glActiveTexture(GL_TEXTURE0)
         glBindTexture(GL_TEXTURE_2D, self.shadow_tex.id)
         prog['u_shadow'] = 0
@@ -389,6 +406,7 @@ class ShadowDemo(DemoApp):
         _, _, light_eye = self._light()
         az = (28.0 + self.light_offset + 360.0 * self.time / self.DURATION) % 360.0
         return (f'光源方位 {az:5.1f}°   bias {BIASES[self.bias_i]:.4f}   '
+                f'PCF {3 if self.pcf == 1 else 5}x{3 if self.pcf == 1 else 5}   '
                 f'阴影 {"开" if self.shadow_on else "关"}   '
                 f'影图 {self.MAP_SIZE}²   {"FBO-OK" if self.fbo_ok else "FBO-FAIL"}   '
                 f'{self.fps:5.1f} fps{"  [PAUSED]" if self.paused else ""}')

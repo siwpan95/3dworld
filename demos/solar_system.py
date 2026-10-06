@@ -302,6 +302,21 @@ SUN_COLOR = (1.00, 0.80, 0.32)
 MOON_COLOR = (0.72, 0.72, 0.70)
 RING_INNER, RING_OUTER = 1.45, 2.45           # 土星环内外半径（供几何与投影阴影共用）
 
+# 显示半径下限。轨道半径按真实比例压缩过了，行星半径同样压缩，但压缩后
+# 水星只剩 0.42 单位 —— 全景（dist=60 / FOV 55°）下不到 5 像素，就是个小点。
+# 给一个显示下限把它抬到"看得见是个球"，与"尺寸已非真实比例"的既有处理一致；
+# 轨道仍是真实比例，不受影响。
+MIN_DISPLAY_RADIUS = 0.70
+
+# 相机自由度：默认的 (5°,89°)/(4,60) 是给地面场景选的，太空里太紧——
+# 装不下海王星轨道（36.5），也压不到贴近黄道面去看行星相位。
+CAM_PITCH_RANGE = (2.0, 89.0)
+CAM_DIST_RANGE = (1.5, 200.0)
+OVERVIEW_PITCH = 38.0                          # 全景俯视角度
+FOCUS_PITCH = 6.0                              # 聚焦行星时的近黄道面角度（能看相位）
+SATURN_PITCH = 22.0                            # 土星专用：太低环就成一条线，取折中
+PHASE_FRACTION = 0.20                          # 相位视角的照亮比例（新月形）
+
 
 def tilt_spin(inclination_deg, spin_deg):
     """自转 = Rz(倾角) @ Ry(自转角)，返回 **Mat4**。
@@ -330,8 +345,10 @@ class SolarSystemDemo(DemoApp):
     FOV = 55.0
     Z_NEAR, Z_FAR = 0.05, 400.0
     SHOTS = ((14.0, 'docs/demo_solar_a.png'),       # 全景（水星已绕 ~3 圈）
-             (34.0, 'docs/demo_solar_b.png'))       # 聚焦土星（环 + 环投影）
-    FOCUS_AT = (26.0, 'Saturn')                     # 无人值守时的自动聚焦编排
+             (34.0, 'docs/demo_solar_b.png'),       # 聚焦土星（环 + 环投影）
+             (46.0, 'docs/demo_solar_c.png'))       # 相位视角：内行星的新月形
+    AUTO_STAGES = ((26.0, 'Saturn', SATURN_PITCH),  # 第一段：土星（看环）
+                   (44.0, 'Venus', FOCUS_PITCH))    # 第二段：金星（看相位）
 
     # ------------------------------------------------------------ setup --
     def setup(self):
@@ -367,12 +384,13 @@ class SolarSystemDemo(DemoApp):
             period = years * ORBIT_TIME_SCALE
             body = Body(name, node, radius, sma, period, tilt, spin, rgb, '', 6.0)
             self.planets.append(body)
-            pv, pc = uv_sphere(radius, 14, 20, rgb, bands=bands)
+            draw_r = max(radius, MIN_DISPLAY_RADIUS)      # 显示半径下限（见模块常量）
+            pv, pc = uv_sphere(draw_r, 14, 20, rgb, bands=bands)
             self.lists[name] = (self.body_program.vertex_list(
                 len(pv) // 3, GL_TRIANGLES, position=('f', pv), colors=('f', pc)), 0.0)
-            # 聚焦距离：半径 * 13，但 OrbitCamera 的距离下限是 4.0（logic/camera.py），
-            # 太近会顶到下限导致"按了键没反应"；上限 60 也一并钳住。
-            body.focus_dist = max(4.0, min(60.0, radius * 13.0))
+            # 聚焦距离：显示半径 * 13，按本 demo 的相机距离范围钳制
+            body.focus_dist = max(CAM_DIST_RANGE[0],
+                                  min(CAM_DIST_RANGE[1], draw_r * 13.0))
             # 点光衰减补偿：照度 gain/(1+d²·0.006) 随轨道半径掉得很快，
             # 不补偿的话木星只有地球的 1/3 亮度、海王星几乎全黑。
             # gain = 2.6·a^1.6 让"外行星更暗"这个物理事实保留，
@@ -400,6 +418,10 @@ class SolarSystemDemo(DemoApp):
         self.orbit0 = {name: self._rng_phase(name) for name in self.lists}
         self.moon_visible = True
         self.auto_focus = True
+        self._stage_i = 0                     # AUTO_STAGES 已执行到第几段
+        self.phase_lock = False               # 相位锁定（见 set_phase_lock）
+        self.phase_body = 'Venus'
+        self.phase_target = PHASE_FRACTION
         # 每帧合成的"节点局部变换"（世界矩阵由 _apply_local 自根向叶算）
         self._local = {}
 
@@ -410,8 +432,17 @@ class SolarSystemDemo(DemoApp):
 
         # --- 相机 ---
         from logic.camera import OrbitCamera
-        self.camera = OrbitCamera(target=Vec3(0, 0, 0), yaw=42.0, pitch=38.0, dist=60.0)
-        self.on_mouse_drag, self.on_mouse_scroll = orbit_camera_input(self, self.camera)
+        self.camera = OrbitCamera(target=Vec3(0, 0, 0), yaw=42.0,
+                                  pitch=OVERVIEW_PITCH, dist=60.0,
+                                  pitch_range=CAM_PITCH_RANGE,
+                                  dist_range=CAM_DIST_RANGE)
+        _drag, _scroll = orbit_camera_input(self, self.camera)
+
+        def on_drag(x, y, dx, dy, buttons, modifiers):
+            self.phase_lock = False          # 手动拖拽即接管，解除相位锁定
+            _drag(x, y, dx, dy, buttons, modifiers)
+
+        self.on_mouse_drag, self.on_mouse_scroll = on_drag, _scroll
         self._target = Vec3(0, 0, 0)
 
     @staticmethod
@@ -499,11 +530,27 @@ class SolarSystemDemo(DemoApp):
         # 聚焦月球时 target 会自动跟着地球一起绕太阳走）
         # 演示编排：26s 时自动把镜头交给土星（--shot 无人值守时第二张截图
         # 才拍得到"聚焦行星 + 土星环投影"；手按 1..8 会立刻覆盖这个默认编排）。
-        if self.auto_focus and t >= self.FOCUS_AT[0]:
-            self.auto_focus = False
-            target = self.FOCUS_AT[1]
-            self.focus = self.focus_names.index(target)
-            self.camera.dist = max(4.0, min(60.0, self._body_of(target).focus_dist))
+        # 无人值守编排：逐段切镜头（手按任意键即取消后续段）。
+        # 两段各有各的取景理由：土星要俯角才能看清环，内行星要贴黄道面才看得见相位。
+        if self.auto_focus:
+            while (self._stage_i < len(self.AUTO_STAGES)
+                   and t >= self.AUTO_STAGES[self._stage_i][0]):
+                _t0, name, pitch = self.AUTO_STAGES[self._stage_i]
+                self._stage_i += 1
+                body = self._body_of(name)
+                self.focus = self.focus_names.index(name)
+                self.camera.dist = body.focus_dist
+                if name == 'Saturn':
+                    self.camera.pitch = pitch          # 太低环会成一条线，取折中
+                    self.set_phase_lock(False)
+                else:
+                    self._aim_phase(body, pitch=pitch, dist=body.focus_dist)
+                    self.set_phase_lock(True, body)
+        # 相位锁定：行星在动，方位角每帧跟着重算，照亮比例才守得住
+        if self.phase_lock and self.focus != 0:
+            body = self._body_of(self.phase_body)
+            self._aim_phase(body, self.phase_target, pitch=FOCUS_PITCH,
+                            dist=body.focus_dist)
         if self.focus == 0:
             self._target = Vec3(0, 0, 0)
         else:
@@ -514,6 +561,64 @@ class SolarSystemDemo(DemoApp):
     def _model_matrix(self, name):
         """节点世界矩阵（层级继承的结果）→ 直接当 model 用。"""
         return self.skel.nodes[name].world_matrix
+
+    # -------------------------------------------------------- 相位视角 --
+    def _aim_phase(self, body, fraction=None, dist=None, pitch=None):
+        """把相机摆到"看得见指定照亮比例"的位置，并返回该照亮比例。
+
+        相位几何：行星被太阳照亮的半球朝向太阳。设从行星指向太阳的水平方向
+        为 ŝ、从行星指向相机的水平方向为 ĉ，则照亮比例 ``f = (1 + ĉ·ŝ) / 2``：
+        f=1 相机在太阳这侧（满相）、f=0.5 侧面（半圆）、f→0 相机在背光侧
+        （新月形，只剩一条亮边）。
+
+        实现就是按 ``f`` 反解相机方向的方位角（θ = arccos(2f-1)），俯仰压到
+        近黄道面（``FOCUS_PITCH``）——俯仰高了会把明暗界线"翻"到看不见的角度。
+        """
+        fraction = PHASE_FRACTION if fraction is None else fraction
+        pos = self.skel.nodes[body.name].world_translation()
+        sx, sz = -pos.x, -pos.z                      # 行星 → 太阳（水平分量）
+        n = math.hypot(sx, sz)
+        if n < 1e-6:
+            return 1.0
+        sx, sz = sx / n, sz / n
+        theta = math.acos(max(-1.0, min(1.0, 2.0 * fraction - 1.0)))
+        ca, sa = math.cos(theta), math.sin(theta)
+        cx = sx * ca - sz * sa                       # ŝ 绕 Y 转 θ
+        cz = sx * sa + sz * ca
+        self.camera.yaw = math.degrees(math.atan2(cz, cx))
+        self.camera.pitch = FOCUS_PITCH if pitch is None else pitch
+        if dist is not None:
+            self.camera.dist = dist
+        # 用相机方向回算一次实际照亮比例（把俯仰的影响算清楚，供 HUD 显示）
+        yr = math.radians(self.camera.yaw)
+        return 0.5 * (1.0 + math.cos(yr) * sx + math.sin(yr) * sz)
+
+    def set_phase_lock(self, on, body=None, fraction=None):
+        """开关"相位锁定"：锁定后每帧重算方位角，行星公转时照亮比例保持不变。
+
+        为什么需要它：金星 11.7s 转一圈，切到相位视角后隔 2 秒再看，太阳方向
+        已经变了 60°，照亮比例从 20% 漂到 70%——**不解锁就拍不到新月形**。
+        手动拖拽会解除锁定（用户接管优先）。
+        """
+        self.phase_lock = bool(on)
+        if body is not None:
+            self.phase_body = body.name
+        if fraction is not None:
+            self.phase_target = fraction
+        return self.phase_lock
+
+    def phase_fraction(self):
+        """当前机位下聚焦天体的照亮比例（0=新月，1=满相）；全景返回 None。"""
+        if self.focus == 0:
+            return None
+        name = self.focus_names[self.focus]
+        pos = self.skel.nodes[name].world_translation()
+        d = Vec3(-pos.x, 0.0, -pos.z)
+        if d.length() < 1e-6:
+            return None
+        d = d.normalize()
+        yr = math.radians(self.camera.yaw)
+        return 0.5 * (1.0 + math.cos(yr) * d.x + math.sin(yr) * d.z)
 
     def _model_matrix_ring(self):
         """土星环：继承土星的位置，但**剔除土星自转**、只保留倾角。
@@ -604,20 +709,35 @@ class SolarSystemDemo(DemoApp):
         self.auto_focus = False               # 手按过任何键就交还控制权
         if key._1 <= symbol <= key._8:
             self.focus = symbol - key._0          # 1..8 → 索引 1..8
-            self.camera.dist = max(4.0, min(60.0, self._body_of(
-                self.focus_names[self.focus]).focus_dist))
+            body = self._body_of(self.focus_names[self.focus])
+            # 聚焦即取"相位视角"：贴近黄道面 + 按照亮比例反解方位角，
+            # 于是内行星一眼就能看出新月/亏凸（默认俯视 38° 是看不出的）。
+            self._aim_phase(body, pitch=FOCUS_PITCH, dist=body.focus_dist)
         elif symbol == key._0:
             self.focus = 0
             self.camera.dist = 60.0
+            self.camera.pitch = OVERVIEW_PITCH
         elif symbol == key._9:
             self.focus = 9
             self.camera.dist = self.moon.focus_dist
+            self.camera.pitch = FOCUS_PITCH
         elif symbol in (key.EQUAL, key.PLUS, key.NUM_ADD):
-            self.camera.dist = max(4.0, self.camera.dist - 4.0)
+            self.camera.dist = max(CAM_DIST_RANGE[0], self.camera.dist - 4.0)
         elif symbol in (key.MINUS, key.NUM_SUBTRACT):
-            self.camera.dist = min(60.0, self.camera.dist + 4.0)
+            self.camera.dist = min(CAM_DIST_RANGE[1], self.camera.dist + 4.0)
         elif symbol == key.M:
             self.moon_visible = not self.moon_visible
+        elif symbol == key.V:
+            # 相位锁定开关（聚焦在天体上才有意义）
+            if self.focus == 0:
+                return
+            body = self._body_of(self.focus_names[self.focus])
+            if self.phase_lock:
+                self.set_phase_lock(False)
+            else:
+                self._aim_phase(body, self.phase_target, pitch=FOCUS_PITCH,
+                                dist=body.focus_dist)
+                self.set_phase_lock(True, body)
 
     def status_text(self):
         name = self.focus_names[self.focus] if self.focus else '全景 (Sun)'
@@ -628,8 +748,12 @@ class SolarSystemDemo(DemoApp):
         else:
             b = self._body_of(self.focus_names[self.focus])
             period = f'{b.period:.2f}s/圈'
+        # 照亮比例（相位）：聚焦时才有意义，直接给出数字便于核对新月/满相
+        frac = self.phase_fraction()
+        phase = '' if frac is None else f'   照亮 {frac * 100:4.1f}%'
+        lock = '   相位锁定' if self.phase_lock else ''
         flag = '  [PAUSED]' if self.paused else ''
-        return (f'聚焦 {name}   公转周期 {period}   t={self.time:6.2f}s   '
+        return (f'聚焦 {name}   公转周期 {period}{phase}{lock}   t={self.time:6.2f}s   '
                 f'd={self.camera.dist:.1f}   {self.fps:5.1f} fps{flag}')
 
 

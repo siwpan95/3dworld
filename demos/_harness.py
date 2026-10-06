@@ -66,23 +66,40 @@ COL_HELP = (168, 176, 190, 255)
 
 # --------------------------------------------------------------- 命令行 --
 def parse_args(argv=None):
-    """统一的命令行开关。返回 Namespace（额外带 .width/.height 数值字段）。"""
+    """统一的命令行开关。返回 Namespace（额外带 .width/.height/.flags 字段）。
+
+    所有**控制台输出一律 ASCII**：中文注释可以，但 print 出去的中文在
+    Windows GBK 代码页的 cmd/PowerShell 里会显示成乱码（实测
+    ``[shot] OK 2 张`` → 一串问号），而乱码会污染自动化脚本的解析。
+    """
     p = argparse.ArgumentParser(add_help=True)
     p.add_argument('--smoke', nargs='?', type=float, const=2.0, default=None,
-                   metavar='SEC', help='冒烟测试：N 秒后自动关闭（默认 2.0）')
+                   metavar='SEC', help='smoke test: auto-close after N sec (default 2.0)')
     p.add_argument('--shot', action='store_true',
-                   help='按时抓帧写 docs/ 后自动关闭（时间点见各 demo 的 SHOTS）')
+                   help='capture frames to docs/ then auto-close (times in SHOTS)')
     p.add_argument('--size', default='1280x720', metavar='WxH',
-                   help='窗口尺寸，默认 1280x720')
-    p.add_argument('--fps', type=float, default=60.0, help='逻辑刷新率，默认 60')
+                   help='window size, default 1280x720')
+    p.add_argument('--fps', type=float, default=60.0, help='logic tick rate, default 60')
     p.add_argument('--duration', type=float, default=None,
-                   help='覆盖演示循环时长（秒）')
+                   help='override demo loop duration (seconds)')
+    p.add_argument('--no-vsync', action='store_true',
+                   help='disable vsync (use with --bench for true frame rate)')
+    p.add_argument('--bench', type=float, default=None, metavar='SEC',
+                   help='benchmark SEC seconds without vsync, print frame stats, exit')
+    p.add_argument('--flag', action='append', default=[], metavar='NAME',
+                   help='demo-specific switch, readable as args.flags (repeatable)')
     args = p.parse_args(argv)
     w, _, h = args.size.lower().partition('x')
     try:
         args.width, args.height = int(w), int(h)
     except ValueError:
-        p.error(f'--size 需要形如 1280x720，收到 {args.size!r}')
+        p.error(f'--size needs WxH like 1280x720, got {args.size!r}')
+    if args.bench is not None:
+        args.no_vsync = True                 # 基准就是要真实吞吐，vsync 会把它压成刷新率
+        args.smoke = None
+    # --flag 允许一次给多个：--flag a,b 与 --flag a --flag b 等价
+    args.flags = {f.strip() for item in args.flag
+                  for f in str(item).split(',') if f.strip()}
     return args
 
 
@@ -189,10 +206,13 @@ class DemoApp:
         if self.args.duration is not None:
             self.DURATION = self.args.duration
         self.window = pyglet.window.Window(
-            width, height, caption=self.TITLE, resizable=True, vsync=True)
+            width, height, caption=self.TITLE, resizable=True,
+            vsync=not getattr(self.args, 'no_vsync', False))
         self.time = 0.0
         self.paused = False
         self.fps = 0.0
+        self.frame_ms = []                   # --bench：逐帧渲染耗时（毫秒）
+        self._last_draw = None
         self.perspective = Mat4()
         self.hud = Hud(self.TITLE, self.HELP) if self.HUD else None
         self._shots = sorted(self.SHOTS)
@@ -210,7 +230,13 @@ class DemoApp:
         self._apply_projection(width, height)
         if self.hud is not None:
             self.hud.layout(width, height)
-        pyglet.clock.schedule_interval(self._tick, 1.0 / max(1e-3, self.args.fps))
+        if self.args.bench is not None:
+            # 基准模式：逻辑每帧都跑（schedule = 每个循环一次），否则 1/60 的
+            # 定时器会把事件循环压到 60Hz —— 那样量到的是"定时器多久响一次"，
+            # 不是"渲染跑多快"（第一版就是这么白测的）。
+            pyglet.clock.schedule(self._tick)
+        else:
+            pyglet.clock.schedule_interval(self._tick, 1.0 / max(1e-3, self.args.fps))
 
     # -------------------------------------------------- 子类覆盖点 --
     def setup(self):
@@ -283,6 +309,41 @@ class DemoApp:
             self.hud.set_status(self.status_text())
             self._draw_hud()
         self._capture_due()
+        self._sample_frame_time()
+
+    def _sample_frame_time(self):
+        """--bench 用：量**渲染帧**耗时（不是逻辑 tick）。
+
+        逻辑 tick 是 60Hz 定时器，用它的 dt 算帧率会把"渲染跑多快"这个问题
+        测成"定时器多久响一次"。这里直接量 on_draw 之间的间隔，vsync 关掉后
+        就是真实吞吐。前 1.0s 丢弃（着色器编译 / 首帧上传的预热——实测
+        raymarch 的首帧编译能到 260ms，算进最慢帧会把"稳态卡不卡"带偏）。
+        """
+        import time as _t
+        now = _t.perf_counter()
+        if self._last_draw is not None:
+            dt = now - self._last_draw
+            if getattr(self, '_bench_warm', False):
+                self.frame_ms.append(dt * 1000.0)
+        self._last_draw = now
+        if not getattr(self, '_bench_warm', False) and self.time > 1.0:
+            self._bench_warm = True
+
+    def bench_report(self):
+        """返回 (frames, span_s, mean, median, p1, worst_ms, jank_ratio)。
+
+        p1 = 第 1 百分位帧率（1% 最慢帧的下界），jank = 超过 20ms 的帧占比
+        —— 均值会被偶发快帧拉高，p1 与 jank 才反映"卡不卡"。
+        """
+        ms = sorted(self.frame_ms)
+        if not ms:
+            return (0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        span = sum(ms) / 1000.0
+        mean = len(ms) / span
+        median = 1000.0 / ms[len(ms) // 2]
+        p1 = 1000.0 / ms[min(len(ms) - 1, int(len(ms) * 0.99))]
+        jank = sum(1 for m in ms if m > 20.0) / len(ms)
+        return (len(ms), span, mean, median, p1, ms[-1], jank)
 
     def _draw_hud(self):
         w, h = self.window.width, self.window.height
@@ -319,22 +380,33 @@ def run(app_cls, argv=None):
     """统一入口：解析命令行 → 建 app → 按模式排定关闭 → 跑主循环。"""
     args = parse_args(argv)
     if args.shot and not app_cls.SHOTS:
-        raise SystemExit(f'{app_cls.__name__}: --shot 需要定义 SHOTS')
+        raise SystemExit(f'{app_cls.__name__}: --shot requires SHOTS')
     app = app_cls(args.width, args.height, args=args)
 
-    if args.smoke is not None:
+    if args.bench is not None:
+        pyglet.clock.schedule_once(lambda dt: app.close(), args.bench + 0.5)
+        print(f'[bench] vsync=off, running {args.bench}s ...')
+    elif args.smoke is not None:
         pyglet.clock.schedule_once(lambda dt: app.close(), args.smoke)
-        print(f'[smoke] {args.smoke}s 后自动关闭')
+        print(f'[smoke] auto-close in {args.smoke}s')
     elif args.shot:
-        print(f'[shot] 计划 {len(app_cls.SHOTS)} 张，抓完自动关闭')
-    pyglet.app.run()
+        print(f'[shot] planned {len(app_cls.SHOTS)} frames, close when done')
+    # interval=0 → 窗口重绘"能多快就多快"。默认值是 1/60，那才是 60fps 的真正
+    # 来源（不是 vsync）：基准模式必须关掉它，否则量的还是 60。正常跑用 1/60，
+    # 与 pyglet 默认行为一致。
+    pyglet.app.run(interval=0 if args.bench is not None else 1 / 60)
 
+    if args.bench is not None:
+        n, span, mean, median, p1, worst, jank = app.bench_report()
+        print(f'[bench] frames={n} span={span:.2f}s '
+              f'fps mean={mean:.1f} median={median:.1f} p1={p1:.1f} '
+              f'worst_frame_ms={worst:.2f} jank_gt20ms={jank * 100:.1f}%')
     if args.shot:
         missing = [p for _, p in app_cls.SHOTS
                    if not os.path.exists(os.path.join(PROJECT_ROOT, p))]
         if missing:
-            raise SystemExit(f'[shot] 缺失: {missing}')
-        print(f'[shot] OK {len(app_cls.SHOTS)} 张')
+            raise SystemExit(f'[shot] missing: {missing}')
+        print(f'[shot] OK {len(app_cls.SHOTS)} files')
     print('EXIT_OK')
     return 0
 

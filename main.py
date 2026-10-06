@@ -49,8 +49,8 @@ def run():
     if shots:
         missing = [p for _, p, _ in shots if not os.path.exists(p)]
         if missing:
-            raise SystemExit(f'[shot] 缺失: {missing}')
-        print(f'[shot] OK {len(shots)} 张')
+            raise SystemExit(f'[shot] missing: {missing}')
+        print(f'[shot] OK {len(shots)} files')
     print('EXIT_OK')
 
 

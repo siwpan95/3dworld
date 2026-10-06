@@ -39,6 +39,7 @@ SPACE 暂停，ESC 退出。
 """
 import array
 import math
+import time
 
 import pyglet
 from pyglet.gl import (GL_DEPTH_TEST, GL_FILL, GL_FRONT_AND_BACK, GL_LINE,
@@ -132,18 +133,22 @@ def voxel_rgb(x, y, z, h, seed):
     return base[0] * k, base[1] * k, base[2] * k
 
 
-def build_mesh(heights, seed, cull):
-    """把世界网格化成三角形汤。
+def build_mesh(heights, seed, cull, pos=None, col=None, z0=0, z1=None):
+    """把世界网格化成三角形汤（可分段：只处理 z ∈ [z0, z1) 的列）。
 
     ``cull=True`` 时相邻体素为实心就跳过该面——这就是"面剔除"，也是本 demo 的
     主角；``cull=False`` 时每个实心体素都发 6 个面，用来做数量对比。
     返回 (位置 array, 颜色 array, 面数)。
+
+    ``pos``/``col`` 传入时会**追加**到已有缓冲，配合 z0/z1 就能把重建摊到多帧
+    （实测整套 352ms，同步重建会有一次可见停顿；分段后每帧只花几毫秒）。
     """
-    pos = array.array('f')
-    col = array.array('f')
+    pos = array.array('f') if pos is None else pos
+    col = array.array('f') if col is None else col
     faces = 0
     ext_p, ext_c = pos.extend, col.extend
-    for z in range(W):
+    z1 = W if z1 is None else z1
+    for z in range(z0, z1):
         zrow = z * W
         for x in range(W):
             h = heights[zrow + x]
@@ -225,12 +230,15 @@ def _nearest_angle(cur, want):
 
 class VoxelDemo(DemoApp):
     TITLE = '体素地形 · 面剔除网格化 (pyglet 逐面剔除)'
-    HELP = 'SPACE 暂停   1 俯瞰 2 漫游   F 线框   H 面剔除开关   拖动/滚轮   ESC'
+    HELP = 'SPACE 暂停   1 俯瞰 2 漫游   F 线框   H 面剔除开关   R 换种子重建   拖动/滚轮   ESC'
     DURATION = 36.0
     SHOTS = ((8.0, 'docs/demo_voxel_a.png'),
              (27.0, 'docs/demo_voxel_b.png'))
 
     SEED = 20240607
+    RESEED_COLS = 1            # 渐进重建每帧啃几列（z 方向）。**必须是 1**：
+    #                            实测 4 列一个块 ≈18ms，远超 6ms 预算，
+    #                            最慢帧会冲到 118ms；1 列的粒度才让预算真正生效。
     AUTO_SWITCH = 0.5          # 循环过半自动切到第二种机位（1/2 键可手动接管）
 
     # ------------------------------------------------------------ 生命周期 --
@@ -242,26 +250,120 @@ class VoxelDemo(DemoApp):
 
         self.heights = build_heights(self.SEED)
         self.voxels = sum(self.heights)
-        self.mesh = {}                          # True=剔除后的暴露面 / False=全部面
-        self.faces = {}
-        for cull in (True, False):
-            pos, col, faces = build_mesh(self.heights, self.SEED, cull)
-            self.faces[cull] = faces
-            self.mesh[cull] = self.program.vertex_list(
-                len(pos) // 3, GL_TRIANGLES,
-                position=('f', pos), colors=('f', col))
+        self.mesh = {}                          # True=暴露面 / False=全部面（懒建）
+        self.faces = {}                         # False 侧在首次按 H 前为 None
+        self.mesh[False] = None                 # 显式占位：状态行与渲染都会读 False 键
+        self.faces[False] = None
+        self.seed = self.SEED
+        self.rebuild_ms = 0.0
+        self._rb = None             # 渐进换种子状态（None = 空闲）
+        self._progress = 1.0
+        self._build_meshes()
 
         self.cull = True                        # H 键：画暴露面 / 画全部面
         self.wire = False                       # F 键：线框
         self.mode = 0                           # 1/2 键：机位
         self.auto_mode = True
         self._auto = [0.0, 30.0, 52.0, CX, 7.0, CZ]   # yaw/pitch/dist/注视点
+        # 命令行起始状态：--flag all（一开始就画全部面）/ --flag seed2（换种子）
+        if 'all' in self.args.flags:
+            self._ensure_all_faces()
+            self.cull = False
+        if 'seed2' in self.args.flags:
+            self.reseed()
+        if 'reseed' in self.args.flags:
+            # 配合 --bench 量化「渐进换种子不冻画面」（A/B 结果见 README 性能表）
+            pyglet.clock.schedule_once(lambda dt: self.begin_reseed(), 1.0)
 
         self.camera = OrbitCamera(target=Vec3(CX, 7.0, CZ),
                                   yaw=0.0, pitch=30.0, dist=52.0)
         self.auto = _AutoOrbit(self.camera)
         self.on_mouse_drag, self.on_mouse_scroll = orbit_camera_input(
             self, self.camera)
+
+    def _build_meshes(self, only_cull=True):
+        """同步建网格。**默认只建"暴露面"那套**（H 键对比用的"全部面"懒建）。
+
+        为什么不一次建两套：全部面网格有 6.8 万个面 ≈ 11MB 顶点数据，上传要
+        100ms 量级；实测它会把"换种子"的最慢帧从 ~15ms 顶到 ~106ms。既然它
+        只在用户按 H 时才需要，就按需构建（首次按 H 会有一次可见停顿，
+        状态行会写明）。
+        """
+        t0 = time.perf_counter()
+        for cull in ((True,) if only_cull else (True, False)):
+            if self.mesh.get(cull) is not None:
+                self.mesh[cull].delete()        # 旧顶点列表要显式释放
+            pos, col, faces = build_mesh(self.heights, self.seed, cull)
+            self.faces[cull] = faces
+            self.mesh[cull] = self.program.vertex_list(
+                len(pos) // 3, GL_TRIANGLES,
+                position=('f', pos), colors=('f', col))
+        self.voxels = sum(self.heights)
+        self.rebuild_ms = (time.perf_counter() - t0) * 1000.0
+
+    def _ensure_all_faces(self):
+        """按 H 时确保"全部面"网格已构建（懒建，一次约 150ms）。"""
+        if self.mesh.get(False) is None:
+            pos, col, faces = build_mesh(self.heights, self.seed, False)
+            self.faces[False] = faces
+            self.mesh[False] = self.program.vertex_list(
+                len(pos) // 3, GL_TRIANGLES,
+                position=('f', pos), colors=('f', col))
+
+    def begin_reseed(self):
+        """渐进式换种子：分帧把世界与两套网格重建完，期间画面不冻。"""
+        self.seed = (self.seed * 1103515245 + 12345) & 0x7FFFFFFF
+        self._rb = {
+            'heights': build_heights(self.seed),
+            'z': 0, 'stage': 0,
+            'pos': array.array('f'), 'col': array.array('f'),
+            'faces': 0, 't0': time.perf_counter(),
+        }
+        self._progress = 0.0
+
+    def step_reseed(self, budget_ms=6.0):
+        """在毫秒预算内推进换种子；返回 True 表示还没完。"""
+        rb = self._rb
+        if rb is None:
+            return False
+        cull = True                          # 只渐进重建暴露面那套
+        deadline = time.perf_counter() + budget_ms / 1000.0
+        while True:
+            z1 = min(W, rb['z'] + self.RESEED_COLS)
+            _p, _c, faces = build_mesh(rb['heights'], self.seed, cull,
+                                       rb['pos'], rb['col'], rb['z'], z1)
+            rb['faces'] += faces
+            rb['z'] = z1
+            if rb['z'] >= W:
+                old = self.mesh.get(cull)
+                if old is not None:
+                    old.delete()
+                self.mesh[cull] = self.program.vertex_list(
+                    len(rb['pos']) // 3, GL_TRIANGLES,
+                    position=('f', rb['pos']), colors=('f', rb['col']))
+                self.faces[cull] = rb['faces']
+                self.faces[False] = None         # 换种子后全部面作废，按 H 再建
+                if self.mesh.get(False) is not None:
+                    self.mesh[False].delete()
+                    self.mesh[False] = None
+                rb['stage'] += 1
+                rb['z'], rb['faces'] = 0, 0
+                rb['pos'] = array.array('f')
+                rb['col'] = array.array('f')
+                if rb['stage'] > 0:             # 暴露面这套换完即结束
+                    self.heights = rb['heights']
+                    self.voxels = sum(self.heights)
+                    self.rebuild_ms = (time.perf_counter() - rb['t0']) * 1000.0
+                    self._rb = None
+                    self._progress = 1.0
+                    return False
+            self._progress = rb['z'] / float(W)
+            if time.perf_counter() >= deadline:
+                return True
+
+    def reseed(self):
+        """换一个种子重建世界（R 键）——渐进式，不冻画面。"""
+        self.begin_reseed()
 
     # --------------------------------------------------------------- 机位 --
     def _roam_point(self, t):
@@ -321,6 +423,10 @@ class VoxelDemo(DemoApp):
             vlist.draw(GL_TRIANGLES)
 
     # --------------------------------------------------------------- 输入 --
+    def update(self, dt):
+        if self._rb is not None:
+            self.step_reseed()          # 换种子期间每帧啃几列，不冻画面
+
     def on_key(self, symbol, modifiers):
         key = pyglet.window.key
         if symbol in (key._1, key._2):
@@ -329,16 +435,28 @@ class VoxelDemo(DemoApp):
         elif symbol == key.F:
             self.wire = not self.wire
         elif symbol == key.H:
+            self._ensure_all_faces()            # 懒建：首次切换多花 ~150ms
             self.cull = not self.cull
+        elif symbol == key.R:
+            self.begin_reseed()
 
     def status_text(self):
+        if self._rb is not None:
+            return (f'seed {self.seed}   重建中 {self._progress * 100:4.1f}%   '
+                    f'（每帧 {self.RESEED_COLS} 列，旧网格仍在画）   '
+                    f'{self.fps:5.1f} fps')
         ex, allf = self.faces[True], self.faces[False]
+        if allf is None:                        # 全部面网格还没建（按 H 才建）
+            return (f'seed {self.seed}   体素 {self.voxels}   面 暴露 {ex}   '
+                    f'全部面 未建（按 H 构建对照）   '
+                    f'重建 {self.rebuild_ms:.0f}ms   {self.fps:5.1f} fps'
+                    f'{"  [PAUSED]" if self.paused else ""}')
         cut = 100.0 * (1.0 - ex / max(1, allf))
         name = ('俯瞰' if self.mode == 0 else '漫游') + ('自动' if self.auto_mode
                                                       else '手动')
-        return (f'体素 {self.voxels}   面 暴露 {ex} / 全部 {allf}   '
+        return (f'seed {self.seed}   体素 {self.voxels}   面 暴露 {ex} / 全部 {allf}   '
                 f'剔除 {cut:4.1f}%   画 {"暴露面" if self.cull else "全部面"}   '
-                f'{name}   线框 {"开" if self.wire else "关"}   '
+                f'{name}   线框 {"开" if self.wire else "关"}   重建 {self.rebuild_ms:.0f}ms   '
                 f't={self.time:4.1f}s/{self.DURATION:.0f}s   {self.fps:5.1f} fps'
                 f'{"  [PAUSED]" if self.paused else ""}')
 

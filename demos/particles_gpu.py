@@ -68,6 +68,8 @@ in vec4 i_color;       // 每实例基色（这里只当色彩抖动源）
 uniform WindowBlock { mat4 projection; mat4 view; } window;
 uniform float u_time;      // 累加相位（CPU 每帧只更新这一个标量）
 uniform float u_energy;    // 整体能量/速度（+/- 键）
+uniform float u_size_scale; // 粒子尺寸倍率（[ / ] 键，见下方说明）
+uniform float u_alpha_scale; // alpha 补偿 = 1/size_scale²：放大后单颗要变淡，否则加性混合直接饱和
 uniform int   u_preset;    // 0 星系漩涡 / 1 喷泉烟花 / 2 湍流云
 
 out vec2 v_corner;
@@ -140,13 +142,19 @@ void main() {
     // --- 朝向相机的公告板：先在视图空间定位，再按像素尺寸铺角点 ---
     // 能量只影响尺度/位移，不影响相位（推进速率由 CPU 的累加相位负责），
     // 这样按 +/- 时画面是"变大变小"而不是"跳帧"。
-    size *= 0.80 + 0.25 * u_energy;
+    // u_size_scale 是 [ / ] 键的尺寸倍率：默认 1.0 时 4.5 万颗只有 2~6 像素，
+    // 片元的径向软衰减挤在几个像素里根本看不出来（像小方块）；放大到 2~3 倍
+    // 才能看出"圆点 + 软边"。想看清衰减就把倍率调大、把数量感让出去。
+    size *= (0.80 + 0.25 * u_energy) * u_size_scale;
     vec4 view_pos = window.view * vec4(p, 1.0);
     view_pos.xy += position.xy * size;
     gl_Position = window.projection * view_pos;
 
     v_corner = position.xy;
-    v_col = vec4(tint, alpha) * colors;
+    // 能量守恒式缩放：面积涨 k² 倍，单颗亮度就除以 k²。
+    // 少了这一步，[ 键放大后 4.5 万颗粒子在加性混合下会糊成一整块色团
+    // （实测：喷泉预设放大 3 倍直接饱和成实心橙块，"软衰减"根本看不见）。
+    v_col = vec4(tint, alpha * u_alpha_scale) * colors;
 }'''
 
 FRAGMENT_SRC = '''#version 330 core
@@ -155,11 +163,15 @@ in vec4 v_col;
 out vec4 final_colors;
 
 void main() {
-    // 径向软衰减：d2 = 1（内切圆）处为 0，四角 d2 = 2 被 max 夹到 0——
-    // 于是不需要 discard/分支，边缘天然是软的。
-    float d2 = dot(v_corner, v_corner);
-    float falloff = max(0.0, 1.0 - d2);
-    falloff *= falloff;
+    // 径向软衰减。**不能用 (1-d²)²**：那个剖面太"平"（d=0.5 处还有 56% 亮度），
+    // 加性混合下大量粒子一叠，中心直接饱和到 1.0 —— 于是每颗粒子变成一个
+    // 亮方块，只有最外圈还在衰减（实测就是这个现象）。
+    // 换成高斯剖面：中心亮、尾巴平滑、在四边形边界 d=1 处恰好为 0，
+    // 无论怎么叠都读得出"圆点"。减去边界值是为了让 d=1 严格为 0（不裁剪出硬边）。
+    float d = sqrt(dot(v_corner, v_corner));
+    const float K = 4.0;
+    float edge = exp(-K);
+    float falloff = max(0.0, exp(-K * d * d) - edge) / (1.0 - edge);
     final_colors = vec4(v_col.rgb, v_col.a * falloff);
 }'''
 
@@ -172,13 +184,14 @@ PRESETS = (('星系漩涡', 21.0, 1.6),
 
 class ParticlesDemo(DemoApp):
     TITLE = 'GPU 实例化粒子 (pyglet 2.1.16 vertex_list_instanced)'
-    HELP = ('SPACE 暂停   1/2/3 预设   A 自动轮播   +/- 能量   '
+    HELP = ('SPACE 暂停   1/2/3 预设   A 自动轮播   +/- 能量   [ / ] 尺寸   , / . 数量   '
             '拖动/滚轮 视角   ESC 退出')
     DURATION = 30.0
     SHOTS = ((6.5, 'docs/demo_particles_a.png'),
              (16.0, 'docs/demo_particles_b.png'))
 
-    COUNT = 45000                 # 粒子数（3~6 万区间）
+    COUNT = 45000                 # 默认粒子数（3~6 万区间）
+    COUNTS = (45000, 12000, 4000)  # , / . 键的三档：越多越糊，越少越看得清单颗
     BASE_VERTS = 6                # 每颗粒子的基础四边形顶点数
     AUTO_SWITCH = 10.0            # 自动轮播：每 10s 换一个预设
 
@@ -197,34 +210,61 @@ class ParticlesDemo(DemoApp):
                        (-1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)):
             base_pos += [cx, cy, 0.0]
             base_col += [1.0, 1.0, 1.0, 1.0]
-
-        # --- 每实例数据：固定种子 rand，保证截图可复现 ---
-        rng = random.Random(20240607)
-        n = self.COUNT
-        seeds = [[rng.random() for _ in range(4)] for _ in range(n)]
-        cols = [[0.75 + 0.45 * rng.random(), 0.75 + 0.45 * rng.random(),
-                 0.75 + 0.45 * rng.random(), 1.0] for _ in range(n)]
-
-        seed0 = seeds[0] * self.BASE_VERTS      # 坑位 1：初始数据要按顶点数给
-        col0 = cols[0] * self.BASE_VERTS
-        self.vlist = self.program.vertex_list_instanced(
-            self.BASE_VERTS, GL_TRIANGLES,
-            instance_attributes=['i_seed', 'i_color'],
-            position=('f', base_pos), colors=('f', base_col),
-            i_seed=('f', seed0), i_color=('f', col0))
-        for k in range(n - 1):                  # 坑位 2：0 号槽由初始数据占着
-            self.vlist.add_instance(i_seed=seeds[k + 1], i_color=cols[k + 1])
+        self._base_pos, self._base_col = base_pos, base_col
+        self.count = self.COUNT
+        self._build_instances(self.count)
 
         self.preset = 0
         self.auto_preset = True
         self.energy = 1.0
+        self.size_scale = 1.0        # [ / ] 键：粒子尺寸倍率（1.0 = 原始）
         self.phase = 0.0                        # 累加相位（坑位 5）
 
         self.camera = OrbitCamera(target=Vec3(0.0, 1.6, 0.0),
                                   yaw=35.0, pitch=20.0, dist=21.0)
         self.on_mouse_drag, self.on_mouse_scroll = orbit_camera_input(
             self, self.camera)
-        self._set_preset(0)
+        self._set_preset(0)                     # 必须在下面读 --flag **之前**调：
+        # 它内部会重设 preset/能量，先读 flag 会被这里覆盖掉（踩过一次）。
+        _flags = getattr(self.args, 'flags', ())
+        if 'preset2' in _flags:          # --flag preset2：喷泉（粒子稀疏，看得清单颗）
+            self.preset = 1
+            self.auto_preset = False
+        if 'size3' in _flags:
+            self.size_scale = 3.0        # --flag size3：放大 3 倍看径向软衰减
+        if 'count4k' in _flags:
+            self.set_count(4000)         # --flag count4k：降数量，单颗才分得开
+
+    def _build_instances(self, count):
+        """（重）建实例缓冲。
+
+        数量可变是**为了看清径向软衰减**：4.5 万颗在加性混合下必然糊成一片，
+        单颗的软边根本无从谈起；降到几千颗 + 放大尺寸，才看得到"圆点 + 软边"。
+        代价是要 delete 旧列表重建（实例数据一次性生成，约 0.1s）。
+        """
+        rng = random.Random(20240607)          # 固定种子 → 截图可复现
+        n = int(count)
+        seeds = [[rng.random() for _ in range(4)] for _ in range(n)]
+        cols = [[0.75 + 0.45 * rng.random(), 0.75 + 0.45 * rng.random(),
+                 0.75 + 0.45 * rng.random(), 1.0] for _ in range(n)]
+        old = getattr(self, 'vlist', None)
+        if old is not None:
+            old.delete()
+        seed0 = seeds[0] * self.BASE_VERTS      # 坑位 1：初始数据要按顶点数给
+        col0 = cols[0] * self.BASE_VERTS
+        self.vlist = self.program.vertex_list_instanced(
+            self.BASE_VERTS, GL_TRIANGLES,
+            instance_attributes=['i_seed', 'i_color'],
+            position=('f', self._base_pos), colors=('f', self._base_col),
+            i_seed=('f', seed0), i_color=('f', col0))
+        for k in range(n - 1):                  # 坑位 2：0 号槽由初始数据占着
+            self.vlist.add_instance(i_seed=seeds[k + 1], i_color=cols[k + 1])
+        self.count = n
+
+    def set_count(self, count):
+        """切换粒子数（, / . 键）。实例数据重建，相位与预设保持不变。"""
+        if int(count) != self.count:
+            self._build_instances(count)
 
     def _set_preset(self, i):
         self.preset = i % len(PRESETS)
@@ -243,6 +283,16 @@ class ParticlesDemo(DemoApp):
             self.energy = min(3.0, self.energy + 0.2)
         elif symbol in (key.MINUS, key.NUM_SUBTRACT):
             self.energy = max(0.2, self.energy - 0.2)
+        elif symbol == key.COMMA:
+            i = self.COUNTS.index(self.count) if self.count in self.COUNTS else 0
+            self.set_count(self.COUNTS[(i - 1) % len(self.COUNTS)])
+        elif symbol == key.PERIOD:
+            i = self.COUNTS.index(self.count) if self.count in self.COUNTS else 0
+            self.set_count(self.COUNTS[(i + 1) % len(self.COUNTS)])
+        elif symbol == key.BRACKETRIGHT:
+            self.size_scale = min(5.0, self.size_scale + 0.5)
+        elif symbol == key.BRACKETLEFT:
+            self.size_scale = max(0.5, self.size_scale - 0.5)
 
     def update(self, dt):
         if not self.paused:
@@ -262,14 +312,16 @@ class ParticlesDemo(DemoApp):
         prog['u_time'] = self.phase
         prog['u_energy'] = self.energy
         prog['u_preset'] = self.preset
+        prog['u_size_scale'] = self.size_scale
+        prog['u_alpha_scale'] = 1.0 / (self.size_scale * self.size_scale)
         self.vlist.draw(GL_TRIANGLES)
         glDepthMask(GL_TRUE)                    # 必须还原：否则下一帧深度清不掉
 
     def status_text(self):
         name = PRESETS[self.preset][0]
         auto = '自动' if self.auto_preset else '手动'
-        return (f'粒子 {self.COUNT}   预设 {self.preset + 1}/{len(PRESETS)} '
-                f'{name}  能量 {self.energy:.1f}  {auto}   '
+        return (f'粒子 {self.count}   预设 {self.preset + 1}/{len(PRESETS)} '
+                f'{name}  能量 {self.energy:.1f}  尺寸 x{self.size_scale:.1f}  {auto}   '
                 f't={self.time:5.1f}s/{self.DURATION:.0f}s   {self.fps:5.1f} fps'
                 f'{"  [PAUSED]" if self.paused else ""}')
 

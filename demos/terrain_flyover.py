@@ -36,6 +36,7 @@
 import array
 import math
 import random
+import time
 
 import pyglet
 from pyglet.gl import GL_DEPTH_TEST, GL_TRIANGLES, glClearColor, glEnable
@@ -211,6 +212,30 @@ class _AutoOrbit:
         self._base = (c.yaw, c.pitch, c.dist)
 
 
+def emit_row(pos, col, hs, cols, n, step, ox, oz, j):
+    """把第 j 行四边形带写成三角形汤，追加到 pos/col（纯函数，可无窗口单测）。
+
+    每个四边形按 (a,b,d) + (a,d,c) 两个三角形展开；顶点色直接取格点色，
+    于是相邻四边形共享同一套颜色 —— 这就是"顶点色平滑着色"的来源。
+    """
+    z0 = oz + j * step
+    z1 = z0 + step
+    row = j * n
+    for i in range(n - 1):
+        x0 = ox + i * step
+        x1 = x0 + step
+        a, b = row + i, row + i + 1
+        c, d = a + n, b + n
+        pos.extend((x0, hs[a], z0, x1, hs[b], z0, x1, hs[d], z1,
+                    x0, hs[a], z0, x1, hs[d], z1, x0, hs[c], z1))
+        col.extend(cols[a])
+        col.extend(cols[b])
+        col.extend(cols[d])
+        col.extend(cols[a])
+        col.extend(cols[d])
+        col.extend(cols[c])
+
+
 class TerrainDemo(DemoApp):
     TITLE = '程序化地形低空飞行 (值噪声 + fBm + 烘焙光照)'
     HELP = 'SPACE 暂停   R 换种子重建地形   拖动/滚轮 视角   ESC 退出'
@@ -220,6 +245,7 @@ class TerrainDemo(DemoApp):
              (33.0, 'docs/demo_terrain_b.png'))
 
     GRID = 192                 # 高程图边长（格点数）
+    REBUILD_BUDGET_MS = 8.0     # 渐进重建的每帧预算（毫秒）
     STEP = 1.0                 # 格距 -> 世界尺寸 192x192
     CLEARANCE = 5.0            # 飞行器最小离地高度
     CAM_PITCH = 14.0           # 追尾机位俯仰（度）
@@ -236,6 +262,9 @@ class TerrainDemo(DemoApp):
         self.seed = 12345
         self.heights = None
         self.terrain = None
+        self._rb = None             # 渐进重建状态（None = 空闲）
+        self._progress = 1.0
+        self.last_rebuild_ms = 0.0
         self.tris = 0
         self.roll = 0.0
         self._lift_p, self._lift_d = 0.0, 0.0
@@ -246,63 +275,122 @@ class TerrainDemo(DemoApp):
         self.on_mouse_drag, self.on_mouse_scroll = orbit_camera_input(
             self, self.camera)
         self.rebuild(self.seed)
+        # --flag reseed：1 秒后自动换一次种子。配合 --bench 用来量化
+        # "渐进重建不冻画面"（对比有无该 flag 的 worst_frame_ms）。
+        if 'reseed' in self.args.flags:
+            pyglet.clock.schedule_once(
+                lambda dt: self.begin_rebuild(self.seed + 1), 1.0)
+        if 'reseed-sync' in self.args.flags:
+            # 对照组：老的同步重建（会冻住画面）。保留这条路径只为 A/B 量化，
+            # 正常运行永远走渐进式。
+            pyglet.clock.schedule_once(lambda dt: self.rebuild(self.seed + 1), 1.0)
 
     def _height(self, wx, wz):
         return height_at(wx, wz, self.seed)
 
-    def rebuild(self, seed):
-        """换种子重建整张高程图 + 网格（实测 ~1.3s，符合 1~2s 的重建预算）。"""
-        self.seed = seed
+    # ------------------------------------------------------- 渐进式重建 --
+    def begin_rebuild(self, seed):
+        """开始**渐进式**重建：只准备状态，真正计算分摊到 update() 的每帧预算里。
+
+        为什么不做同步重建：整张 192×192 高程图 + 7.3 万三角一次性算完实测
+        1.1~1.3s，期间画面完全冻住（玩家看到的就是"按 R 卡一下"）。
+        拆成"每帧最多 8ms"之后，重建期间帧率不掉，只是旧地形多留一两秒，
+        完成时一次性换网格——观感上从"卡顿"变成"渐显"。
+        """
         n, step = self.GRID, self.STEP
-        ox = oz = -0.5 * (n - 1) * step
-        # --- 1) 高程图 ---
-        self.heights = [height_at(ox + i * step, oz + j * step, seed)
-                        for j in range(n) for i in range(n)]
-        # --- 2) 顶点色（每个格点算一次，供 6 个顶点复用：smooth 着色）---
-        hs = self.heights
+        self.seed = seed
+        self._rb = {
+            'n': n, 'step': step,
+            'ox': -0.5 * (n - 1) * step, 'oz': -0.5 * (n - 1) * step,
+            'hs': [0.0] * (n * n), 'cols': [(0.0, 0.0, 0.0, 1.0)] * (n * n),
+            'pos': array.array('f'), 'col': array.array('f'),
+            'row': 0, 'phase': 0, 'done': 0, 'total': 3 * n,
+        }
+        self._progress = 0.0
+        self._rb_t0 = time.perf_counter()
+
+    def step_rebuild(self, budget_ms=8.0):
+        """按毫秒预算推进重建；返回 True 表示还没完。"""
+        rb = self._rb
+        if rb is None:
+            return False
+        n, step = rb['n'], rb['step']
+        hs, cols = rb['hs'], rb['cols']
+        deadline = time.perf_counter() + budget_ms / 1000.0
+        while True:
+            if rb['phase'] == 0:                       # 高程图（逐行）
+                j = rb['row']
+                base = j * n
+                oz = rb['oz'] + j * step
+                for i in range(n):
+                    hs[base + i] = height_at(rb['ox'] + i * step, oz, self.seed)
+                rb['row'] += 1
+                rb['done'] += 1
+                if rb['row'] >= n:
+                    rb['phase'], rb['row'] = 1, 0
+            elif rb['phase'] == 1:                     # 顶点色（需要邻域，故在高程之后）
+                j = rb['row']
+                for i in range(n):
+                    cols[j * n + i] = self._vertex_color(hs, cols, n, step, i, j)
+                rb['row'] += 1
+                rb['done'] += 1
+                if rb['row'] >= n:
+                    rb['phase'], rb['row'] = 2, 0
+            else:                                      # 三角形汤（逐行四边形带）
+                j = rb['row']
+                emit_row(rb['pos'], rb['col'], hs, cols, n, step,
+                         rb['ox'], rb['oz'], j)
+                rb['row'] += 1
+                rb['done'] += 1
+                if rb['row'] >= n - 1:
+                    self._finish_rebuild()
+                    return False
+            self._progress = rb['done'] / float(rb['total'])
+            if time.perf_counter() >= deadline:
+                return True                            # 预算用完，下一帧接着算
+
+    def _vertex_color(self, hs, cols, n, step, i, j):
+        """单个格点的顶点色（高度 + 坡度 + 面向光 + 哈希抖动）。"""
+        k = j * n + i
+        il, ir = max(0, i - 1), min(n - 1, i + 1)
+        jd, ju = max(0, j - 1), min(n - 1, j + 1)
+        dx = (hs[j * n + ir] - hs[j * n + il]) / ((ir - il) * step)
+        dz = (hs[ju * n + i] - hs[jd * n + i]) / ((ju - jd) * step)
+        nx, ny, nz = -dx, 1.0, -dz
+        nl = math.sqrt(nx * nx + ny * ny + nz * nz)
         lx, ly, lz = LIGHT_DIR
         ll = math.sqrt(lx * lx + ly * ly + lz * lz)
-        lx, ly, lz = lx / ll, ly / ll, lz / ll
-        cols = []
-        for j in range(n):
-            for i in range(n):
-                k = j * n + i
-                il, ir = max(0, i - 1), min(n - 1, i + 1)
-                jd, ju = max(0, j - 1), min(n - 1, j + 1)
-                dx = (hs[j * n + ir] - hs[j * n + il]) / ((ir - il) * step)
-                dz = (hs[ju * n + i] - hs[jd * n + i]) / ((ju - jd) * step)
-                nx, ny, nz = -dx, 1.0, -dz
-                nl = math.sqrt(nx * nx + ny * ny + nz * nz)
-                lam = max(0.0, (nx * lx + ny * ly + nz * lz) / nl)
-                r, g, b = terrain_color(hs[k], 1.0 - 1.0 / nl, lam,
-                                        _hash01(i, j, seed + 4241))
-                cols.append((r, g, b, 1.0))
-        # --- 3) 三角形汤：list 一次性拼好再交给 vertex_list ---
-        pos = array.array('f')      # 坑位 2：array('f') 省内存且交接同样快
-        col = array.array('f')
-        for j in range(n - 1):
-            z0 = oz + j * step
-            z1 = z0 + step
-            row = j * n
-            for i in range(n - 1):
-                x0 = ox + i * step
-                x1 = x0 + step
-                a, b = row + i, row + i + 1
-                c, d = a + n, b + n
-                pos.extend((x0, hs[a], z0, x1, hs[b], z0, x1, hs[d], z1,
-                            x0, hs[a], z0, x1, hs[d], z1, x0, hs[c], z1))
-                col.extend(cols[a])
-                col.extend(cols[b])
-                col.extend(cols[d])
-                col.extend(cols[a])
-                col.extend(cols[d])
-                col.extend(cols[c])
+        lam = max(0.0, (nx * lx + ny * ly + nz * lz) / (nl * ll))
+        r, g, b = terrain_color(hs[k], 1.0 - 1.0 / nl, lam,
+                                _hash01(i, j, self.seed + 4241))
+        # 必须补上 alpha 变成 4 元组：colors 属性是 vec4，返回 3 元组会让顶点
+        # 缓冲少 1/4 的 float，pyglet 直接报 Invalid data size for 'colors'
+        return (r, g, b, 1.0)
+
+    def _finish_rebuild(self):
+        """收尾：一次性换网格（旧的在换完后再还回去）。"""
+        rb = self._rb
+        pos, col = rb['pos'], rb['col']
         if self.terrain is not None:
             self.terrain.delete()                   # 坑位 4：旧网格要还回去
         self.terrain = self.program.vertex_list(
             len(pos) // 3, GL_TRIANGLES,
             position=('f', pos), colors=('f', col))
         self.tris = len(pos) // 9
+        self.heights = rb['hs']
+        self._rb = None
+        self._progress = 1.0
+        self.last_rebuild_ms = (time.perf_counter() - self._rb_t0) * 1000.0
+
+    def rebuild(self, seed):
+        """同步重建（只给 setup 用：首帧就该有地形，不能等渐进）。
+
+        运行中换种子一律走 ``begin_rebuild`` + ``step_rebuild``（见 R 键）。
+        """
+        self.begin_rebuild(seed)
+        while self.step_rebuild(1e9):
+            pass
+        return self.last_rebuild_ms
 
     # --------------------------------------------------------------- 航线 --
     def path_point(self, t):
@@ -328,6 +416,8 @@ class TerrainDemo(DemoApp):
 
     # ------------------------------------------------------------- 逐帧 --
     def update(self, dt):
+        if self._rb is not None:
+            self.step_rebuild(self.REBUILD_BUDGET_MS)   # 每帧最多啃 8ms
         if self.paused:
             return                                  # 暂停时不动相机也不吸增量
         self.auto.absorb()                          # 先吸出用户增量（坑位 5）
@@ -376,15 +466,20 @@ class TerrainDemo(DemoApp):
     def on_key(self, symbol, modifiers):
         if symbol == pyglet.window.key.R:
             rng = random.Random()
-            self.rebuild(rng.randrange(1, 10 ** 6))  # 换一张可复现的新地形
+            # 换一张可复现的新地形：渐进重建，不冻画面（见 begin_rebuild）
+            self.begin_rebuild(rng.randrange(1, 10 ** 6))
 
     def status_text(self):
+        if self._rb is not None:
+            return (f'seed {self.seed}   重建中 {self._progress * 100:4.1f}%   '
+                    f'（每帧 {self.REBUILD_BUDGET_MS:.0f}ms 预算，旧地形保持可玩）   '
+                    f'{self.fps:5.1f} fps')
         g = self._height(self.camera.target.x, self.camera.target.z)
         alt = self.camera.target.y - 1.5 - max(g, WATER_LEVEL)
         return (f'seed {self.seed}   网格 {self.GRID}x{self.GRID}   三角 '
                 f'{self.tris}   离地 {alt:4.1f}   横滚 '
                 f'{math.degrees(self.roll):+4.1f}°   t={self.time:5.1f}s/'
-                f'{self.DURATION:.0f}s   {self.fps:5.1f} fps'
+                f'{self.DURATION:.0f}s   重建 {self.last_rebuild_ms:.0f}ms   {self.fps:5.1f} fps'
                 f'{"  [PAUSED]" if self.paused else ""}')
 
 
