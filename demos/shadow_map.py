@@ -129,9 +129,14 @@ void main() {
 PANEL_VS = '''#version 330 core
 in vec3 position;
 out vec2 v_uv;
+uniform vec4 u_rect;        // 面板在 NDC 中的 (x0, y0, 宽, 高)
 void main() {
     v_uv = position.xy * 0.5 + 0.5;
-    gl_Position = vec4(position.xy, 0.0, 1.0);
+    // 局部 [-1,1]² → 面板矩形：这样面板是"像素正方形"，
+    // 而不是跟着 NDC 被窗口宽高比拉扁（早期写死 NDC 坐标，
+    // 1280x720 以外一律变形）。
+    vec2 ndc = u_rect.xy + (position.xy * 0.5 + 0.5) * u_rect.zw;
+    gl_Position = vec4(ndc, 0.0, 1.0);
 }'''
 
 PANEL_FS = '''#version 330 core
@@ -243,9 +248,11 @@ class ShadowDemo(DemoApp):
         self.ground_depth = self.depth_prog.vertex_list(
             len(self.ground_v) // 3, GL_TRIANGLES, position=('f', self.ground_v))
 
-        # 画中画：把深度图贴在右下角（NDC 四边形，直接落在裁剪空间）
-        q = (0.40, -0.96, 0.0, 0.97, -0.96, 0.0, 0.97, -0.30, 0.0,
-             0.40, -0.96, 0.0, 0.97, -0.30, 0.0, 0.40, -0.30, 0.0)
+        # 画中画：把深度图贴在右下角。顶点是**面板局部**的 [-1,1]²，
+        # 实际位置/尺寸由 PANEL_VS 的 u_rect 每帧按窗口尺寸算（见 render），
+        # 这样面板在任何宽高比下都是像素正方形。
+        q = (-1.0, -1.0, 0.0, 1.0, -1.0, 0.0, 1.0, 1.0, 0.0,
+             -1.0, -1.0, 0.0, 1.0, 1.0, 0.0, -1.0, 1.0, 0.0)
         self.panel = self.panel_prog.vertex_list(6, GL_TRIANGLES,
                                                  position=('f', q))
 
@@ -357,6 +364,13 @@ class ShadowDemo(DemoApp):
 
         # ---- 画中画：显示第一趟的深度图（render-to-texture 的实证）----
         if self.fbo_ok:
+            # 面板按像素正方形摆放（占短边 24%），并避开底部 HUD 暗条；
+            # 每帧重算 → 改窗口尺寸/换宽高比都不会拉伸或压字。
+            side = max(64, int(min(w, h) * 0.24))
+            x0 = (w - 14 - side) / w * 2.0 - 1.0
+            y0 = (14 + 30 + 6) / h * 2.0 - 1.0
+            self.panel_prog['u_rect'] = (x0, y0, 2.0 * side / w, 2.0 * side / h)
+
             glDisable(GL_DEPTH_TEST)
             self.panel_prog.use()
             glActiveTexture(GL_TEXTURE0)

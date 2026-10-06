@@ -137,6 +137,7 @@ class Hud:
 
     def layout(self, width, height):
         # shapes.Rectangle.position 只接受 (x, y)（与 text.Label 的三元组不同）
+        self._width = width
         self.bar_top.position = (0, height - self.BAR_H)
         self.bar_top.width, self.bar_top.height = width, self.BAR_H
         self.bar_bottom.position = (0, 0)
@@ -147,6 +148,10 @@ class Hud:
 
     def set_status(self, text):
         self.status.text = text
+        # 窄窗口下标题会和状态行撞在一起（实测 --size 1000x700 就糊成一团）。
+        # 撞车时让标题让位——窗口标题栏里还有一份，信息不丢。
+        self.title.visible = (self.title.content_width + self.status.content_width
+                              <= getattr(self, '_width', 9999) - 40)
 
     def draw(self):
         if self.visible:
