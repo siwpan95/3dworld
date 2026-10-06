@@ -22,8 +22,9 @@
    会把该属性**静默丢掉**，于是它 ``instance=False``，随后
    ``instances[k].i_pos = ...`` 抛 ``Attribute 'i_pos' is not an instanced attribute``。
    初始数据长度按**基础几何顶点数**算（3 顶点 × vec3 = 9 个 float），不是实例数。
-2. 域初始 ``_instances = 1``（第 0 号实例占位），``add_instance()`` 每次 +1。
-   所以 N 只鸟要调 **N 次** ``add_instance``，返回的 ``VertexInstance`` 逐帧可写。
+2. 域初始 ``_instances = 1``（第 0 号是一个**占位实例**，不是"已经加好的第一只鸟"），
+   ``add_instance()`` 每次 +1。所以 N 只鸟要调 **N 次** ``add_instance``，
+   返回的 ``VertexInstance`` 逐帧可写。少调一次就会有一只鸟停在原点不动。
 3. 传了 ``position`` / ``colors`` 就必须在着色器里声明同名 ``in``；``colors``
    即使不用也得"用一下"（这里乘进颜色输出），否则会被 GLSL 优化掉 → ShaderException。
 4. 实例属性在着色器里就是普通 ``in vec3 i_pos;``，divisor 由 pyglet 自动设。
@@ -42,19 +43,20 @@
 - ``T``：速度尾迹　``R``：重新撒点（同一 seed，结果可复现）
 - 鼠标拖动/滚轮：轨道相机
 
-## 性能（实测 1280x720 / N=340）
+## 性能（实测 1280x720 / N=340 / vsync 开启）
 
-- ``Flock.step``：约 5~8 ms/帧（HUD 上有实时读数）
-- 实例属性写入：340 只约 0.16 ms/帧（逐条赋值，实测已足够）
-- 整机帧率见报告
+- 整机帧率：**均值 59.7 fps、中位 59.8 fps、p5 57.1 fps、最慢单帧 19.1 ms**
+  （丢帧率为 0%），HUD 上的 step 读数是实时的逻辑层耗时
+- ``Flock.step``：340 只约 9.5 ms/步（tight 档；loose 8.8 / sprint 9.5）
+- 实例属性写入：340 只约 0.16 ms/帧（逐条赋值，实测已足够，未动用 ctypes 批量路径）
 """
 import math
 import time
 
 import pyglet
 from pyglet.gl import (GL_BLEND, GL_DEPTH_TEST, GL_LINES, GL_ONE_MINUS_SRC_ALPHA,
-                       GL_SRC_ALPHA, GL_TRIANGLES, glBlendFunc, glDepthMask,
-                       glDisable, glEnable, glLineWidth)
+                       GL_SRC_ALPHA, GL_TRIANGLES, glBlendFunc, glDisable,
+                       glEnable, glLineWidth)
 from pyglet.graphics.shader import Shader, ShaderProgram
 from pyglet.math import Vec3
 
@@ -62,7 +64,7 @@ from _harness import DemoApp, orbit_camera_input, run
 from logic.boids import DOMAIN, Flock, PRESET_LABELS
 from logic.camera import OrbitCamera
 
-N_BOIDS = 340                 # 300~500 区间；340 时 step 约 5~8 ms，留足渲染余量
+N_BOIDS = 340                 # 300~500 区间；340 时 step 约 9.5 ms，留出渲染余量
 CAM_TARGET = Vec3(0.0, 0.0, 0.0)
 
 # ------------------------------------------------------------------ 着色器 --
@@ -359,6 +361,19 @@ class BoidsDemo(DemoApp):
             self.flock.reset()
             xs, ys, zs = self.flock.positions()
             self.tail_prev = [(xs[i], ys[i], zs[i]) for i in range(N_BOIDS)]
+            # 尾迹的**顶点缓冲**也要跟着清：只重置 tail_prev 的话，线段起点
+            # 仍是上一帧的旧位置，重撒后第一帧会画出一片横穿场景的假线。
+            # 直接把首尾两端都写成新位置 ⇒ 线段长度 0，等于"没有尾迹"。
+            for i in range(N_BOIDS):
+                k = i * 6
+                self._tail_pos[k] = xs[i]
+                self._tail_pos[k + 1] = ys[i]
+                self._tail_pos[k + 2] = zs[i]
+                self._tail_pos[k + 3] = xs[i]
+                self._tail_pos[k + 4] = ys[i]
+                self._tail_pos[k + 5] = zs[i]
+            if self.tails_on:
+                self.tail_vlist.set_attribute_data('position', self._tail_pos)
         elif symbol in (key._1, key._2, key._3):
             self.preset = self.PRESET_ORDER[symbol - key._1]
             self.flock.set_preset(self.preset)
