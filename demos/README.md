@@ -49,6 +49,7 @@ python scripts\verify_demos.py --only boids,water  只验指定 demo
 | `water_waves.py` | 40s | **顶点着色器动画**：Gerstner 波位移 + 解析法线、菲涅尔天空、CPU/GPU 共用一套波函数 | `demo_water_a/b.png` |
 | `boids.py` | 45s | **逻辑层纯数学 + 实例化渲染**：Reynolds 群集，着色器按速度定向 | `demo_boids_a/b.png` |
 | `shadow_map.py` | 30s | **两趟渲染 / render-to-texture**：R32F 离屏深度图 + 3×3/5×5 PCF 阴影 | `demo_shadow_a/b.png` |
+| `minecraft_style.py` | 48s | **程序化像素材质 + 昼夜统一光照 + 实例化下落方块**：五幕短片（日出飞越 / 村庄 / 建造 / 生物 / 日落入夜点灯），23 种 16×16 贴图启动时现算 | `demo_mc_dawn/build/mobs/dusk.png` |
 
 ### 演示专属开关（`--flag`，逗号可并列）
 
@@ -62,6 +63,7 @@ python scripts\verify_demos.py --only boids,water  只验指定 demo
 | `reseed` / `reseed-sync`（terrain_flyover） | 1 秒后触发一次**渐进**重建 / **同步**重建（A/B 对照用） |
 
 常用按键（各 demo 底部有完整帮助行）：`SPACE` 暂停、`ESC` 退出是统一的；
+**方块世界** `N`/`P` 切幕、`←`/`→` 快退快进 5s、`C` 切电影/自由相机、`R` 重播；
 此外 **粒子** `[`/`]` 调尺寸、`,`/`.` 调数量；**体素** `R` 换种子（渐进重建）、
 `H` 切剔除对照（首次会懒建"全部面"网格）、`F` 线框；**阴影** `P` 切 PCF、
 `B` 切 bias、`S` 开关阴影；**太阳系** `1..8` 聚焦行星（自动取相位视角）、
@@ -102,9 +104,10 @@ python demos\voxel_terrain.py   --bench 5 --flag reseed        :: 渐进
 | shadow_map | 660 | 391 | 3.8 | 两趟渲染 + 1024² 深度图 |
 | terrain_flyover | 596 | 396 | 4.0 | 7.3 万三角地形 |
 | boids | 125 | 105 | 17.5 | **CPU 端群集 step ≈9.5ms/帧**，唯一的 CPU 瓶颈 |
+| minecraft_style | 456 | 337 | 315¹ | 2 万面地形 + 1188 水面 + 实例化云/方块 + 3 只生物 |
 
-¹ raymarch 的最慢帧是**一次性着色器编译**（几千帧里就 1 帧，jank 占比 0.0%），
-预热 1 秒后进入稳态。
+¹ raymarch 与 minecraft_style 的最慢帧都是**一次性开销**（着色器编译 / 首帧上传
+顶点与实例缓冲），2050 帧里各 1 帧、jank 占比 0.0%，预热后进入稳态。
 
 > 这张表就是为什么要做 `--bench`：在 vsync 开着的默认窗口里，上面每个数字
 > 都会显示成 "59.9 fps"，看不出任何差别。

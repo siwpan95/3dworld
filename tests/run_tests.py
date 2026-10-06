@@ -345,6 +345,126 @@ def test_ui_hit_testing():
     print('  ok: _in_rect point-in-rect with pad')
 
 
+def test_blocks_atlas_and_world():
+    """方块世界 demo 的素材与地图**必须是确定性的**（两次运行逐位一致）。
+
+    贴图是"生成规则"而不是图片文件 ⇒ 「同代码两次跑出同一张图」得靠测试锁住：
+    一旦有人用了 `hash()`（带进程随机盐），截图与单测都会失去意义。
+    """
+    from logic import blocks as B
+
+    w1, h1, px1, idx1 = B.atlas_pixels()
+    w2, h2, px2, idx2 = B.atlas_pixels()
+    assert (w1, h1) == (w2, h2) and px1 == px2, '图集两次生成不一致（确定性被破坏）'
+    assert h1 == B.TILE and w1 == B.TILE * len(idx1), (w1, h1, len(idx1))
+    assert set(idx1) == set(B.atlas_tiles()), '格名与图集不一致'
+    assert len(set(idx1.values())) == len(idx1), '格号重复'
+    for faces in B.BLOCK_FACES.values():
+        for name in faces:
+            assert name in idx1, name
+    for name in B.atlas_tiles():
+        data = B.tile_pixels(name)
+        assert len(data) == B.TILE * B.TILE * 4, name
+        if name == 'torch':
+            continue                      # 火把本来就大面积透明，跳过
+        assert len(set(data[i:i + 3] for i in range(0, len(data), 4))) > 1, \
+            f'{name} 贴图是单色（生成规则没生效）'
+
+    bl1, hh1, tr1, hs1 = B.generate_world()
+    bl2, hh2, tr2, hs2 = B.generate_world()
+    assert bl1 == bl2 and hh1 == hh2 and tr1 == tr2 and hs1 == hs2, '世界两次生成不一致'
+    assert len(bl1) == B.WORLD_W * B.MAX_H * B.WORLD_W
+    assert len(hh1) == B.WORLD_W * B.WORLD_W
+    assert all(B.SEA_FLOOR <= h <= B.MAX_H - 4 for h in hh1), '地表高度越界'
+    # 水必须真的存在：第一版地形整体高于水线，水面网格 0 面，湖一滴没有
+    below = sum(1 for h in hh1 if h < B.WATER_LEVEL)
+    assert below > 40, f'水下只有 {below} 列：水线低于地形，湖会消失'
+    assert len(tr1) > 5, '树太少'
+    assert len(hs1) == 3, '村庄应有 3 栋小屋'
+    cx = cz = B.WORLD_W // 2
+    ground = hh1[cz * B.WORLD_W + cx]
+    assert ground > B.WATER_LEVEL, '村庄被水淹了'
+    for dz in (-4, 0, 4):
+        for dx in (-4, 0, 4):
+            assert hh1[(cz + dz) * B.WORLD_W + cx + dx] == ground, '村庄台地没压平'
+
+    import array
+    pos, col, uv = array.array('f'), array.array('f'), array.array('f')
+    faces, verts = B.mesh_world(bl1, idx1, pos=pos, col=col, uv=uv)
+    assert len(pos) == verts * 3 and len(col) == verts * 4 and len(uv) == verts * 2, \
+        (len(pos), len(col), len(uv), verts)
+    assert faces == verts // 6, (faces, verts)
+    solid = sum(1 for b in bl1 if b not in (0, B.WATER))
+    assert faces < solid * 6 * 0.5, f'面剔除没生效：{faces} 面 vs {solid} 个方块'
+    wpos = array.array('f')
+    wfaces, _ = B.mesh_world(bl1, idx1, want_water=True, pos=wpos)
+    assert wfaces > 100, f'水面只有 {wfaces} 面'
+    print(f'  ok: 图集 {w1}x{h1}/{len(idx1)} 格 · 世界 {len(tr1)} 树 {len(hs1)} 屋 · '
+          f'面 {faces}(水 {wfaces}) 剔除率 {100 * (1 - faces / (solid * 6)):.0f}%')
+
+
+def test_blocks_sky_and_acts():
+    """昼夜曲线与五幕：日出→正午→日落→入夜，且 t=0 与 t=48 同帧（循环无缝）。"""
+    from logic import blocks as B
+
+    dawn = B.sky_state(B.day_phase(0.0))
+    noon = B.sky_state(B.day_phase(20.0))
+    dusk = B.sky_state(B.day_phase(40.0))
+    night = B.sky_state(B.day_phase(45.0))
+    assert dawn['sun_visible'], '日出时太阳应当可见'
+    assert noon['ambient'] > 0.95, f'正午天光应接近 1，实际 {noon["ambient"]}'
+    assert night['ambient'] < 0.4, f'夜里天光应压暗，实际 {night["ambient"]}'
+    assert night['stars'] > 0.5 > dawn['stars'], '星星应只在夜里出现'
+    assert noon['sun'][1] > 0.9 > dusk['sun'][1] > -0.2 > night['sun'][1], \
+        (noon['sun'][1], dusk['sun'][1], night['sun'][1])
+    # 相位编排：日落必须落在第五幕（第一版用 t/DURATION，日落掉到第三幕 = 建造在夜里）
+    assert B.act_at(40.0)[1].endswith('日落'), B.act_at(40.0)
+    assert B.act_at(20.0)[1].endswith('建造'), B.act_at(20.0)
+    assert abs(B.day_phase(0.0) - B.day_phase(B.DURATION)) < 1e-9, '昼夜相位不闭环'
+    e0, g0 = B.camera_pose(0.0)
+    e1, g1 = B.camera_pose(B.DURATION)
+    assert e0 == e1 and g0 == g1, '相机首尾帧不同 ⇒ 循环会跳'
+    assert len(B.ACTS) == 5, '五幕'
+    for t in (0.0, 7.3, 19.9, 33.3, 47.9):
+        s = B.sky_state(B.day_phase(t))['sun']
+        assert abs(sum(v * v for v in s) - 1.0) < 1e-6, (t, s)
+    print(f'  ok: 日出/正午/日落/夜间天光 {dawn["ambient"]:.2f}/{noon["ambient"]:.2f}/'
+          f'{dusk["ambient"]:.2f}/{night["ambient"]:.2f} · 相位闭环 · 五幕')
+
+
+def test_blocks_camera_and_mobs():
+    """相机净空（不许插进方块、不许被贴着挡住）与生物步态。
+
+    净空检查在本轮抓过三类真缺陷：镜头钻进树冠、注视点被屋顶挡、土路穿过房子。
+    这类问题只有出了截图才看得见 ⇒ 必须机械化。
+    """
+    from logic import blocks as B
+
+    bl, hh, tr, hs = B.generate_world()
+    bad = B.camera_clearance(bl)
+    assert not bad, f'相机净空违规 {len(bad)} 处，例如 {bad[:3]}'
+
+    p0 = B.mob_pose('pig', 1.0)
+    assert abs(p0['leg_front_l'] + p0['leg_front_r']) < 1e-9, '同侧前后腿应反相'
+    assert abs(p0['leg_front_l'] - p0['leg_back_r']) < 1e-9, '对角腿应同相'
+    angles = [B.mob_pose('pig', t / 20.0)['leg_front_l'] for t in range(40)]
+    assert max(angles) > 20 and min(angles) < -20, '摆幅太小，看不出在走'
+    cr = B.mob_pose('creeper', 1.0)
+    assert abs(cr['leg_front_l']) < abs(p0['leg_front_l']), '爬行者步幅应更小'
+    for t in range(0, 40):
+        assert abs(B.mob_pose('pig', t / 10.0)['body_y']) <= 0.05, '起伏过大'
+
+    times = [t for t, _ in B.build_schedule(104)]
+    assert times == sorted(times), '方块落下的顺序不是时间序'
+    assert min(times) >= 20.0 and max(times) <= 28.01, (min(times), max(times))
+    shape = B.build_house_shape()
+    assert len(shape) > 60, len(shape)
+    xs = [b[0] for b in shape]
+    assert max(xs) - min(xs) >= 4, '拼出来的房子太小'
+    print(f'  ok: 相机净空 0 违规 · 步态摆幅 {max(angles):.0f}° · '
+          f'拼装 {len(shape)} 块')
+
+
 def test_model_timeline_channels():
     """M4/M6：外部模型（宝石）应有 translation/rotation 通道，且被夹持时段
     的位置由 carry_weight 交给夹爪——这里验证"静置点"与"落座点"两个关键帧。"""
@@ -767,6 +887,9 @@ if __name__ == '__main__':
     print('test_waves_math');                     test_waves_math()
     print('test_terrain_row_emitter');            test_terrain_row_emitter()
     print('test_voxel_mesh_invariants');          test_voxel_mesh_invariants()
+    print('test_blocks_atlas_and_world');         test_blocks_atlas_and_world()
+    print('test_blocks_sky_and_acts');            test_blocks_sky_and_acts()
+    print('test_blocks_camera_and_mobs');         test_blocks_camera_and_mobs()
     print('test_kkrieger_timeline');              test_kkrieger_timeline()
     print('test_kkrieger_camera_path_clearance'); test_kkrieger_camera_path_clearance()
     print('ALL_LOGIC_TESTS_PASSED')

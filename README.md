@@ -10,7 +10,7 @@
 - `kkrieger_demo.py` —— **96 秒四幕程序化走廊漫游**（致敬 .kkrieger）：
   走廊舱门/管道/货箱/频闪 → 大厅纪念碑/全息扫描/升降平台 → 核心过载 →
   撤离时逐段熄灯；
-- `demos/` —— **9 个独立示例**：无限隧道、SDF 光线步进、GPU 实例化粒子、
+- `demos/` —— **10 个独立示例**：无限隧道、SDF 光线步进、GPU 实例化粒子、
   太阳系、程序化地形飞行、体素面剔除、水面波动、3D 鸟群、阴影贴图。
 
 ## 两条 pyglet 技术路线（历史版本，仍保留）
@@ -46,7 +46,7 @@ presentation/        表现层：装配窗口事件 → 逻辑层 → 渲染
   hud.py               幕字幕（淡入/停留/淡出）+ 状态行
   timeline_ui.py       底部时间轴面板（播放/循环/拖动/幕标记）
   shot.py              离屏抓帧（glReadPixels，DPI 无关）
-demos/               9 个单文件示例 + 公共骨架 _harness.py（详见 demos/README.md）
+demos/               10 个单文件示例 + 公共骨架 _harness.py（详见 demos/README.md）
 scripts/
   make_gem_obj.py      程序化生成 assets/gem.obj
   verify_demos.py      demos 批量验收（冒烟 + 截图 + 退出码）
@@ -121,7 +121,7 @@ python kkrieger_demo.py --shot     四幕各抓一张截图到 docs/（跳帧采
 > "platform" 模式下实际 framebuffer = 请求尺寸，但 viewport setter 会乘
 > scale → 渲染放大裁切；本 Demo 统一设 `pyglet.options['dpi_scaling'] = 'real'`。
 
-## demos/ —— 9 个单文件 3D 示例
+## demos/ —— 10 个单文件 3D 示例
 
 ```bat
 python demos\demoscene_tunnel.py --smoke     冒烟
@@ -140,6 +140,7 @@ python scripts\verify_demos.py               批量验收（冒烟 + 截图 + �
 | `water_waves.py` | Gerstner 波顶点位移 + 解析法线 + 菲涅尔天空 |
 | `boids.py` | 逻辑层纯数学群集 + 实例化渲染（顶点着色器按速度定向） |
 | `shadow_map.py` | 两趟渲染 / render-to-texture：光源深度图 + PCF 阴影 |
+| `minecraft_style.py` | 程序化 16×16 像素材质图集 + 昼夜统一光照 + 实例化下落方块；五幕 48s 短片（**方块世界风格致敬，零外部素材**） |
 
 详见 [demos/README.md](demos/README.md)（含统一命令行与踩坑清单）。
 
@@ -148,8 +149,8 @@ python scripts\verify_demos.py               批量验收（冒烟 + 截图 + �
 ```bat
 python -m tests.run_tests           逻辑层无窗口单测（30 项）python main.py --shot               主线演出渲染验证（4 张）
 python kkrieger_demo.py --shot      漫游渲染验证（4 张）
-python scripts\verify_demos.py      9 个 demo 逐个冒烟 + 截图
-python scripts\verify_demos.py --bench 3   9 个 demo 的真实帧率（vsync 与重绘节流全关）
+python scripts\verify_demos.py      10 个 demo 逐个冒烟 + 截图
+python scripts\verify_demos.py --bench 3   10 个 demo 的真实帧率（vsync 与重绘节流全关）
 ```
 
 单测覆盖：相机位姿与钳制（含**自定义范围**与非法范围拒绝）、look-at 矩阵性质、
