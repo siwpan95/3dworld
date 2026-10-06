@@ -98,10 +98,21 @@ class Sampler:
 
 
 class Channel:
-    """通道：绑定目标节点与属性（translation / rotation / scale）。"""
+    """通道：绑定目标节点与属性。
+
+    属性集分两类（见 ``PROPS``）：
+
+    - ``translation`` / ``rotation`` / ``scale``：glTF 2.0 的节点 TRS，
+      值与规范一致（Vec3 / 四元数 / Vec3）；
+    - ``tint`` / ``glow``：**本工程的演示级扩展**（Vec3 颜色乘子 / float 自发光），
+      glTF 没有材质动画语义，这里只服务于 demo 的"灯光演出"，
+      命名与解析都留在表现层，不污染 TRS 的语义。
+    """
+
+    PROPS = ('translation', 'rotation', 'scale', 'tint', 'glow')
 
     def __init__(self, node, prop, sampler):
-        assert prop in ('translation', 'rotation', 'scale')
+        assert prop in self.PROPS, f'未知属性: {prop}'
         self.node = node
         self.prop = prop
         self.sampler = sampler
@@ -139,47 +150,3 @@ class Timeline:
             out.setdefault(ch.node, {})[ch.prop] = ch.sample(self.playhead)
         return out
 
-
-# ---------------------------------------------------------- 演示编排 --
-def build_demo_timeline(cube_meta, model_bases=(), duration=4.0):
-    """按节点元数据构建演示编排（升降 + 旋转）。
-
-    Args:
-        cube_meta:   [(name, Vec3)] 立方体节点（ring_i / center）
-        model_bases: [(name, Vec3)] 外部模型节点（M4，.obj 加载产物）
-        duration:    循环时长（秒）
-
-    - 环形立方体：相位错开的上下浮动（9 关键帧 LINEAR，首尾连续）
-      + 绕 Y 轴 360°/周期自旋（每 90° 一个四元数关键帧，slerp 分段）
-    - 中央大立方体：仅绕 Y 自旋
-    - 外部模型：原地浮动 + 绕 Y 自旋（振幅 0.5）
-    """
-    channels = []
-    spin_times = [0.0, 1.0, 2.0, 3.0, 4.0]
-    spin_quats = [quat_from_axis_angle((0, 1, 0), a) for a in (0, 90, 180, 270, 360)]
-
-    for name, pos in cube_meta:
-        if name == 'center':
-            continue
-        phase = 2 * math.pi * float(name.split('_')[1]) / 10.0
-        bob_times = [j * 0.5 for j in range(9)]                       # 0.0 ~ 4.0
-        bob_values = [
-            Vec3(pos.x, pos.y + 0.25 + 0.25 * math.sin(2 * math.pi * j / 8.0 + phase), pos.z)
-            for j in range(9)]
-        channels.append(Channel(name, 'translation',
-                                Sampler(bob_times, bob_values, 'LINEAR')))
-        channels.append(Channel(name, 'rotation',
-                                Sampler(spin_times, spin_quats, 'LINEAR')))
-
-    channels.append(Channel('center', 'rotation',
-                            Sampler(spin_times, spin_quats, 'LINEAR')))
-
-    for name, base in model_bases:
-        bob_times = [j * 0.5 for j in range(9)]
-        bob_values = [Vec3(base.x, base.y + 0.25 + 0.25 * math.sin(2 * math.pi * j / 8.0),
-                           base.z) for j in range(9)]
-        channels.append(Channel(name, 'translation',
-                                Sampler(bob_times, bob_values, 'LINEAR')))
-        channels.append(Channel(name, 'rotation',
-                                Sampler(spin_times, spin_quats, 'LINEAR')))
-    return Timeline(duration, channels)

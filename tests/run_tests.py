@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pyglet.math import Vec3, Quaternion
 from logic.animation import (Sampler, Channel, Timeline, quat_from_axis_angle,
-                             quat_to_mat4, slerp, build_demo_timeline)
+                             quat_to_mat4, slerp)
 from logic.camera import OrbitCamera, look_at_matrix, PITCH_MIN, PITCH_MAX, DIST_MIN, DIST_MAX
 from logic.events import EventBus
 from logic.playback import PlaybackController
@@ -143,25 +143,107 @@ def test_timeline_wrap_and_sample():
 
 
 def test_demo_timeline_choreography():
-    meta = [(f'ring_{i}', Vec3(5 * (1 if i % 2 else -1) if i < 2 else 0, 0.5, 0)) for i in range(10)]
-    meta[0] = ('ring_0', Vec3(5, 0.5, 0))
+    """M6：48s 五幕编排——通道齐全、时长正确、t=0 与 t=48 同帧（无缝循环）。"""
+    from logic.choreography import DURATION, build_world_timeline
+    meta = [(f'ring_{i}', Vec3(5, 0.5, 0)) for i in range(10)]
     meta.append(('center', Vec3(0, 1.0, 0)))
-    tl = build_demo_timeline(meta, duration=4.0)
-    assert tl.duration == 4.0
-    s0 = tl.sample()
-    # 环形立方体：translation.y 在 [0.5, 1.0] 内浮动
-    for i in range(10):
-        y = s0[f'ring_{i}']['translation'].y
-        assert 0.5 - 1e-9 <= y <= 1.0 + 1e-9, (i, y)
-        assert 'rotation' in s0[f'ring_{i}']
-    assert 'rotation' in s0['center'] and 'translation' not in s0['center']
-    # 回绕连续性：t=4-ε 与 t=0 的 y 值一致（首尾关键帧相同）
-    tl.seek(4.0 - 1e-6)
-    y_end = tl.sample()['ring_0']['translation'].y
+    meta += [(f'orb_{i}', Vec3(3.4, 2.2, 0)) for i in range(4)]
+    tl = build_world_timeline(meta, [('model_0', Vec3(-3.5, 1.15, -3.5))])
+    assert tl.duration == DURATION == 48.0
+    props = {c.prop for c in tl.channels}
+    assert props == {'translation', 'rotation', 'scale', 'tint', 'glow'}, props
+    nodes = {c.node for c in tl.channels}
+    assert 'ring_0' in nodes and 'center' in nodes and 'orb_3' in nodes
+    assert 'turret' in nodes and 'seg1' in nodes and 'seg2' in nodes
+    assert 'camera' in nodes and 'cam_target' in nodes and 'model_0' in nodes
+    # 回绕连续：t=48 与 t=0 采样一致（位置逐分量、旋转同向）
+    tl.seek(DURATION)
+    s_end = tl.sample()
     tl.seek(0.0)
-    y_start = tl.sample()['ring_0']['translation'].y
-    assert abs(y_end - y_start) < 1e-3, (y_end, y_start)
-    print('  ok: demo timeline ranges, channels, wrap continuity')
+    s_start = tl.sample()
+    for name in ('ring_3', 'center', 'orb_1', 'model_0'):
+        p0, p1 = s_start[name]['translation'], s_end[name]['translation']
+        assert all(abs(a - b) < 1e-6 for a, b in zip(p0, p1)), (name, p0, p1)
+    for name in ('ring_3', 'center', 'orb_1'):        # 宝石是外部模型，无材质通道
+        assert all(abs(a - b) < 1e-6 for a, b in
+                   zip(s_start[name]['tint'], s_end[name]['tint'])), name
+    print('  ok: 48s five-act timeline (5 prop kinds, 82 channels, loop-exact)')
+
+
+def test_choreography_pose_continuity():
+    """五幕姿态函数：端点连续 + 幕边界不跳变（逐函数直测，快照式断言）。"""
+    from logic.choreography import (DURATION, center_pose, gem_pose, orb_pose,
+                                    ring_pose, camera_pose, carry_weight)
+
+    def quat_close(q0, q1):
+        d = sum(a * b for a, b in zip(q0, q1))
+        return abs(abs(d) - 1.0) < 1e-6
+
+    for i in range(10):
+        a, b = ring_pose(i, 0.0), ring_pose(i, DURATION)
+        assert (a[0] - b[0]).length() < 1e-6 and quat_close(a[1], b[1])
+        assert abs(a[3].x - b[3].x) < 1e-6 and abs(a[4] - b[4]) < 1e-6
+    for fn in (center_pose, gem_pose, lambda t: orb_pose(2, t)):
+        a, b = fn(0.0), fn(DURATION)
+        assert (a[0] - b[0]).length() < 1e-6 and quat_close(a[1], b[1])
+    e0, t0 = camera_pose(0.0)
+    e1, t1 = camera_pose(DURATION)
+    assert (e0 - e1).length() < 1e-6 and (t0 - t1).length() < 1e-6
+    assert carry_weight(0.0) == 0.0 and carry_weight(DURATION) == 0.0
+    assert carry_weight(23.0) > 0.99            # 搬运途中完全交给夹爪
+    # 幕边界（10/20/30/40s）左右 1ms 的姿态差必须是小量，不是跳变
+    for fn in (lambda t: ring_pose(4, t)[0], lambda t: center_pose(t)[0],
+               lambda t: gem_pose(t)[0]):
+        for tb in (10.0, 20.0, 30.0, 40.0):
+            d = (fn(tb - 1e-3) - fn(tb + 1e-3)).length()
+            assert d < 0.05, (tb, d)
+    print('  ok: pose functions loop-exact and continuous across act borders')
+
+
+def test_choreography_arm_ik():
+    """第三幕角度由逆运动学解出：夹爪必须真的落在宝石/台座上（±0.3）。"""
+    from logic.choreography import (ARM_BASE, GEM_PLACED, GEM_REST, L1, L2,
+                                    SHOULDER_H, arm_pose)
+    from logic.skeleton import Skeleton, build_arm, grip_world
+
+    def grip_at(t):
+        skel = Skeleton()
+        build_arm(skel)
+        turret, s1, s2 = arm_pose(t)
+        skel.apply_sample({
+            'turret': {'rotation': quat_from_axis_angle((0, 1, 0), turret)},
+            'seg1': {'rotation': quat_from_axis_angle((0, 0, 1), s1)},
+            'seg2': {'rotation': quat_from_axis_angle((0, 0, 1), s2)},
+        })
+        skel.compute()
+        return grip_world(skel)
+
+    for t, target, label in ((22.0, GEM_REST, '取件'), (26.5, GEM_PLACED, '放件')):
+        d = (grip_at(t) - target).length()
+        assert d < 0.30, (label, d, grip_at(t))
+    # 臂长与几何常量一致（渲染几何改了这里必须同步）
+    assert (L1, L2, SHOULDER_H) == (2.4, 1.8, 0.6)
+    assert abs(ARM_BASE.x + 6.0) < 1e-9 and abs(ARM_BASE.z + 3.0) < 1e-9
+    print('  ok: arm IK reaches gem (t=22) and plinth top (t=26.5) within 0.3')
+
+
+def test_animation_material_channels():
+    """M6：Channel 支持 tint/glow（材质通道），TRS 之外不误放行未知属性。"""
+    from logic.animation import Channel, Sampler, Timeline
+    ch_tint = Channel('n', 'tint', Sampler([0.0, 1.0], [Vec3(1, 1, 1), Vec3(2, 1, 0.5)]))
+    ch_glow = Channel('n', 'glow', Sampler([0.0, 1.0], [0.0, 1.0]))
+    tl = Timeline(1.0, [ch_tint, ch_glow])
+    tl.seek(0.5)
+    s = tl.sample()['n']
+    assert abs(s['tint'].x - 1.5) < 1e-9 and abs(s['tint'].z - 0.75) < 1e-9
+    assert abs(s['glow'] - 0.5) < 1e-9
+    try:
+        Channel('n', 'bogus', Sampler([0.0], [Vec3(0, 0, 0)]))
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError('未知属性应被拒绝')
+    print('  ok: tint/glow channels interpolate; unknown prop rejected')
 
 
 def _make_linear_timeline(duration=2.0):
@@ -231,17 +313,23 @@ def test_ui_hit_testing():
 
 
 def test_model_timeline_channels():
-    """M4：外部模型节点应有 translation/rotation 通道并参与采样。"""
-    meta = [('ring_0', Vec3(5, 0.5, 0)), ('center', Vec3(0, 1.0, 0))]
-    model_bases = [('model_0', Vec3(-3.5, 1.3, -3.5))]
-    tl = build_demo_timeline(meta, model_bases, duration=4.0)
-    tl.seek(1.0)
-    s = tl.sample()['model_0']
-    assert 'translation' in s and 'rotation' in s
-    assert abs(s['translation'].x - (-3.5)) < 1e-9          # x 固定
-    assert 1.3 - 1e-9 <= s['translation'].y <= 1.3 + 0.5 + 1e-9
-    assert s['translation'].z == -3.5
-    print('  ok: model_0 channels present, base anchored, y in bob range')
+    """M4/M6：外部模型（宝石）应有 translation/rotation 通道，且被夹持时段
+    的位置由 carry_weight 交给夹爪——这里验证"静置点"与"落座点"两个关键帧。"""
+    from logic.choreography import (DURATION, GEM_PLACED, GEM_REST,
+                                    build_world_timeline, carry_weight)
+    tl = build_world_timeline([('ring_0', Vec3(5, 0.5, 0))],
+                              [('model_0', GEM_REST)])
+    tl.seek(0.0)
+    p0 = tl.sample()['model_0']['translation']
+    assert all(abs(a - b) < 1e-6 for a, b in zip(p0, GEM_REST)), p0
+    tl.seek(30.0)                                  # 已落座台座
+    p1 = tl.sample()['model_0']['translation']
+    assert all(abs(a - b) < 1e-6 for a, b in zip(p1, GEM_PLACED)), p1
+    assert carry_weight(30.0) == 0.0               # 落座后不再被夹持
+    tl.seek(DURATION)
+    p2 = tl.sample()['model_0']['translation']
+    assert all(abs(a - b) < 1e-6 for a, b in zip(p2, GEM_REST)), p2
+    print('  ok: gem rest -> placed -> rest across the 48s show')
 
 
 def test_obj_asset_decode():
@@ -256,34 +344,155 @@ def test_obj_asset_decode():
 
 
 def test_skeleton_hierarchy():
-    """M5：父节点旋转必须带动子节点世界原点（骨骼继承的核心性质）。"""
-    from logic.skeleton import Skeleton, build_arm
+    """M5/M6：父节点旋转必须带动子节点世界原点（骨骼继承的核心性质）。
+
+    机械臂现在是四级：转台(Y) → 大臂(Z) → 小臂(Z) → 夹爪。
+    """
+    from logic.skeleton import Skeleton, build_arm, grip_world
     skel = Skeleton()
     build_arm(skel, base=Vec3(-6, 0, -3))
+    assert skel.nodes['seg1'].parent is skel.nodes['turret']
     assert skel.nodes['seg2'].parent is skel.nodes['seg1']
-    # seg1 绕 Z 转 90°：子节点局部 (0,2.4,0) 应被带到 (-6-2.4, 0, -3)
+    assert skel.nodes['grip'].parent is skel.nodes['seg2']
+    # 大臂绕 Z 转 90°：子节点（肘关节，局部 (0,2.4,0)）应被带到 (-6-2.4, 0.6, -3)
     skel.apply_sample({'seg1': {'rotation': quat_from_axis_angle((0, 0, 1), 90.0)}})
     skel.compute()
     wt = skel.nodes['seg2'].world_translation()
-    assert all(abs(a - b) < 1e-6 for a, b in zip(wt, (-8.4, 0.0, -3.0))), wt
-    # 未旋转时 seg2 世界原点 = base + (0, 2.4, 0)
+    assert all(abs(a - b) < 1e-6 for a, b in zip(wt, (-8.4, 0.6, -3.0))), wt
+    # 未旋转时：夹爪世界原点 = base + (0, 0.6+2.4+1.8, 0)
     skel2 = Skeleton(); build_arm(skel2, base=Vec3(-6, 0, -3)); skel2.compute()
-    wt2 = skel2.nodes['seg2'].world_translation()
-    assert all(abs(a - b) < 1e-6 for a, b in zip(wt2, (-6.0, 2.4, -3.0))), wt2
-    print('  ok: parent rotation propagates to child world origin')
+    g = grip_world(skel2)
+    assert all(abs(a - b) < 1e-6 for a, b in zip(g, (-6.0, 4.8, -3.0))), g
+    # 转台 90° + 大臂 90° 的复合：大臂先把 (0,4.2,0) 折到局部 -X，
+    # 转台再把这个方向转到世界 +Z（pyglet 约定：绕 Y 的 90° 把 +X 映到 -Z）
+    skel3 = Skeleton(); build_arm(skel3, base=Vec3(-6, 0, -3))
+    skel3.apply_sample({'turret': {'rotation': quat_from_axis_angle((0, 1, 0), 90.0)},
+                        'seg1': {'rotation': quat_from_axis_angle((0, 0, 1), 90.0)}})
+    skel3.compute()
+    g3 = grip_world(skel3)
+    assert all(abs(a - b) < 1e-6 for a, b in zip(g3, (-6.0, 0.6, 1.2))), g3
+    print('  ok: 4-level arm hierarchy propagates parent rotation to gripper')
 
 
 def test_arm_channels():
-    from logic.skeleton import build_arm_channels
-    chs = build_arm_channels()
-    names = {c.node for c in chs}
-    assert names == {'seg1', 'seg2'} and all(c.prop == 'rotation' for c in chs)
-    tl = Timeline(4.0, chs)
+    """M6：机械臂通道来自 choreography（转台绕 Y、两段绕 Z），且首尾同姿态。"""
+    from logic.choreography import DURATION, arm_pose, build_world_timeline
+    chs = build_world_timeline([], [])
+    arm = [c for c in chs.channels if c.node in ('turret', 'seg1', 'seg2')]
+    assert {c.node for c in arm} == {'turret', 'seg1', 'seg2'}
+    assert all(c.prop == 'rotation' for c in arm)
+    a0, a1 = arm_pose(0.0), arm_pose(DURATION)
+    assert all(abs(x - y) < 1e-6 for x, y in zip(a0, a1)), (a0, a1)
+    # 静止幕：只有摆动（±7° 以内）；第三幕：明显大角度动作
+    assert max(abs(v) for v in arm_pose(5.0)) < 7.0, arm_pose(5.0)
+    assert max(abs(v) for v in arm_pose(24.0)) > 40.0, arm_pose(24.0)
+    print('  ok: arm channels (turret/seg1/seg2), idle sway vs act-III reach')
+
+
+def test_kkrieger_timeline():
+    """M6：kkrieger 96s 四幕——相机键帧、场景对象循环连续、材质通道。"""
+    from logic.kkrieger import (ACTS, CAM, CAM_TGT, DURATION,
+                                build_kkrieger_timeline)
+    meta = ([('monument_ring_%d' % i, Vec3(0, 4.4, -66)) for i in range(5)]
+            + [('monument_core', Vec3(0, 4.4, -66)), ('beam', Vec3(0, 4.4, -66)),
+               ('holo_frame', Vec3(0, 4.4, -66)), ('lift', Vec3(0, 0.15, -58)),
+               ('atrium_fan', Vec3(0, 8.4, -70))]
+            + [('door%d_%s' % (i, t), Vec3(0, 0, -14.0 * (i + 1)))
+               for i in range(3) for t in ('a', 'b')]
+            + [('strip_%d' % i, Vec3(0, 4.18, -2 - 4 * i)) for i in range(14)]
+            + [('alight_%d' % i, Vec3(0, 8.65, -61 - 10 * (i % 2))) for i in range(4)]
+            + [('strobe_%d' % i, Vec3(2.9, 3.05, -6 - 6.5 * i)) for i in range(8)]
+            + [('fan_%d' % i, Vec3(2.72, 2.3, -8 - 12 * i)) for i in range(4)]
+            + [('drone_%d' % i, Vec3(0, 2.6, -4)) for i in range(3)])
+    tl = build_kkrieger_timeline(meta)
+    assert tl.duration == DURATION == 96.0
+    assert len(ACTS) == 4 and ACTS[0][0] == 0.0 and ACTS[3][0] == 72.0
     tl.seek(0.0)
-    s = tl.sample()
-    q = s['seg1']['rotation']                     # t=0 恒等旋转
-    assert abs(q.w - 1.0) < 1e-9 and abs(q.z) < 1e-9
-    print('  ok: arm channels (seg1/seg2 rotation) present, t=0 identity')
+    s0 = tl.sample()
+    assert CAM in s0 and CAM_TGT in s0
+    assert s0[CAM]['translation'] == Vec3(0, 9.0, 12.0)      # 开场高空位
+    # 循环连续：t=96 与 t=0 的旋转/平移/材质一致
+    tl.seek(DURATION)
+    s1 = tl.sample()
+    for name in ('monument_ring_0', 'monument_ring_4', 'monument_core', 'beam',
+                 'holo_frame', 'lift', 'atrium_fan', 'door0_a', 'strip_0',
+                 'alight_2', 'strobe_3', 'fan_1', 'drone_0', 'drone_2'):
+        q0, q1 = s0[name].get('rotation'), s1[name].get('rotation')
+        if q0 is not None:
+            if sum(a * b for a, b in zip(q0, q1)) < 0:
+                q1 = tuple(-c for c in q1)
+            assert all(abs(a - b) < 1e-6 for a, b in zip(q0, q1)), (name, 'rot')
+        t0, t1 = s0[name].get('translation'), s1[name].get('translation')
+        if t0 is not None:
+            assert all(abs(a - b) < 1e-6 for a, b in zip(t0, t1)), (name, 'pos')
+        g0, g1 = s0[name].get('glow'), s1[name].get('glow')
+        if g0 is not None:
+            assert abs(g0 - g1) < 1e-6, (name, 'glow')
+    # 门：开场关、第一幕全开、撤离后重新关上
+    from logic.kkrieger import DOOR_CLOSE_T, DOOR_OPEN_T
+    for i in range(3):
+        tl.seek(0.0)
+        assert tl.sample()[f'door{i}_a']['translation'].x == 0.0
+        tl.seek(DOOR_OPEN_T[i] + 2.5)
+        assert abs(tl.sample()[f'door{i}_a']['translation'].x) > 1.5
+        tl.seek(DOOR_CLOSE_T[i] + 2.5)
+        assert abs(tl.sample()[f'door{i}_a']['translation'].x) < 0.01
+    # 升降平台：第二幕升起、第四幕落回原位（否则循环回绕会瞬移）
+    tl.seek(20.0)
+    y_rest = tl.sample()['lift']['translation'].y
+    tl.seek(40.0)
+    assert tl.sample()['lift']['translation'].y > y_rest + 2.0
+    tl.seek(96.0)
+    assert abs(tl.sample()['lift']['translation'].y - y_rest) < 1e-6
+    # 灯带：过载增亮 → 撤离熄灭 → 尾段回位
+    tl.seek(60.0)
+    lit = tl.sample()['strip_3']['glow']
+    tl.seek(86.0)
+    dark = tl.sample()['strip_3']['glow']
+    tl.seek(96.0)
+    back = tl.sample()['strip_3']['glow']
+    assert lit > 0.3 and dark < 0.1 and abs(back - 1.15) < 1e-6, (lit, dark, back)
+    # 无人机折返巡逻始终在走廊/大厅范围内
+    for i in range(0, 96, 3):
+        tl.seek(float(i))
+        d0 = tl.sample()['drone_0']['translation']
+        assert -52.5 <= d0.z <= -3.5, (i, d0.z)
+    print('  ok: kkrieger 96s four acts (cam keys, loop-exact, doors, lift, lights)')
+
+
+def test_kkrieger_camera_path_clearance():
+    """镜头不得穿进场景实体：抽查机位与立柱/门框/地面/顶棚的间距。
+
+    这一条是给"看着还行"的运镜兜底的——早期机身位就卡在大厅立柱里。
+    """
+    from logic.kkrieger import camera_pose, DURATION
+    from core.kkrieger_scene import (ATRIUM_H, CORRIDOR_H, CORRIDOR_W, DOOR_Z,
+                                     MONUMENT, ATRIUM_Z0)
+    columns = [(-5.5, -60), (5.5, -60), (-5.5, -72), (5.5, -72), (-7.0, -66), (7.0, -66)]
+    t = 0.0
+    while t <= DURATION:
+        eye, _ = camera_pose(t)
+        # 高度：在地面之上；进入建筑后不得穿顶棚（z>0 是入口外的高空开场位）
+        assert eye.y > 0.6, (t, eye.y)
+        if eye.z <= 0.0:
+            limit = ATRIUM_H if eye.z < ATRIUM_Z0 else CORRIDOR_H
+            assert eye.y < limit - 0.15, (t, eye.y, limit)
+        # 立柱：水平距离 > 0.9（柱半宽 0.55 + 余量）
+        for cx, cz in columns:
+            if abs(eye.z - cz) < 3.0:
+                assert math.hypot(eye.x - cx, eye.z - cz) > 0.9, (t, eye, cx, cz)
+        # 舱门：过门时必须在门洞内（|x| < 1.45）
+        for dz in DOOR_Z:
+            if abs(eye.z - dz) < 0.35:
+                assert abs(eye.x) < 1.4, (t, eye, dz)
+        # 纪念碑：常态保持在外接球外（最大环半径 2.7 + 余量）；
+        # 第三幕结尾的"贴脸"俯冲允许逼近，但不得进入核心立方体内部。
+        # 用三维距离而不是"到轴线的水平距离"——环绕时镜头会从正面横切，
+        # 水平距离必然一度变小，但那并不代表穿模。
+        d = (eye - Vec3(*MONUMENT)).length()
+        assert d > (0.75 if t >= 63.0 else 2.9), (t, d)
+        t += 0.25
+    print('  ok: camera path clears columns, doorways, monument and ceiling')
 
 
 def test_box_data_pivot():
@@ -293,6 +502,106 @@ def test_box_data_pivot():
     ys = v[1::3]                                  # y 分量
     assert abs(min(ys) - 0.0) < 1e-9 and abs(max(ys) - 2.4) < 1e-9  # 枢轴在底部
     print('  ok: pivot box spans y in [0, 2.4]')
+
+
+def test_boids_flock():
+    """demos/boids 的逻辑层：可复现、有界、限速、捕食者会把鸟群推开。"""
+    import time
+    from logic.boids import Flock
+
+    def run(seed, steps=40):
+        f = Flock(count=60, bounds=30.0, seed=seed)
+        for _ in range(steps):
+            f.step(1 / 60.0)
+        return [tuple(b.pos) for b in f.boids]
+
+    a1, a2 = run(1234), run(1234)
+    assert all(abs(x - y) < 1e-9 for p1, p2 in zip(a1, a2) for x, y in zip(p1, p2)), \
+        '固定种子必须完全可复现'
+    b = run(4321)
+    assert any(abs(x - y) > 1e-6 for p1, p2 in zip(a1, b) for x, y in zip(p1, p2)), \
+        '不同种子应产生不同轨迹'
+
+    f = Flock(count=80, bounds=25.0, seed=7)
+    t0 = time.perf_counter()
+    for _ in range(120):
+        f.step(1 / 60.0)
+    ms = (time.perf_counter() - t0) / 120 * 1000
+    assert f.spread() <= 25.0 * 2 + 1e-6, f.spread()        # 不出界
+    assert max(b.vel.length() for b in f.boids) <= f.max_speed + 1e-6, '速度必须限幅'
+
+    # 捕食者：放到群心，若只鸟应被推开（离捕食者更远）
+    center = Vec3(sum(b.pos.x for b in f.boids) / len(f.boids), 0.0,
+                  sum(b.pos.z for b in f.boids) / len(f.boids))
+    f.set_predator(center)
+    assert f.predator is not None
+    before = sum((b.pos - center).length() for b in f.boids) / len(f.boids)
+    for _ in range(60):
+        f.step(1 / 60.0)
+    after = sum((b.pos - center).length() for b in f.boids) / len(f.boids)
+    f.set_predator(None)
+    assert f.predator is None
+    assert after > before, (before, after)
+    print(f'  ok: boids deterministic/bounded/speed-capped (step={ms:.2f}ms, '
+          f'scatter {before:.1f}->{after:.1f})')
+
+
+def test_waves_math():
+    """demos/water_waves 的逻辑层：Gerstner 波的高度/梯度/法线自洽，且 CPU 侧
+    与着色器共用同一套公式（这里锁死解析性质）。"""
+    from logic.waves import (default_waves, gerstner_gradient, gerstner_height,
+                             gerstner_normal, sample_surface, scaled_preset,
+                             wave_presets, Wave)
+
+    waves = default_waves()
+    assert len(waves) == 8
+    # 数值梯度 vs 解析梯度（中心差分），容差按振幅量级给
+    x, z, t = 1.7, -0.9, 3.1
+    h = 1e-4
+    gx_num = (gerstner_height(x + h, z, t, waves) - gerstner_height(x - h, z, t, waves)) / (2 * h)
+    gz_num = (gerstner_height(x, z + h, t, waves) - gerstner_height(x, z - h, t, waves)) / (2 * h)
+    gx, gz = gerstner_gradient(x, z, t, waves)
+    assert abs(gx - gx_num) < 1e-6 and abs(gz - gz_num) < 1e-6, (gx, gx_num, gz, gz_num)
+    # 法线必须是单位向量，且 (-gx, 1, -gz) 归一化
+    nx, ny, nz = gerstner_normal(x, z, t, waves)
+    assert abs(nx * nx + ny * ny + nz * nz - 1.0) < 1e-9
+    assert ny > 0.0                                   # 法线朝上
+    hh, nn = sample_surface(x, z, t, waves)
+    assert abs(hh - gerstner_height(x, z, t, waves)) < 1e-12 and nn == (nx, ny, nz)
+    # 单个分量的时间周期性：推进自身周期 2π/ω 后回到原值
+    w0 = waves[0]
+    period = 2 * math.pi / w0.omega
+    assert abs(gerstner_height(x, z, t, [w0])
+               - gerstner_height(x, z, t + period, [w0])) < 1e-9
+    # 深水色散关系 w = sqrt(g·k)：波长越长，角频率越小（波越"慢"）
+    assert waves[0].omega < waves[-1].omega
+    assert abs(w0.omega - math.sqrt(9.81 * w0.wavenumber)) < 1e-12
+    # 预设：3 档强度递增（RMS 高度），波数递增
+    names = [p[0] for p in wave_presets()]
+    assert len(names) == 3
+    rms = []
+    for i in range(3):
+        _name, wl = scaled_preset(i)
+        acc = sum(gerstner_height(0.3 * k, 0.7 * k, 0.5, wl) ** 2 for k in range(200))
+        rms.append(math.sqrt(acc / 200))
+        assert all(isinstance(w, Wave) for w in wl)
+    assert rms[0] < rms[1] < rms[2], rms
+    # 非法输入要炸，不能静默产出错数据（非正波长 / 零方向向量）
+    for bad_wavelength in (0.0, -2.0):
+        try:
+            Wave(0.5, bad_wavelength)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f'波长 {bad_wavelength} 应抛 ValueError')
+    try:
+        Wave(0.5, 3.0, (0.0, 0.0))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('零方向向量应抛 ValueError')
+    print(f'  ok: waves analytic gradient==numeric, unit normal, presets '
+          f'RMS {rms[0]:.2f}<{rms[1]:.2f}<{rms[2]:.2f}')
 
 
 if __name__ == '__main__':
@@ -306,6 +615,9 @@ if __name__ == '__main__':
     print('test_sampler_linear_step');            test_sampler_linear_step()
     print('test_timeline_wrap_and_sample');       test_timeline_wrap_and_sample()
     print('test_demo_timeline_choreography');     test_demo_timeline_choreography()
+    print('test_choreography_pose_continuity');   test_choreography_pose_continuity()
+    print('test_choreography_arm_ik');            test_choreography_arm_ik()
+    print('test_animation_material_channels');    test_animation_material_channels()
     print('test_playback_states');                test_playback_states()
     print('test_playback_loop_wrap');             test_playback_loop_wrap()
     print('test_playback_end_pause');             test_playback_end_pause()
@@ -316,4 +628,8 @@ if __name__ == '__main__':
     print('test_skeleton_hierarchy');             test_skeleton_hierarchy()
     print('test_arm_channels');                   test_arm_channels()
     print('test_box_data_pivot');                 test_box_data_pivot()
+    print('test_boids_flock');                    test_boids_flock()
+    print('test_waves_math');                     test_waves_math()
+    print('test_kkrieger_timeline');              test_kkrieger_timeline()
+    print('test_kkrieger_camera_path_clearance'); test_kkrieger_camera_path_clearance()
     print('ALL_LOGIC_TESTS_PASSED')

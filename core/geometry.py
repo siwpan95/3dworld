@@ -73,6 +73,28 @@ def make_ground(program, batch, half=10, tile=1.0):
                     (x0, 0.0, z0), (x1, 0.0, z1), (x0, 0.0, z1)]
             verts += [c for p in quad for c in p]
             g = 0.55 if (ix + iz) % 2 == 0 else 0.35
-            colors += [g * 0.8, g, g * 0.8, 1.0] * 6
+            # 冷灰蓝石板：早期版本是偏绿的灰（g*0.8, g, g*0.8），与天空蓝对冲，
+            # 满屏地面时很晃眼；改成同色系冷灰后，琥珀色的动态物体才跳得出来。
+            colors += [g * 0.90, g * 0.94, g, 1.0] * 6
+    return program.vertex_list(len(verts) // 3, GL_TRIANGLES, batch=batch,
+                               position=('f', verts), colors=('f', colors))
+
+
+def make_static_boxes(program, batch, boxes):
+    """把一批**静态**盒体合并成一个顶点列表（入 Batch，一次 draw call）。
+
+    Args:
+        program: 着色器程序（默认着色器即可；本函数不使用 model uniform）
+        batch:   目标 Batch
+        boxes:   [(sx, sy, sz, ox, oy, oz, rgb), ...]，盒体尺寸 + 中心偏移 + 颜色
+
+    场景装饰（立柱 / 台座 / 门拱 / 灯带）都走这里：CPU 端合并、GPU 端一次画完，
+    不会因为装饰件多而增加 draw call。
+    """
+    verts, colors = [], []
+    for sx, sy, sz, ox, oy, oz, rgb in boxes:
+        v, c = box_data(sx, sy, sz, ox, oy, oz, rgb)
+        verts += v
+        colors += c
     return program.vertex_list(len(verts) // 3, GL_TRIANGLES, batch=batch,
                                position=('f', verts), colors=('f', colors))

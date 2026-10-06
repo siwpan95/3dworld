@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""时间轴 UI 面板（M3/M4）：播放/暂停、循环开关、可拖动时间指针、时间读数。
+"""时间轴 UI 面板（M3/M4/M6）：播放/暂停、循环开关、可拖动时间指针、时间读数、幕标记。
 
 绘制在屏幕空间（正交投影下），与 3D 视口解耦。
 尺寸与对比度按"小窗口可读"校准：大按钮、粗轨道、高亮度文字。
@@ -8,6 +8,10 @@
   on_drag(x, y)            拖动中（仅刷取时间指针时生效）
   on_release()             松开
 回调由装配层注入：on_toggle_play / on_toggle_loop / on_seek(t)
+
+M6 增补：``acts`` 传入幕表 ``[(t, 标题, 副标题), ...]`` 后，
+轨道上会画出幕分隔刻度，面板上方显示当前幕名——48s 的长编排不给定位锚点
+就只能盲拖。
 """
 import pyglet
 from pyglet import shapes, text
@@ -18,6 +22,7 @@ BTN = 40
 TRACK_H = 10
 TIME_LABEL_W = 130
 BORDER = 2
+ACT_TICK_W = 2
 
 COL_PANEL = (18, 20, 26, 235)
 COL_PANEL_BORDER = (185, 192, 205, 235)   # BorderedRectangle 要求与填充色 alpha 一致
@@ -29,14 +34,16 @@ COL_PROGRESS = (0, 165, 255, 255)
 COL_ICON = (255, 255, 255, 255)
 COL_TEXT = (245, 247, 250, 255)
 COL_TEXT_DIM = (152, 157, 165, 255)
+COL_ACT = (255, 196, 110, 255)      # 幕分隔刻度 / 当前幕名（琥珀，与场景主题一致）
 
 
 class TimelineUI:
-    def __init__(self, duration, on_toggle_play, on_toggle_loop, on_seek):
+    def __init__(self, duration, on_toggle_play, on_toggle_loop, on_seek, acts=()):
         self.duration = duration
         self.on_toggle_play = on_toggle_play
         self.on_toggle_loop = on_toggle_loop
         self.on_seek = on_seek
+        self.acts = list(acts)
         self.scrubbing = False
 
         self.batch = pyglet.graphics.Batch()
@@ -45,6 +52,7 @@ class TimelineUI:
         self.playhead = 0.0
         self.playing = False
         self.looping = True
+        self._act_idx = -1
 
     # ------------------------------------------------------------ 布局 --
     def layout(self, width, height):
@@ -99,11 +107,23 @@ class TimelineUI:
         self.handle = shapes.Circle(self.track_x0, ty + TRACK_H / 2, 9,
                                     color=COL_ICON, batch=self.batch)
 
-        # 时间读数
+        # 时间读数 + 当前幕名（幕名画在面板上方，避免挤压轨道）
         self.lbl_time = text.Label('', font_size=14,
                                    x=self.track_x1 + 12, y=ty + TRACK_H / 2 + 2,
                                    anchor_x='left', anchor_y='center',
                                    color=COL_TEXT, batch=self.batch)
+        self.lbl_act = text.Label('', font_size=12,
+                                  x=x0 + 14, y=y0 + PANEL_HEIGHT + 12,
+                                  anchor_x='left', anchor_y='center',
+                                  color=COL_ACT, batch=self.batch)
+
+        # 幕分隔刻度：画在轨道上层，给 48s 长编排一个定位锚点
+        for act in self.acts:
+            frac = 0.0 if self.duration <= 0 else min(1.0, act[0] / self.duration)
+            tx = self.track_x0 + (self.track_x1 - self.track_x0) * frac
+            shapes.Rectangle(tx - ACT_TICK_W / 2, ty - 5, ACT_TICK_W, TRACK_H + 10,
+                             color=COL_ACT, batch=self.batch)
+
         self._layout_ready = True
         self.update(self.playhead, self.playing, self.looping)
 
@@ -123,6 +143,14 @@ class TimelineUI:
         self.btn_loop_bg.color = COL_BTN_ON if looping else COL_BTN
         self.lbl_loop.color = COL_TEXT if looping else COL_TEXT_DIM
         self.lbl_time.text = f'{playhead:5.2f} / {self.duration:.2f} s'
+        if self.acts:
+            idx = 0
+            for k, act in enumerate(self.acts):
+                if playhead >= act[0]:
+                    idx = k
+            if idx != self._act_idx:
+                self._act_idx = idx
+                self.lbl_act.text = f'▶ {self.acts[idx][1]}'
 
     def draw(self):
         self.batch.draw()

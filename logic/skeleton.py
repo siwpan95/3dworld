@@ -11,7 +11,7 @@ Spike 结论（2026-09-29，实测）：pyglet 2.1.16 发行包无 glTF 解码�
 """
 from pyglet.math import Mat4, Quaternion, Vec3
 
-from logic.animation import Channel, Sampler, quat_from_axis_angle, quat_to_mat4
+from logic.animation import quat_to_mat4
 
 
 class BoneNode:
@@ -70,19 +70,28 @@ class Skeleton:
 
 
 # ---------------------------------------------------------- 机械臂编排 --
-def build_arm(skeleton, base=Vec3(-6, 0, -3)):
-    """两段机械臂：底座(固定) -> seg1(长 2.4) -> seg2(长 1.8)。"""
-    skeleton.add('seg1', None, translation=base)
-    skeleton.add('seg2', 'seg1', translation=Vec3(0, 2.4, 0))
+def build_arm(skeleton, base=None):
+    """机械臂节点树：转台(Y 轴) → 大臂(2.4) → 小臂(1.8) → 夹爪。
+
+    层级比早期版本多两层，因为**取件与放件不在同一个方位**：只靠绕 Z 的
+    两段臂只能在同一个竖直平面里划弧，够不到侧后方的台座。加上"转台绕 Y"
+    这一级方位自由度后，两连杆逆运动学才有解（见 ``logic/choreography.py``
+    的 ``_arm_ik``）。
+
+    节点约定（名字被 choreography / renderer / 测试共用，改名要同步）：
+      turret 局部平移 = 底座位置（世界坐标）
+      seg1   局部平移 = (0, 0.6, 0)   —— 肩关节在转台顶面
+      seg2   局部平移 = (0, 2.4, 0)   —— 肘关节在大臂末端
+      grip   局部平移 = (0, 1.8, 0)   —— 腕关节在小臂末端 = 抓取点
+    """
+    from logic.choreography import ARM_BASE, L1, L2, SHOULDER_H
+    base = ARM_BASE if base is None else base
+    skeleton.add('turret', None, translation=base)
+    skeleton.add('seg1', 'turret', translation=Vec3(0.0, SHOULDER_H, 0.0))
+    skeleton.add('seg2', 'seg1', translation=Vec3(0.0, L1, 0.0))
+    skeleton.add('grip', 'seg2', translation=Vec3(0.0, L2, 0.0))
 
 
-def build_arm_channels():
-    """机械臂摆动编排：seg1 主摆 ±30°，seg2 相对摆动（Z 轴，4 秒循环）。"""
-    axis = (0, 0, 1)
-    times = [0.0, 1.0, 2.0, 3.0, 4.0]
-    seg1_q = [quat_from_axis_angle(axis, a) for a in (0, -28, 26, -28, 0)]
-    seg2_q = [quat_from_axis_angle(axis, a) for a in (0, 24, 44, 24, 0)]
-    return [
-        Channel('seg1', 'rotation', Sampler(times, seg1_q, 'LINEAR')),
-        Channel('seg2', 'rotation', Sampler(times, seg2_q, 'LINEAR')),
-    ]
+def grip_world(skeleton):
+    """夹爪（抓取点）的世界坐标——宝石被夹持时的落点。"""
+    return skeleton.nodes['grip'].world_translation()
