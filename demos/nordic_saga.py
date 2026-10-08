@@ -45,11 +45,11 @@ TITLE = '3dworld · 诺德之境 — 上古卷轴风格雪原（程序化几何/
 HELP = ('ESC quit  SPACE pause  F2 perf  B bloom  O ssao  '
         '60s loop with procedural OST')
 SHOTS = ((4.0, 'docs/nordic_01_dive.png'),
-         (12.5, 'docs/nordic_02_campfire.png'),
+         (12.0, 'docs/nordic_02_campfire.png'),
          (18.4, 'docs/nordic_03_arch.png'),
          (29.0, 'docs/nordic_04_dragon.png'),
          (45.6, 'docs/nordic_05_runes.png'),
-         (53.0, 'docs/nordic_06_takeoff.png'))
+         (52.2, 'docs/nordic_06_takeoff.png'))
 DURATION = NS.DURATION
 
 
