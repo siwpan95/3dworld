@@ -543,8 +543,8 @@ def test_arm_channels():
 
 
 def test_kkrieger_timeline():
-    """M6+扩展：kkrieger 120s 五幕——相机键帧、场景对象循环连续、材质通道。"""
-    from logic.kkrieger import (ACTS, CAM, CAM_TGT, DURATION,
+    """M6+扩展：kkrieger 150s 六幕——相机键帧、场景对象循环连续、材质通道。"""
+    from logic.kkrieger import (ACTS, CAM, CAM_TGT, DURATION, KNOT,
                                 build_kkrieger_timeline)
     meta = ([('monument_ring_%d' % i, Vec3(0, 4.4, -66)) for i in range(5)]
             + [('monument_core', Vec3(0, 4.4, -66)), ('beam', Vec3(0, 4.4, -66)),
@@ -558,22 +558,26 @@ def test_kkrieger_timeline():
             + [('fan_%d' % i, Vec3(2.72, 2.3, -8 - 12 * i)) for i in range(4)]
             + [('drone_%d' % i, Vec3(0, 2.6, -4)) for i in range(3)]
             + [('conduit_%d' % i, Vec3(2.94, 0.62, -6 - 9 * i)) for i in range(6)]
-            + [('spark_%d' % i, Vec3(0, 4.4, -66)) for i in range(8)])
+            + [('spark_%d' % i, Vec3(0, 4.4, -66)) for i in range(8)]
+            + [('knot', Vec3(*KNOT)), ('portal_ring', Vec3(0, 2.25, -76))]
+            + [('seed_%d' % i, Vec3(*KNOT)) for i in range(6)]
+            + [('sconduit_%d' % i, Vec3(0, 0, 0)) for i in range(4)])
     tl = build_kkrieger_timeline(meta)
-    assert tl.duration == DURATION == 120.0
-    assert len(ACTS) == 5 and ACTS[0][0] == 0.0 and ACTS[3][0] == 72.0 \
-        and ACTS[4][0] == 96.0
+    assert tl.duration == DURATION == 150.0
+    assert len(ACTS) == 6 and ACTS[0][0] == 0.0 and ACTS[3][0] == 72.0 \
+        and ACTS[4][0] == 96.0 and ACTS[5][0] == 118.0
     tl.seek(0.0)
     s0 = tl.sample()
     assert CAM in s0 and CAM_TGT in s0
     assert s0[CAM]['translation'] == Vec3(0, 9.0, 12.0)      # 开场高空位
-    # 循环连续：t=96 与 t=0 的旋转/平移/材质一致
+    # 循环连续：t=150 与 t=0 的旋转/平移/材质一致
     tl.seek(DURATION)
     s1 = tl.sample()
     for name in ('monument_ring_0', 'monument_ring_4', 'monument_core', 'beam',
                  'holo_frame', 'lift', 'atrium_fan', 'door0_a', 'strip_0',
                  'alight_2', 'strobe_3', 'fan_1', 'drone_0', 'drone_2',
-                 'conduit_0', 'spark_3'):
+                 'conduit_0', 'spark_3', 'knot', 'seed_0', 'seed_5',
+                 'sconduit_1', 'portal_ring'):
         q0, q1 = s0[name].get('rotation'), s1[name].get('rotation')
         if q0 is not None:
             if sum(a * b for a, b in zip(q0, q1)) < 0:
@@ -620,8 +624,18 @@ def test_kkrieger_timeline():
     assert tl.sample()['monument_core']['glow'] > 2.0
     tl.seek(115.0)
     assert tl.sample()['spark_0']['glow'] > 0.5
-    tl.seek(120.0)
+    tl.seek(150.0)
     assert tl.sample()['spark_0']['glow'] == 0.0
+    # 第六幕：反应堆点火过载 + 种子收拢 + 门洞光环穿越高亮
+    tl.seek(140.9)
+    s = tl.sample()
+    assert s['knot']['glow'] > 2.0, s['knot']['glow']
+    d = s['seed_0']['translation']
+    assert math.hypot(d.x - KNOT[0], d.z - KNOT[2]) < 1.2, d   # 收拢到反应堆
+    tl.seek(118.5)
+    assert tl.sample()['portal_ring']['glow'] > 1.0
+    tl.seek(125.0)
+    assert tl.sample()['knot']['glow'] > 0.5                    # 圣殿段已被点亮
     # 无人机折返巡逻始终在走廊/大厅范围内（第五幕收拢段单独校验）
     for i in range(0, 96, 3):
         tl.seek(float(i))
@@ -630,8 +644,8 @@ def test_kkrieger_timeline():
     tl.seek(112.0)
     d0 = tl.sample()['drone_0']['translation']
     assert math.hypot(d0.x, d0.z + 66.0) < 5.5, d0      # 收拢到纪念碑附近
-    print('  ok: kkrieger 120s five acts (cam keys, loop-exact, doors, lift, '
-          'lights, act-V finale)')
+    print('  ok: kkrieger 150s six acts (cam keys, loop-exact, doors, lift, '
+          'lights, act-V finale, act-VI sanctum)')
 
 
 def test_kkrieger_camera_path_clearance():
@@ -643,8 +657,15 @@ def test_kkrieger_camera_path_clearance():
     from core.kkrieger_scene import (ATRIUM_H, CORRIDOR_H, CORRIDOR_W, DOOR_Z,
                                      MONUMENT, ATRIUM_Z0)
     columns = [(-5.5, -60), (5.5, -60), (-5.5, -72), (5.5, -72), (-7.0, -66), (7.0, -66)]
+    # 两次"白闪传送"是全屏爆亮遮蔽下的刻意剪辑（117.9→118.2 进圣殿、
+    # 141.3→141.8 回开场）——相机沿直线路径穿越墙体，但观众不可见，
+    # 这两段窗口豁免间隙校验
+    teleports = ((117.9, 118.2), (141.3, 141.8))
     t = 0.0
     while t <= DURATION:
+        if any(a < t < b for a, b in teleports):
+            t += 0.25
+            continue
         eye, _ = camera_pose(t)
         # 高度：在地面之上；进入建筑后不得穿顶棚（z>0 是入口外的高空开场位）
         assert eye.y > 0.6, (t, eye.y)

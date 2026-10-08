@@ -43,8 +43,8 @@ DEMO_SIZE = (1280, 720)
 # name, 模块路径(相对 ROOT), App 类名(None=自动找 DemoApp 子类), 时长兜底, 尺寸(None=App 自带)
 ENTRIES = [
     dict(name='main_48s',            mod='main.py',                cls='WorldApp',    dur=48.0, size=None),
-    dict(name='kkrieger_120s',       mod='kkrieger_demo.py',       cls='KKApp',       dur=120.0, size=None,
-         audio='assets/kkrieger_ost.wav'),   # 录完把程序化配乐混进视频
+    dict(name='kkrieger_150s',       mod='kkrieger_demo.py',       cls='KKApp',       dur=150.0, size=None,
+         audio='assets/kkrieger_ost_150s.wav'),   # 录完把程序化配乐混进视频
     dict(name='boids_45s',           mod='demos/boids.py',         cls=None,          dur=45.0, size=DEMO_SIZE),
     dict(name='demoscene_tunnel_24s', mod='demos/demoscene_tunnel.py', cls=None,      dur=24.0, size=DEMO_SIZE),
     dict(name='minecraft_style_48s', mod='demos/minecraft_style.py', cls=None,        dur=48.0, size=DEMO_SIZE),
@@ -56,6 +56,7 @@ ENTRIES = [
     dict(name='voxel_terrain_36s',   mod='demos/voxel_terrain.py', cls=None,          dur=36.0, size=DEMO_SIZE),
     dict(name='water_waves_40s',     mod='demos/water_waves.py',   cls=None,          dur=40.0, size=DEMO_SIZE),
     dict(name='engine_showcase_24s', mod='demos/engine_showcase.py', cls='ShowcaseApp', dur=24.0, size=DEMO_SIZE),
+    dict(name='material_lab_30s',    mod='demos/material_lab.py',  cls='MaterialLabApp', dur=30.0, size=DEMO_SIZE),
 ]
 
 FFMPEG_CANDIDATES = [
@@ -204,6 +205,66 @@ def record(entry, out_dir, fps, crf, dur_override):
             pass
 
 
+def fusion(out_dir, fps, crf):
+    """融合总集篇：recordings/ 全部段落 xfade 交叉溶解串成一部片 + 程序化总配乐。
+
+    段落表（顺序/时长/情绪）在 ``logic/fusion_audio.FUSION_SEGMENTS``，
+    它同时驱动这里 ffmpeg 的 xfade 时间轴和配乐生成——音视频因此同源对齐。
+    缺失的段落会先自动录制补齐。
+    """
+    from logic.fusion_audio import (FUSION_SEGMENTS, XFADE, build_fusion_ost,
+                                    segment_offsets)
+    # 1) 段落文件齐全？缺失的先录
+    segs = []
+    for name, _dur, _mood in FUSION_SEGMENTS:
+        path = os.path.join(out_dir, f'{name}.mp4')
+        if not os.path.exists(path):
+            entry = next((e for e in ENTRIES if e['name'] == name), None)
+            if entry is None:
+                raise SystemExit(f'fusion 段落无录制入口: {name}')
+            print(f'--- 段落缺失，先录 {name} ---', flush=True)
+            record(entry, out_dir, fps, crf, None)
+        segs.append(path)
+    # 2) 总配乐（一次性渲染，之后走缓存）
+    wav = os.path.join(ROOT, 'assets', 'fusion_ost.wav')
+    if not os.path.exists(wav):
+        print('[fusion] 渲染总配乐（约 1~2 分钟）...', flush=True)
+        build_fusion_ost(wav,
+                         progress=lambda n: print(f'  [fusion-ost] {n}', flush=True))
+    # 3) ffmpeg：视频 xfade 链 + 音频用总配乐
+    out_path = os.path.join(out_dir, 'fusion_all.mp4')
+    cmd = [ffmpeg_exe(), '-y', '-hide_banner', '-loglevel', 'error']
+    for p in segs:
+        cmd += ['-i', p]
+    cmd += ['-i', wav]
+    n = len(segs)
+    parts = []
+    for i in range(n):
+        parts.append(
+            f'[{i}:v]scale=1280:720:force_original_aspect_ratio=decrease,'
+            f'pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps={fps},'
+            f'format=yuv420p,setsar=1[v{i}]')
+    offs = segment_offsets()
+    prev = '[v0]'
+    for k in range(1, n):
+        xlabel = f'[x{k}]'
+        parts.append(f'{prev}[v{k}]xfade=transition=fade:duration={XFADE}:'
+                     f'offset={offs[k]:.3f}{xlabel}')
+        prev = xlabel
+    # xfade 链末端必须再压一次 yuv420p——xfade 输出 4:4:4，libx264 会跟着
+    # 编 yuv444p（Windows/QuickTime 播不了），第一版融合片就踩了这个
+    parts.append(f'{prev}format=yuv420p[vout]')
+    cmd += ['-filter_complex', ';'.join(parts),
+            '-map', '[vout]', '-map', f'{n}:a',
+            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', str(max(1, crf - 1)),
+            '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', out_path]
+    print(f'[fusion] 合成 {n} 段 × xfade {XFADE}s → {out_path}', flush=True)
+    subprocess.run(cmd, check=True)
+    size_mb = os.path.getsize(out_path) / 1048576
+    print(f'[ok] fusion_all: {size_mb:.1f}MB -> {out_path}', flush=True)
+    return out_path
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--only', default='', help='逗号分隔的名字过滤（前缀匹配）')
@@ -212,6 +273,8 @@ def main():
     ap.add_argument('--out', default=OUT_DIR)
     ap.add_argument('--dur-override', type=float, default=None,
                     help='覆盖时长（秒），调试短录用')
+    ap.add_argument('--fusion', action='store_true',
+                    help='融合总集篇：全部段落 xfade 串成 fusion_all.mp4')
     ap.add_argument('--list', action='store_true')
     args = ap.parse_args()
 
@@ -221,6 +284,11 @@ def main():
                   f"size={e['size'] or 'native(960x540)'}")
         return 0
 
+    os.makedirs(args.out, exist_ok=True)
+    if args.fusion:
+        path = fusion(args.out, args.fps, args.crf)
+        print('FUSION_OK', path)
+        return 0
     entries = ENTRIES
     if args.only:
         keys = [k.strip() for k in args.only.split(',') if k.strip()]
@@ -228,7 +296,6 @@ def main():
     if not entries:
         raise SystemExit('没有匹配的录制目标')
 
-    os.makedirs(args.out, exist_ok=True)
     print(f'recording {len(entries)} animations @ {args.fps}fps -> {args.out}')
     results, failures = [], []
     for e in entries:

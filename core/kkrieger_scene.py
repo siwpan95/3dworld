@@ -32,6 +32,7 @@ from pyglet.graphics import shader
 from pyglet.math import Mat4, Vec3
 
 from core.geometry import box_data
+from engine.geometry import lathe, torus, torus_knot, tube
 
 # ---- 世界常量 ----
 CORRIDOR_LEN = 56            # 走廊 z: 0 → -56
@@ -39,6 +40,13 @@ CORRIDOR_W, CORRIDOR_H = 6.0, 4.5
 ATRIUM_W, ATRIUM_H = 16.0, 9.0
 ATRIUM_Z0, ATRIUM_Z1 = -56.0, -76.0
 MONUMENT = (0.0, 4.4, -66.0)  # 环/核心枢轴（基座顶面上方）
+
+# 第六幕「反应堆圣殿」：大厅后墙（z=-76）开门洞进去的第二个宏区
+SANCTUM_W, SANCTUM_H = 20.0, 12.0
+SANCTUM_Z1 = -102.0
+PORTAL_HALF_W, PORTAL_H = 2.4, 4.5      # 门洞半宽 / 净高
+KNOT = (0.0, 5.0, -89.5)                # 环面结反应堆枢轴
+SANCTUM_COL_R = 7.6                     # 凹槽柱环半径
 
 DOOR_Z = (-14.0, -32.0, -50.0)   # 三道舱门
 DOOR_HALF_W = 1.45               # 单扇门宽（门洞半宽）
@@ -103,6 +111,20 @@ def _rot_y(verts, ang):
     return out
 
 
+def _lerp(a, b, u):
+    return a + (b - a) * u
+
+
+def _translate_mat(x, y, z):
+    """列主序平移矩阵（喂 MeshData.transform）。"""
+    return [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1]
+
+
+def _rot_x_90():
+    """列主序绕 X 轴 +90°：(x,y,z) → (x,-z,y)，把平躺的环立起来。"""
+    return [1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1]
+
+
 class KKRenderer:
     """kkrieger 致敬场景渲染器：程序化几何 + 材质 uniform + 雾效着色器。"""
 
@@ -128,6 +150,7 @@ class KKRenderer:
         self._build_corridor()
         self._build_atrium()
         self._build_corridor_props()
+        self._build_sanctum_static()
         self.static = self.program.vertex_list(
             len(self._sv) // 3, GL_TRIANGLES,
             position=('f', self._sv), colors=('f', self._sc))
@@ -139,10 +162,27 @@ class KKRenderer:
         self._build_drones()
         self._build_atrium_show()
         self._build_act5()
+        self._build_sanctum_show()
 
     # ---------------------------------------------------- 静态几何 --
     def _add_box(self, sx, sy, sz, ox, oy, oz, rgb):
         v, c = box_data(sx, sy, sz, ox, oy, oz, rgb)
+        self._sv += v
+        self._sc += c
+
+    @staticmethod
+    def _md_vc(md, color_fn):
+        """MeshData → 扁平 (verts, colors)，逐顶点过 color_fn(x,y,z)。"""
+        m = md.to_non_indexed() if md.indices else md
+        verts = list(m.positions)
+        colors = []
+        for i in range(0, len(verts), 3):
+            colors += list(color_fn(verts[i], verts[i + 1], verts[i + 2])) + [1.0]
+        return verts, colors
+
+    def _add_mesh(self, md, color_fn):
+        """把一份 MeshData（新几何类型）并入静态几何缓冲。"""
+        v, c = self._md_vc(md, color_fn)
         self._sv += v
         self._sc += c
 
@@ -207,12 +247,22 @@ class KKRenderer:
                 self._add_box(4.0, 0.2, 4.0, -W / 2 + ix * 4 + 2, H - 0.1,
                               z0 - iz * 4 - 2,
                               _metal(ix, iz + 77, (0.10, 0.11, 0.14), 0.4))
-        # 后墙 / 侧墙 / 前墙（前墙留门洞 |x| < 3.5 与走廊衔接）
+        # 后墙（留圣殿门洞 |x| < PORTAL_HALF_W、高 PORTAL_H）/ 侧墙 / 前墙
+        for xa, xb in ((-W / 2 - 0.15, -PORTAL_HALF_W), (PORTAL_HALF_W, W / 2 + 0.15)):
+            self._add_box(xb - xa, PORTAL_H, 0.3, (xa + xb) / 2, PORTAL_H / 2,
+                          z1 - 0.15, wall)
+        self._add_box(W, H - PORTAL_H, 0.3, 0, PORTAL_H + (H - PORTAL_H) / 2,
+                      z1 - 0.15, wall)
         for row in range(2):
             yc = 2.25 + row * 4.5
-            self._add_box(W, 4.5, 0.3, 0, yc, z1 - 0.15, wall)
             self._add_box(0.3, 4.5, D, -W / 2 - 0.15, yc, (z0 + z1) / 2, wall)
             self._add_box(0.3, 4.5, D, W / 2 + 0.15, yc, (z0 + z1) / 2, wall)
+        # 圣殿门洞的门框（琥珀包边，提示"这里可以进去"）
+        for side in (-1, 1):
+            self._add_box(0.3, PORTAL_H, 0.4, side * (PORTAL_HALF_W + 0.1),
+                          PORTAL_H / 2, z1 - 0.15, (0.62, 0.50, 0.30))
+        self._add_box(2 * PORTAL_HALF_W + 0.7, 0.18, 0.4, 0,
+                      PORTAL_H + 0.09, z1 - 0.15, (0.85, 0.50, 0.12))
         for xa, xb in ((-W / 2 - 0.15, -3.5), (3.5, W / 2 + 0.15)):
             self._add_box(xb - xa, 4.5, 0.3, (xa + xb) / 2, 2.25, z0 - 0.15, wall)
         self._add_box(W, H - 4.5, 0.3, 0, 4.5 + (H - 4.5) / 2, z0 - 0.15, wall)
@@ -388,6 +438,124 @@ class KKRenderer:
             v, c = box_data(1.5, 0.12, 1.5, 0, 0, 0, (0.90, 0.96, 1.0))
             self._push_animated(f'alight_{i}', Vec3(lx, ATRIUM_H - 0.35, lz),
                                 v, c, glow=1.0)
+
+    def _build_sanctum_static(self):
+        """第六幕「反应堆圣殿」静态壳：全新空间 + 全新几何。
+
+        与走廊/大厅的区别不止布局——这里的构件类型是全新的：
+        - 柱不再是盒子拼的，而是 lathe 凹槽旋转柱（一条轮廓线决定全部形状，
+          逐顶点做"锈蚀青铜"斑驳着色）；
+        - 地面嵌一道真正的圆环（torus 网格，不是方块近似的八边形环）。
+        """
+        W, H = SANCTUM_W, SANCTUM_H
+        z0, z1 = ATRIUM_Z1, SANCTUM_Z1       # z -76 → -102
+        wall = (0.15, 0.17, 0.21)
+        # 地板 + 天花板（大板，青色稀有板代替琥珀——圣殿的色谱）
+        for ix in range(int(W // 2)):
+            for iz in range(int((z0 - z1) // 2)):
+                xc, zc = -W / 2 + ix * 2 + 1, z0 - iz * 2 - 1
+                rgb = _metal(ix, iz + 31, (0.13, 0.15, 0.20), 0.5)
+                if _hash01(ix + 5, iz + 5) > 0.95:
+                    rgb = (0.10, 0.30, 0.38)
+                self._add_box(2.0, 0.2, 2.0, xc, -0.1, zc, rgb)
+                self._add_box(2.0, 0.2, 2.0, xc, H - 0.1, zc,
+                              _metal(ix, iz + 90, (0.09, 0.10, 0.13), 0.4))
+        # 侧墙（x=±10）+ 远墙（z=-102），前墙 = 大厅后墙（共用，门洞已留）
+        for row in range(2):
+            yc = 3.0 + row * 6.0
+            self._add_box(0.3, 6.0, z0 - z1, -W / 2 - 0.15, yc, (z0 + z1) / 2, wall)
+            self._add_box(0.3, 6.0, z0 - z1, W / 2 + 0.15, yc, (z0 + z1) / 2, wall)
+            self._add_box(W, 6.0, 0.3, 0, yc, z1 - 0.15, wall)
+        # 八根 lathe 凹槽旋转柱（新几何：轮廓曲线绕轴旋转）
+        col_profile = ((1.05, 0.0), (1.20, 0.12), (1.10, 0.55), (0.78, 1.05),
+                       (0.66, 3.0), (0.70, 5.6), (0.66, 8.2), (0.80, 10.2),
+                       (1.06, 10.9), (1.14, 11.2))
+        for k in range(8):
+            # 起始角偏 π/8：不偏的话有一根柱子正好压在门洞→反应堆的中轴上，
+            # 118.2s 的揭幕帧被柱子糊满屏（实测踩坑）
+            ang = math.pi / 8 + 2 * math.pi * k / 8
+            cx = KNOT[0] + math.cos(ang) * SANCTUM_COL_R
+            cz = KNOT[2] + math.sin(ang) * SANCTUM_COL_R
+            md = lathe(col_profile, segments=20, closed_bottom=True)
+
+            def bronze(x, y, z, k=k):
+                # 锈蚀青铜：逐顶点斑驳 + 柱身凹槽明暗（按经角量化，
+                # 用**局部**坐标算——移到世界坐标后再算经角就全歪了）
+                th = math.atan2(z, x)
+                flute = 0.82 + 0.18 * math.cos(th * 10)        # 凹槽纹
+                k0 = _hash01(int(x * 7) + 31, int(y * 5) + 17, k)
+                m = flute * (0.82 + 0.36 * k0)
+                return (0.46 * m, 0.34 * m, 0.20 * m)
+
+            v, c = self._md_vc(md, bronze)
+            for i in range(0, len(v), 3):      # 平移到柱位（局部→世界）
+                v[i] += cx
+                v[i + 2] += cz
+            self._sv += v
+            self._sc += c
+        # 地面发光嵌环（新几何：torus 网格平躺，不是八边形环拼的）
+        inlay = torus(major=5.2, minor=0.09, major_segs=96, minor_segs=8)
+        inlay.transform(_translate_mat(KNOT[0], 0.06, KNOT[2]))
+
+        def cyan(x, y, z):
+            return (0.20, 0.62, 0.85)
+
+        self._add_mesh(inlay, cyan)
+
+    def _build_sanctum_show(self):
+        """第六幕演出件：环面结反应堆 + 悬浮种子 + 导管 + 门洞光环。
+
+        全部是此前场景里不存在的元素类型：
+        - ``knot``：(2,3) 环面结反应堆（torus_knot 网格），自旋 + 点火过载；
+        - ``seed_i``：lathe 卵形悬浮种子（绕反应堆公转/收拢献祭）；
+        - ``sconduit_i``：tube 导管（天花板蜿蜒注入反应堆，平行传输标架）；
+        - ``portal_ring``：门洞光环（lathe 旋转环，穿越时高亮）。
+        """
+        # 反应堆：琥珀金属的 (2,3) 环面结
+        md = torus_knot(2, 3, major=2.3, tube_r=0.36, tubular=192, radial=12)
+
+        def knot_c(x, y, z, _md=md):
+            th = math.atan2(z, x)
+            k0 = _hash01(int(x * 3), int(y * 3), int(z * 3))
+            m = 0.85 + 0.3 * k0
+            return (0.72 * m, 0.48 * m, 0.24 * m)
+
+        v, c = self._md_vc(md, knot_c)
+        self._push_animated('knot', Vec3(*KNOT), v, c,
+                            tint=(1.0, 0.72, 0.35), glow=0.18)
+        # 悬浮种子：lathe 卵形体（6 颗，公转）
+        seed_profile = ((0.0, 0.0), (0.26, 0.05), (0.40, 0.30),
+                        (0.34, 0.62), (0.18, 0.85), (0.0, 0.95))
+        for i in range(6):
+            md = lathe(seed_profile, segments=16)
+            v, c = self._md_vc(md, lambda x, y, z: (0.35, 0.80, 0.95))
+            self._push_animated(f'seed_{i}', Vec3(*KNOT), v, c,
+                                tint=(0.55, 0.90, 1.0), glow=0.35)
+        # 导管：天花板四角蜿蜒注入反应堆（tube 扫掠，新几何）
+        for i in range(4):
+            ang = math.pi / 4 + math.pi / 2 * i
+            x0, z0 = KNOT[0] + math.cos(ang) * 8.2, KNOT[2] + math.sin(ang) * 8.2
+            pts = [(x0, SANCTUM_H - 0.2, z0)]
+            for s in range(1, 7):
+                u = s / 7
+                # 悬链式下坠：先沿墙走，再向结心弯曲
+                x = _lerp(x0, KNOT[0] + math.cos(ang) * 1.3, u ** 1.5)
+                z = _lerp(z0, KNOT[2] + math.sin(ang) * 1.3, u ** 1.5)
+                y = (SANCTUM_H - 0.2) * (1.0 - u ** 0.8) + 6.2 * u ** 0.8 \
+                    - 1.2 * math.sin(math.pi * u)
+                pts.append((x, y, z))
+            md = tube(pts, 0.14, 8)
+            v, c = self._md_vc(md, lambda x, y, z: (0.62, 0.44, 0.20))
+            self._push_animated(f'sconduit_{i}', Vec3(0.0, 0.0, 0.0), v, c,
+                                tint=(0.95, 0.70, 0.30), glow=0.35)
+        # 门洞光环：lathe 旋转环立在门洞里（穿越时高亮）
+        ring_profile = ((1.90, -0.10), (2.04, -0.06), (2.09, 0.0),
+                        (2.04, 0.06), (1.90, 0.10), (1.78, 0.0), (1.90, -0.10))
+        md = lathe(ring_profile, segments=48)
+        md.transform(_rot_x_90())
+        v, c = self._md_vc(md, lambda x, y, z: (0.30, 0.75, 0.95))
+        self._push_animated('portal_ring', Vec3(0.0, 2.25, -76.0),
+                            v, c, tint=(0.45, 0.90, 1.0), glow=0.45)
 
     def _build_act5(self):
         """第五幕演出件：数据流光带（走廊）+ 爆发碎片（大厅核心）。"""

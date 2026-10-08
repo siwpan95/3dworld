@@ -574,6 +574,78 @@ def test_kkrieger_ost_structure():
     print(f'  ok: kkrieger OST 链路（4s 短渲染 rms={rms:.3f}）')
 
 
+def test_advanced_geometry():
+    """新建模：lathe/tube/torus_knot——顶点数、单位法线、闭合无缝。"""
+    from engine.geometry import lathe, torus_knot, tube
+    # lathe：顶点 = (segments+1)*len(profile)，法线解析且单位长
+    prof = [(0.0, 0.0), (0.5, 0.1), (0.3, 0.8), (0.6, 1.4)]
+    md = lathe(prof, segments=20)
+    assert md.vertex_count == 21 * 4
+    for i in range(0, len(md.normals), 3):
+        l = math.sqrt(md.normals[i] ** 2 + md.normals[i + 1] ** 2
+                      + md.normals[i + 2] ** 2)
+        assert abs(l - 1.0) < 1e-6
+    # 接缝：第一列与最后一列顶点位置一致
+    assert md.positions[0:3] == md.positions[20 * 4 * 3:20 * 4 * 3 + 3]
+    # tube：平行传输标架扫掠螺旋，端帽齐全
+    pts = [(math.cos(a), a * 0.3, math.sin(a)) for a in
+           [i * 0.4 for i in range(20)]]
+    tb = tube(pts, 0.1, 8)
+    assert tb.vertex_count == 20 * 9 + 2 * 10
+    # torus_knot：闭合曲线，首末环顶点精确重合（和乐角补偿后）
+    for pq in ((2, 3), (3, 7)):
+        k = torus_knot(*pq, major=1.5, tube_r=0.2, tubular=120, radial=8)
+        assert k.vertex_count == 121 * 9
+        f = k.positions[0:3]
+        e = k.positions[9 * 120 * 3:9 * 120 * 3 + 3]
+        gap = max(abs(a - b) for a, b in zip(f, e))
+        assert gap < 1e-9, (pq, gap)
+    print('  ok: lathe/tube/torus_knot（单位法线、闭合无缝 gap<1e-9）')
+
+
+def test_proctex_patterns():
+    """程序化纹理：确定性、尺寸正确、fbm 可平铺、法线图是切线空间。"""
+    from engine.proctex import PATTERNS, fbm, height_to_normal, value_noise
+    # 确定性：同参数两次生成逐字节一致
+    for name, maker in PATTERNS.items():
+        p1, p2 = maker(size=64), maker(size=64)
+        assert p1['base'] == p2['base'], name
+        for key in ('base', 'mr', 'normal'):
+            assert len(p1[key]) == 64 * 64 * 4, (name, key)
+        if 'emissive' in p1:
+            assert len(p1['emissive']) == 64 * 64 * 4
+    # 平铺：u=0 与 u=1 采样值一致（REPEAT 采样才无缝）
+    assert abs(fbm(0.0, 0.37, 4) - fbm(1.0, 0.37, 4)) < 1e-12
+    # 空间相干：相邻像素差异应远小于白噪声（~0.29）
+    vals = [fbm(x / 64.0, 0.5, 4) for x in range(64)]
+    mean_diff = sum(abs(vals[i + 1] - vals[i]) for i in range(63)) / 63
+    assert mean_diff < 0.05, mean_diff
+    # 法线图：z 分量为主导（切线空间），且中心取向一致
+    h = [0.5] * (16 * 16)
+    n = height_to_normal(h, 16)
+    assert n[2] > 250 and n[0] == 127 and n[1] == 127   # 0.5→127 的整除编码
+    print(f'  ok: 5 种程序化纹理（确定性/平铺/相干 mean_diff={mean_diff:.4f}）')
+
+
+def test_proctex_gl_material():
+    """proctex 的 GL 层：纹理上传 + 材质接线（无上下文则 SKIP）。"""
+    w = _gl_available()
+    if not w:
+        return
+    from engine.proctex import material_from
+    m = material_from('marble', size=64)
+    assert m.base_tex is not None and m.mr_tex is not None
+    assert m.normal_tex is not None
+    m2 = material_from('circuit', size=64)
+    assert m2.emissive_tex is not None
+    assert m2.emissive != (0.0, 0.0, 0.0)      # 发光贴图不被默认 0 灭杀
+    # 缓存：同图案同尺寸返回同一张纹理
+    m3 = material_from('marble', size=64)
+    assert m3.base_tex is m.base_tex
+    w.close()
+    print('  ok: proctex GL 纹理上传 + Material 接线 + 缓存')
+
+
 # ------------------------------------------------------------------ 跑 --
 def main():
     tests = [
@@ -581,6 +653,7 @@ def main():
         test_frustum_planes, test_spatial_hash,
         test_timeline_interpolations, test_playback,
         test_geometry_normals_and_bounds, test_merge_and_transform,
+        test_advanced_geometry, test_proctex_patterns, test_proctex_gl_material,
         test_gltf_loader,
         test_physics_land_and_slide,
         test_picking_math, test_picking_screen_ray,

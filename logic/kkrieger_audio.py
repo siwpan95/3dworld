@@ -2,10 +2,10 @@
 """kkrieger 配乐（logic 层）：程序化生成的电子乐，纯 Python 离线渲染。
 
 与 .kkrieger 的"音乐也是程序生成"对齐：这里不存任何音频素材，只有一份
-乐谱规则——首次运行渲染成 WAV 缓存（``assets/kkrieger_ost.wav``），之后
+乐谱规则——首次运行渲染成 WAV 缓存（``assets/kkrieger_ost_150s.wav``），之后
 由 :class:`engine.audio.TimelineAudio` 与动画时间轴同步播放。
 
-曲式与动画**共用同一套时间常量**（幕边界/开门时刻/核心脉冲周期），
+曲式与动画**共用同一套时间常量**（幕边界/开门时刻/核心脉冲周期/两次爆发），
 所以音画同步是"编译期"对齐，不是运行时对时：
 
 ==== ========== =========================================================
@@ -16,12 +16,15 @@
 三   48–72      强度顶点：琶音升八度、16 分镲、双音警报、核心亚低频脉冲
                 （周期 6s，与纪念碑核心的视觉脉冲同相）
 四   72–96      拆解：鼓/贝斯/琶音依次退出，灯带熄灭的"哒"声，留 pad
-五   96–120     心跳 → 高速突入（99 起全开）→ 114 起噪音上升 → 117.5
-                核心爆发（低频坠落 + 噪声爆闪）→ 尾音衰减归寂
+五   96–118     心跳 → 高速突入（99 起全开）→ 114 起噪音上升 → 117.5
+                核心爆发（低频坠落 + 噪声爆闪）→ 白闪尾音
+六   118–150    圣殿：木琴旋律 + 稀疏鼓点渐入（126 起）→ 136 点火 riser
+                → 141.5 反应堆爆发（二次低频坠落）→ 142–147 pad 余晖
+                → 148 后渐寂（与开头静默衔接成环）
 ==== ========== =========================================================
 
-技术约束：纯 Python 无 numpy，单声道 32000Hz；约 1.8 万个音符事件、
-两千万次采样运算，首帧渲染约 20~30 秒（一次性，之后走缓存）。
+技术约束：纯 Python 无 numpy，单声道 32000Hz；约 2.2 万个音符事件、
+两千五百万次采样运算，首帧渲染约 25~35 秒（一次性，之后走缓存）。
 """
 import os
 
@@ -41,8 +44,9 @@ CHORDS = (
 PENTA = (220.00, 261.63, 293.66, 329.63, 392.00, 440.00)
 
 # ---- 与动画共享的同步点（logic.kkrieger 的常量，导入而非复写）----
-from logic.kkrieger import A2, A3, A4, A5, DURATION          # noqa: E402
-from logic.kkrieger import DOOR_OPEN_T, V_DOOR_OPEN_T        # noqa: E402
+from logic.kkrieger import A2, A3, A4, A5, A6, DURATION        # noqa: E402
+from logic.kkrieger import DOOR_OPEN_T, V_DOOR_OPEN_T          # noqa: E402
+from logic.kkrieger import K2_BOOM_T                           # noqa: E402
 
 BOOM_T = 117.5                    # 核心爆发（音频与画面同一时刻）
 SPARK_T0 = 114.0                  # 碎片飞散（ riser 与爆发之间）
@@ -57,12 +61,15 @@ def build_ost(path, duration=DURATION, rate=32000):
     # ---- Pad 和弦铺底：每小节三音，长音包络，低通闷化 ----
     for b in range(nbars):
         t0 = b * BAR
-        if 92.0 <= t0 < 96.0 or t0 >= 117.0:      # 撤离末留白 / 爆发后归寂
+        # 撤离末留白 / 爆发尾寂（118–121 留给白闪与圣殿开门）/ 尾声渐寂
+        if 92.0 <= t0 < 96.0 or 117.5 <= t0 < 121.0 or t0 >= 148.0:
             continue
         root, semi = CHORDS[b % 4]
         for k, s in enumerate(semi):
             f = root * 2 ** (s / 12) * 2.0        # 抬一个八度进 pad 音区
             amp = 0.050 if k else 0.065
+            if t0 >= A6:                          # 圣殿段：pad 更空更轻
+                amp *= 0.8
             tr.tone(t0, BAR + 0.4, f, wave='saw', amp=amp,
                     attack=0.35, release=0.55, lp=0.06)
 
@@ -161,12 +168,66 @@ def build_ost(path, duration=DURATION, rate=32000):
     tr.tone(118.2, 1.8, 30.0, 24.0, wave='sine', amp=0.30,
             attack=0.05, release=0.9)
 
+    # ---- 第六幕：圣殿 ----
+    # 木琴旋律：三角波短音，五声音阶漫游（121–136，稀疏，空灵）
+    melody = (0, 2, 4, 2, 5, 4, 2, 0, 1, 3, 5, 3, 4, 3, 1, 0)
+    for k, deg in enumerate(melody):
+        t0 = 121.0 + k * BEAT
+        f = PENTA[deg] * 2.0
+        tr.tone(t0, 0.42, f, wave='tri', amp=0.085,
+                attack=0.004, release=0.30, lp=0.55)
+        tr.tone(t0 + 0.02, 0.30, f * 0.5, wave='sine', amp=0.05,
+                attack=0.004, release=0.25)
+    # 稀疏鼓点渐入（126 起）：心跳式双击，141.4 前停
+    t = 126.0
+    while t < 141.4:
+        tr.tone(t, 0.13, 130.0, 44.0, wave='sine', amp=0.26,
+                attack=0.001, release=0.05)
+        tr.tone(t + BEAT / 2, 0.11, 110.0, 42.0, wave='sine', amp=0.14,
+                attack=0.001, release=0.05)
+        t += BEAT * 2
+    # 圣殿贝斯：根音长八分（126–141.5）
+    t = 126.0
+    step = 0
+    while t < 141.5:
+        if step % 2 == 0:
+            root, _ = CHORDS[int(t / BAR) % 4]
+            tr.tone(t, 0.45, root * 2.0, wave='square', amp=0.10, duty=0.3,
+                    attack=0.01, release=0.08, lp=0.18)
+        t += BEAT / 2
+        step += 1
+    # 点火 riser（136–141.3）：与反应堆 glow 爬升同窗口
+    tr.noise(136.0, 5.3, amp=0.24, lp=0.42, seed=77)
+    tr.tone(136.0, 5.3, 165.0, 1568.0, wave='saw', amp=0.11,
+            attack=1.8, release=0.05, lp=0.3)
+    # 种子收拢的"献祭"三连音（与 seed 收敛窗口同步）
+    for k in range(3):
+        tr.tone(137.5 + k * 0.75, 0.18, 1320.0 - k * 220.0, wave='tri',
+                amp=0.09, attack=0.003, release=0.10)
+    # 二次爆发：反应堆点火（141.5，与 K2_BOOM_T 同刻）
+    tr.tone(K2_BOOM_T, 1.2, 140.0, 26.0, wave='sine', amp=0.90,
+            attack=0.002, release=0.40)
+    tr.noise(K2_BOOM_T, 1.8, amp=0.50, decay=2.5, lp=0.15, seed=124)
+    tr.tone(K2_BOOM_T + 0.1, 0.5, 1108.0, wave='square', amp=0.10, duty=0.3,
+            attack=0.001, release=0.25, lp=0.5)
+    tr.tone(142.0, 2.2, 32.0, 22.0, wave='sine', amp=0.32,
+            attack=0.06, release=1.0)
+    # 尾声余晖：传送回开场高空的长音渐消（144–147.5）
+    tr.tone(144.0, 3.5, PENTA[0], wave='sine', amp=0.10,
+            attack=0.8, release=2.2, lp=0.10)
+    tr.tone(144.5, 3.0, PENTA[0] * 1.5, wave='sine', amp=0.06,
+            attack=0.8, release=2.0, lp=0.12)
+
     return render_wav(tr, path)
 
 
 def ensure_ost(path=None, duration=DURATION, force=False):
-    """拿到配乐 WAV：有缓存直接用，缺失/强制时现场渲染（打印进度）。"""
-    path = path or os.path.join('assets', 'kkrieger_ost.wav')
+    """拿到配乐 WAV：有缓存直接用，缺失/强制时现场渲染（打印进度）。
+
+    文件名带时长后缀——时长从 120s 改到 150s 之后，不带时长的旧缓存
+    会被当成现成文件直接播（音画错位），带后缀就不会踩到。
+    """
+    path = path or os.path.join('assets', f'kkrieger_ost_{int(duration)}s.wav')
     if os.path.exists(path) and not force:
         return path
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)

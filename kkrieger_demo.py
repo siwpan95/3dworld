@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-""".kkrieger 致敬 Demo 入口：程序化科幻走廊漫游（120s 五幕，含程序化配乐）。
+""".kkrieger 致敬 Demo 入口：程序化科幻走廊漫游（150s 六幕，含程序化配乐）。
 
 用法：
   python kkrieger_demo.py             正常运行（SPACE 暂停 / R 重播 / N,P 切幕 / M 静音）
@@ -14,6 +14,8 @@
   101.8s 突入：第五幕高速穿越（数据流光带跑马、舱门速开）
   113.0s 收拢：无人机群收拢环绕纪念碑（爆发前兆）
   117.7s 爆发：核心白闪 + 能量束爆亮 + 碎片飞散
+  125.5s 圣殿：白闪传送后环绕环面结反应堆（第六幕，凹槽柱环+悬浮种子）
+  140.9s 点火：反应堆过载峰值（二次爆发前 0.6s）
 """
 import os
 import sys
@@ -30,6 +32,8 @@ SHOTS = (
     (101.8, os.path.join('docs', 'kkrieger_sprint.png')),
     (113.0, os.path.join('docs', 'kkrieger_converge.png')),
     (117.7, os.path.join('docs', 'kkrieger_flash.png')),
+    (125.5, os.path.join('docs', 'kkrieger_sanctum.png')),
+    (140.9, os.path.join('docs', 'kkrieger_ignition.png')),
 )
 
 

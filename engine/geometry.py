@@ -16,6 +16,7 @@ from engine.mathkit import mat4_mul, mat4_inverse, normal_matrix
 __all__ = [
     'MeshData', 'box', 'cube', 'sphere', 'plane', 'cylinder', 'torus',
     'ground_grid', 'fullscreen_quad', 'merge_meshes',
+    'lathe', 'torus_knot', 'tube',
 ]
 
 
@@ -407,3 +408,260 @@ def merge_meshes(meshes):
     for m in meshes:
         out.merge(m)
     return out
+
+
+# ------------------------------------------------------------ 高级建模 --
+def lathe(profile, segments=24, closed_top=False, closed_bottom=False,
+          color=None, name='lathe'):
+    """旋转体（车床曲面）：把 2D 轮廓 ``(r, y)`` 列表绕 Y 轴旋转一周。
+
+    这是"盒子拼装"之外的第一种真正的曲面建模——花瓶、凹槽柱、涡轮壳、
+    卵形体都是一条轮廓线的事。法线解析计算：轮廓切线 (dr, dy) 旋转后取
+    垂直方向，比 compute_normals 的面平均在棱角处更干净（顶点共享时
+    面平均会把折角磨圆）。
+
+    profile 必须按 y 升序或降序排列；r=0 的端点会退化成极点（顶点重合，
+    与 UV 球同样的固有代价）。``closed_*`` 补一个中心扇形盖。
+    """
+    positions, normals, uvs, indices = [], [], [], []
+    n = len(profile)
+    for s in range(segments + 1):
+        u = s / segments
+        theta = u * 2.0 * math.pi
+        ct, st = math.cos(theta), math.sin(theta)
+        for k, (r, y) in enumerate(profile):
+            positions += [r * ct, y, r * st]
+            # 轮廓切线（沿 k 增大方向），法线 = (dy, -dr) 旋转到该经角
+            k0, k1 = max(0, k - 1), min(n - 1, k + 1)
+            dr = profile[k1][0] - profile[k0][0]
+            dy = profile[k1][1] - profile[k0][1]
+            ln = math.hypot(dr, dy) or 1.0
+            nx, ny = dy / ln, -dr / ln
+            normals += [nx * ct, ny, nx * st]
+            uvs += [u, k / (n - 1)]
+    for s in range(segments):
+        for k in range(n - 1):
+            a = s * n + k
+            b = a + n
+            indices += [a, b, a + 1, a + 1, b, b + 1]
+    md = MeshData(positions, normals, uvs, indices=indices, name=name)
+
+    def _cap(idx_end, sign):
+        base = md.vertex_count
+        md.positions += [0.0, profile[idx_end][1], 0.0]
+        md.normals += [0.0, sign, 0.0]
+        md.uvs += [0.5, 0.5]
+        for s in range(segments + 1):
+            theta = (s / segments) * 2.0 * math.pi
+            r, y = profile[idx_end]
+            md.positions += [math.cos(theta) * r, y, math.sin(theta) * r]
+            md.normals += [0.0, sign, 0.0]
+            md.uvs += [0.5 + 0.5 * math.cos(theta), 0.5 + 0.5 * math.sin(theta)]
+        for s in range(segments):
+            if sign > 0:
+                md.indices += [base, base + 1 + s, base + 2 + s]
+            else:
+                md.indices += [base, base + 2 + s, base + 1 + s]
+
+    if closed_bottom and profile[0][0] > 1e-9:
+        _cap(0, -1.0)
+    if closed_top and profile[-1][0] > 1e-9:
+        _cap(n - 1, 1.0)
+    if color is not None:
+        md.with_color(color)
+    return md
+
+
+def _parallel_transport(points):
+    """折线顶点处的平行传输标架：[(tangent, normal, binormal), ...]。
+
+    沿曲线扫掠管道时用平行传输而不是 Frenet——Frenet 在拐点/直段处
+    法线会翻转或未定义（曲率=0），管道表面出现可憎的接缝扭转。
+    """
+    frames = []
+    # 初始法线：取与首切线最不平行的坐标轴叉乘
+    t0 = _sub(points[1], points[0])
+    t0 = _normalize(t0)
+    axis = (0.0, 1.0, 0.0) if abs(t0[1]) < 0.9 else (1.0, 0.0, 0.0)
+    n = _normalize(_cross(axis, t0))
+    b = _cross(t0, n)
+    frames.append((t0, n, b))
+    for i in range(1, len(points)):
+        t1 = _normalize(_sub(points[min(i + 1, len(points) - 1)],
+                             points[i - 1]))
+        # 把上一标架的法线投影到当前切线的垂直平面（双反射法的简化）
+        n = _sub(n, _scale(t1, _dot(n, t1)))
+        if math.sqrt(_dot(n, n)) < 1e-9:
+            axis = (0.0, 1.0, 0.0) if abs(t1[1]) < 0.9 else (1.0, 0.0, 0.0)
+            n = _normalize(_cross(axis, t1))
+        else:
+            n = _normalize(n)
+        b = _cross(t1, n)
+        frames.append((t1, n, b))
+    return frames
+
+
+def tube(points, radius=0.1, radial=8, color=None, caps=True, name='tube',
+         frames=None):
+    """沿 3D 折线扫掠的管体：导管/线缆/扶手/轨迹可视化。
+
+    截面圆用平行传输标架定向（见 :func:`_parallel_transport`），
+    端点各补一个中心扇形封盖（``caps=False`` 时省略——闭合曲线扫掠的
+    管体首尾环重合，盖子只会藏在管内还可能 z-fighting）。
+    ``frames`` 可外部传入预计算标架（闭合曲线要做和乐角补偿，见
+    :func:`torus_knot`）。
+    """
+    pts = [(p[0], p[1], p[2]) for p in points]
+    if len(pts) < 2:
+        raise ValueError('tube 至少需要两个路径点')
+    frames = frames or _parallel_transport(pts)
+    positions, normals, uvs, indices = [], [], [], []
+    for i, (p, (t, n, b)) in enumerate(zip(pts, frames)):
+        v = i / (len(pts) - 1)
+        for s in range(radial + 1):
+            u = s / radial
+            phi = u * 2.0 * math.pi
+            c, sn = math.cos(phi), math.sin(phi)
+            dx = n[0] * c + b[0] * sn
+            dy = n[1] * c + b[1] * sn
+            dz = n[2] * c + b[2] * sn
+            positions += [p[0] + dx * radius, p[1] + dy * radius,
+                          p[2] + dz * radius]
+            normals += [dx, dy, dz]
+            uvs += [u, v]
+    stride = radial + 1
+    for i in range(len(pts) - 1):
+        for s in range(radial):
+            a = i * stride + s
+            bidx = a + stride
+            indices += [a, bidx, a + 1, a + 1, bidx, bidx + 1]
+    md = MeshData(positions, normals, uvs, indices=indices, name=name)
+
+    def _cap(idx, sign):
+        t, n, b = frames[idx]
+        base = md.vertex_count
+        md.positions += list(pts[idx])
+        md.normals += [t[0] * sign, t[1] * sign, t[2] * sign]
+        md.uvs += [0.5, 0.5]
+        for s in range(radial + 1):
+            phi = (s / radial) * 2.0 * math.pi
+            c, sn = math.cos(phi), math.sin(phi)
+            dx = n[0] * c + b[0] * sn
+            dy = n[1] * c + b[1] * sn
+            dz = n[2] * c + b[2] * sn
+            md.positions += [pts[idx][0] + dx * radius,
+                             pts[idx][1] + dy * radius,
+                             pts[idx][2] + dz * radius]
+            md.normals += [t[0] * sign, t[1] * sign, t[2] * sign]
+            md.uvs += [0.5 + 0.5 * c, 0.5 + 0.5 * sn]
+        for s in range(radial):
+            if sign > 0:
+                md.indices += [base, base + 1 + s, base + 2 + s]
+            else:
+                md.indices += [base, base + 2 + s, base + 1 + s]
+
+    if caps:
+        _cap(0, -1.0)
+        _cap(len(pts) - 1, 1.0)
+    if color is not None:
+        md.with_color(color)
+    return md
+
+
+def _frames_closed(pts):
+    """闭合曲线的扫掠标架（pts 首尾点重合，返回长度 == len(pts)）。
+
+    与开曲线的两点不同：
+    1. 切线用**周期中央差分**——首末点的前向/后向差分会引入一阶误差，
+       闭合处切线跳变 ~14°，接缝直接裂开；
+    2. 平行传输绕一圈后标架差一个**和乐角** φ（曲面 holonomy），
+       把 ``-φ·i/N`` 的渐进旋转匀给沿途标架，末环才能与首环重合。
+    """
+    n_pts = len(pts) - 1                    # 去掉回绕点的独立点数
+    tangents = []
+    for i in range(n_pts):
+        tp = pts[(i + 1) % n_pts]
+        tm = pts[(i - 1) % n_pts]
+        tangents.append(_normalize(_sub(tp, tm)))
+    t0 = tangents[0]
+    axis = (0.0, 1.0, 0.0) if abs(t0[1]) < 0.9 else (1.0, 0.0, 0.0)
+    n = _normalize(_cross(axis, t0))
+    frames = []
+    for i in range(n_pts):
+        t = tangents[i]
+        n = _sub(n, _scale(t, _dot(n, t)))
+        if math.sqrt(_dot(n, n)) < 1e-9:
+            axis = (0.0, 1.0, 0.0) if abs(t[1]) < 0.9 else (1.0, 0.0, 0.0)
+            n = _normalize(_cross(axis, t))
+        else:
+            n = _normalize(n)
+        frames.append((t, n, _cross(t, n)))
+    # 传输一整圈回到起始切线平面，测和乐角
+    n_looped = _sub(frames[-1][1], _scale(t0, _dot(frames[-1][1], t0)))
+    n_looped = _normalize(n_looped)
+    phi = math.atan2(_dot(_cross(frames[0][1], n_looped), t0),
+                     _dot(frames[0][1], n_looped))
+    if abs(phi) > 1e-9:
+        for i in range(n_pts):
+            t, ni, _bi = frames[i]
+            a = -phi * i / n_pts
+            ni = _rotate_about(ni, t, a)
+            frames[i] = (t, ni, _cross(t, ni))
+    frames.append(frames[0])                # 回绕环 == 首环（精确重合）
+    return frames
+
+
+def torus_knot(p=2, q=3, major=1.0, tube_r=0.22, tubular=96, radial=10,
+               color=None, name='torus_knot'):
+    """(p,q) 环面结：绕环面 p 圈穿 q 次的管状结。
+
+    参数曲线 ``r = major*(2+cos(q·t))/3``，z = sin(q·t)·major/3，
+    t ∈ [0, 2πp]。采样**含回绕点**（首尾管环重合 → 曲面闭合，不需要
+    封盖），标架用 :func:`_frames_closed`（周期切线 + 和乐角补偿）——
+    结在空间里反复扭转，正是 Frenet 标架会翻车的场合。
+    """
+    pts = []
+    for i in range(tubular + 1):
+        t = 2.0 * math.pi * p * i / tubular
+        r = major * (2.0 + math.cos(q * t)) / 3.0
+        pts.append((r * math.cos(t),
+                    math.sin(q * t) * major / 3.0,
+                    r * math.sin(t)))
+    md = tube(pts, tube_r, radial, color=color, caps=False, name=name,
+              frames=_frames_closed(pts))
+    md.name = name
+    return md
+
+
+# ---- 向量小工具（几何模块内部用，避免依赖 mathkit 的四元数体系） ----
+def _sub(a, b):
+    return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
+
+
+def _dot(a, b):
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+
+def _scale(a, k):
+    return (a[0] * k, a[1] * k, a[2] * k)
+
+
+def _cross(a, b):
+    return (a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0])
+
+
+def _normalize(a):
+    l = math.sqrt(_dot(a, a)) or 1.0
+    return (a[0] / l, a[1] / l, a[2] / l)
+
+
+def _rotate_about(v, axis, ang):
+    """Rodrigues 旋转：v 绕单位轴 axis 转 ang 弧度。"""
+    c, s = math.cos(ang), math.sin(ang)
+    cr = _cross(axis, v)
+    d = _dot(axis, v)
+    return (v[0] * c + cr[0] * s + axis[0] * d * (1 - c),
+            v[1] * c + cr[1] * s + axis[1] * d * (1 - c),
+            v[2] * c + cr[2] * s + axis[2] * d * (1 - c))

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""kkrieger 致敬 Demo 装配：120s 五幕程序化走廊漫游（含程序化配乐）。
+"""kkrieger 致敬 Demo 装配：150s 六幕程序化走廊漫游（含程序化配乐）。
 
 数据流（单向，沿用 M1~M6 分层约定）：
   clock → PlaybackController.advance（logic）→ Timeline 采样
