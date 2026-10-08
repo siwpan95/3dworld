@@ -136,18 +136,23 @@ class Hud:
 
     def __init__(self, title='', help_text=''):
         from pyglet import shapes
+        from engine.fonts import resolve_cjk_font
+        font_kw = {}
+        _cjk = resolve_cjk_font()             # 显式 CJK 字体（跨平台兜底；见 engine/fonts.py）
+        if _cjk:
+            font_kw['font_name'] = _cjk
         self.batch = pyglet.graphics.Batch()
         self.bar_top = shapes.Rectangle(0, 0, 10, self.BAR_H, color=self.BAR_COLOR,
                                         batch=self.batch)
         self.bar_bottom = shapes.Rectangle(0, 0, 10, self.BAR_H, color=self.BAR_COLOR,
                                            batch=self.batch)
-        self.title = text.Label(title, font_size=15, weight='bold',
+        self.title = text.Label(title, font_size=15, weight='bold', **font_kw,
                                 x=14, y=0, anchor_x='left', anchor_y='center',
                                 color=COL_TITLE, batch=self.batch)
-        self.status = text.Label('', font_size=12,
+        self.status = text.Label('', font_size=12, **font_kw,
                                  x=0, y=0, anchor_x='right', anchor_y='center',
                                  color=COL_STATUS, batch=self.batch)
-        self.help = text.Label(help_text, font_size=12,
+        self.help = text.Label(help_text, font_size=12, **font_kw,
                                x=14, y=0, anchor_x='left', anchor_y='center',
                                color=COL_HELP, batch=self.batch)
         self.visible = True
