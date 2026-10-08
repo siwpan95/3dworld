@@ -57,6 +57,34 @@ docs/                设计文档 + 渲染验证截图
 
 依赖方向：presentation → logic → core，反向禁止。
 
+## engine/ —— 核心引擎（2026-10 抽取）
+
+零业务依赖的可复用引擎层，`core/logic/presentation` 的公共件已下沉至此：
+
+- **渲染**：前向 PBR（金属-粗糙度）+ IBL（程序化天空烘焙：辐照度图 / GGX
+  预过滤 mip 链 / BRDF LUT）+ MRT（HDR 颜色 + 视空间法线/深度）
+- **后处理**：SSAO（半分辨率半球核）→ Bloom（软膝盖阈值 + Karis + 降采样/
+  上采样金字塔）→ 曝光 / ACES / 暗角 / gamma
+- **资源与场景**：glTF 2.0 / GLB 加载（sparse、动画、PBR 材质）、Node 场景图、
+  GPU 实例化（一次 draw call 画 N 个）、视锥剔除（Gribb-Hartmann + p-顶点）
+- **交互与物理**：轨道/第一人称漫游、射线拾取（AABB 粗测 + 三角形精测）、
+  AABB 碰撞 + 重力 + 沿墙滑动
+- **工程化**：性能面板（p1/jank + GPU 计时查询）、场景 JSON 序列化 + 热重载、
+  统一 CLI（`--smoke/--shot/--bench`）
+
+综合演示（把上面全部跑一遍）：
+
+```bat
+python demos/engine_showcase.py            正常运行
+python demos/engine_showcase.py --bench 5  5 秒基准（实测 ~115 fps @720p）
+python demos/engine_showcase.py --shot     抓帧到 docs/ 后关闭
+```
+
+按键：`F2` 性能面板 · `B` Bloom · `O` SSAO · `V` 相机切换 · `1/2/3` 调试视图 ·
+`G` 实例阵列开关 · `K` 保存场景（改 JSON 可热重载） · 点击拾取物体。
+
+设计与踩坑记录见 **docs/引擎设计.md**；引擎测试：`python -m tests.test_engine`。
+
 ## 快速开始（推荐：项目级 venv 隔离）
 
 ```bat
