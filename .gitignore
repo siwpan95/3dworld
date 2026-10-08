@@ -16,3 +16,6 @@ dist/
 # 系统文件
 Thumbs.db
 .DS_Store
+
+# 离线录制的视频产物（体积大，不入库）
+recordings/

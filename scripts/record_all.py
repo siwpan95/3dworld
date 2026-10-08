@@ -1,0 +1,246 @@
+# -*- coding: utf-8 -*-
+"""离线录制所有动画为独立 MP4（确定性时间步进，不受实时帧率影响）。
+
+与实时运行的差别：不开 pyglet 主循环，而是手动推进每个动画的时间轴——
+每帧固定 ``dt = 1/fps``，调 ``update(dt)`` 再调绘制入口，然后 glReadPixels
+把 RGBA 帧直接喂给 ffmpeg 的 rawvideo 管道。这样：
+
+- 帧序号与动画时间严格一一对应，慢机器也不会丢帧/跳帧；
+- 每个动画录满自己的完整循环时长（五幕 48s / kkrieger 96s / 各 demo 的
+  DURATION），输出 ``recordings/<名字>_<时长>s.mp4``。
+
+用法（项目根目录）::
+
+    python scripts/record_all.py                     全部 13 个动画
+    python scripts/record_all.py --only main,kkrieger 只录指定的
+    python scripts/record_all.py --list              列出录制计划
+    python scripts/record_all.py --dur-override 3 --only water_waves
+                                                     短录一段（调试用）
+
+ffmpeg 查找顺序：PATH -> 常见安装位置 -> 报错说明。录制是逐帧离屏回读，
+比实时慢（约 25~45ms/帧），全程预计 10 分钟上下。
+"""
+import argparse
+import ctypes
+import importlib.util
+import os
+import shutil
+import subprocess
+import sys
+import time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+DEMOS_DIR = os.path.join(ROOT, 'demos')
+if DEMOS_DIR not in sys.path:
+    sys.path.insert(0, DEMOS_DIR)
+
+OUT_DIR = os.path.join(ROOT, 'recordings')
+DEFAULT_FPS = 30
+DEMO_SIZE = (1280, 720)
+
+# name, 模块路径(相对 ROOT), App 类名(None=自动找 DemoApp 子类), 时长兜底, 尺寸(None=App 自带)
+ENTRIES = [
+    dict(name='main_48s',            mod='main.py',                cls='WorldApp',    dur=48.0, size=None),
+    dict(name='kkrieger_96s',        mod='kkrieger_demo.py',       cls='KKApp',       dur=96.0, size=None),
+    dict(name='boids_45s',           mod='demos/boids.py',         cls=None,          dur=45.0, size=DEMO_SIZE),
+    dict(name='demoscene_tunnel_24s', mod='demos/demoscene_tunnel.py', cls=None,      dur=24.0, size=DEMO_SIZE),
+    dict(name='minecraft_style_48s', mod='demos/minecraft_style.py', cls=None,        dur=48.0, size=DEMO_SIZE),
+    dict(name='particles_gpu_30s',   mod='demos/particles_gpu.py', cls=None,          dur=30.0, size=DEMO_SIZE),
+    dict(name='raymarch_sdf_32s',    mod='demos/raymarch_sdf.py',  cls=None,          dur=32.0, size=DEMO_SIZE),
+    dict(name='shadow_map_30s',      mod='demos/shadow_map.py',    cls=None,          dur=30.0, size=DEMO_SIZE),
+    dict(name='solar_system_60s',    mod='demos/solar_system.py',  cls=None,          dur=60.0, size=DEMO_SIZE),
+    dict(name='terrain_flyover_48s', mod='demos/terrain_flyover.py', cls=None,        dur=48.0, size=DEMO_SIZE),
+    dict(name='voxel_terrain_36s',   mod='demos/voxel_terrain.py', cls=None,          dur=36.0, size=DEMO_SIZE),
+    dict(name='water_waves_40s',     mod='demos/water_waves.py',   cls=None,          dur=40.0, size=DEMO_SIZE),
+    dict(name='engine_showcase_24s', mod='demos/engine_showcase.py', cls='ShowcaseApp', dur=24.0, size=DEMO_SIZE),
+]
+
+FFMPEG_CANDIDATES = [
+    r'D:\private-radio-stations\apps\video\ffmpeg\ffmpeg.exe',
+    r'D:\musickit\radio\ffmpeg\ffmpeg.exe',
+    r'D:\musickit\remix\bin\ffmpeg.exe',
+]
+
+
+def ffmpeg_exe():
+    p = shutil.which('ffmpeg')
+    if p:
+        return p
+    for c in FFMPEG_CANDIDATES:
+        if os.path.exists(c):
+            return c
+    raise SystemExit('ffmpeg 未找到：请把它加入 PATH 或改脚本里的 FFMPEG_CANDIDATES')
+
+
+def import_module(rel_path, name):
+    """按文件路径导入模块（demos/ 与 ROOT 都塞进 sys.path）。"""
+    spec = importlib.util.spec_from_file_location(f'_rec_{name}', os.path.join(ROOT, rel_path))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def find_app_class(mod, cls_name):
+    """取 App 类：显式指定优先，否则找 demos/_harness.DemoApp 的子类。"""
+    import inspect
+    if cls_name:
+        return getattr(mod, cls_name)
+    from _harness import DemoApp
+    for _, obj in vars(mod).items():
+        if inspect.isclass(obj) and issubclass(obj, DemoApp) and obj is not DemoApp:
+            return obj
+    raise SystemExit(f'{mod.__name__}: 未找到 DemoApp 子类')
+
+
+def build_app(entry):
+    """按入口构造 App 实例（三类宿主：harness DemoApp / engine EngineApp / presentation 裸 App）。"""
+    from _harness import DemoApp, parse_args as harness_args
+    from engine.app import EngineApp, parse_args as engine_args
+
+    mod = import_module(entry['mod'], entry['name'])
+    cls = find_app_class(mod, entry['cls'])
+    w, h = entry['size'] or (None, None)
+
+    if issubclass(cls, DemoApp):
+        argv = ['--size', f'{w}x{h}', '--fps', '60']
+        app = cls(w, h, args=harness_args(argv))
+    elif issubclass(cls, EngineApp):
+        argv = ['--size', f'{w}x{h}', '--fps', '60']
+        app = cls(w, h, args=engine_args(argv))
+    else:
+        # presentation 层裸 App（WorldApp/KKApp）：固定 960x540，无 args 参数
+        app = cls() if entry['cls'] == 'WorldApp' else cls(shots=None)
+    # 关掉截图/自动关闭逻辑（SHOTS 越过时刻会抓帧并 schedule close）
+    if hasattr(app, '_capture_due'):
+        app._capture_due = lambda: None
+    if hasattr(app, 'shots'):
+        app.shots = []
+    return app, cls
+
+
+def app_duration(app, cls, fallback):
+    for src in (getattr(app, 'timeline', None), cls):
+        d = getattr(src, 'duration', None)
+        if d and d > 0:
+            return float(d)
+        d = getattr(src, 'DURATION', None)
+        if d and d > 0:
+            return float(d)
+    return float(fallback)
+
+
+def record(entry, out_dir, fps, crf, dur_override):
+    from pyglet.gl import GL_RGBA, GL_UNSIGNED_BYTE, glFinish, glReadPixels
+
+    app, cls = build_app(entry)
+    try:
+        window = app.window
+        window.switch_to()
+        # HUD 帧率显示：离线录制不走实时 tick，手动把 EMA 值设为目标帧率
+        for attr in ('fps', '_fps'):
+            if hasattr(app, attr):
+                setattr(app, attr, float(fps))
+        w, h = window.width, window.height
+        dur = dur_override or app_duration(app, cls, entry['dur'])
+        n_frames = int(round(dur * fps))
+        out_path = os.path.join(out_dir, f"{entry['name']}.mp4")
+
+        cmd = [ffmpeg_exe(), '-y', '-hide_banner', '-loglevel', 'error',
+               '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', f'{w}x{h}',
+               '-r', str(fps), '-i', '-',
+               '-vf', 'vflip',                     # GL 帧自下而上，翻回来
+               '-c:v', 'libx264', '-preset', 'veryfast', '-crf', str(crf),
+               '-pix_fmt', 'yuv420p', '-movflags', '+faststart', out_path]
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+
+        dt = 1.0 / fps
+        buf = (ctypes.c_ubyte * (w * h * 4))()
+        t0 = time.time()
+        is_bare = not hasattr(app, '_capture_due')   # WorldApp/KKApp 走裸驱动
+        for i in range(n_frames):
+            t = i * dt
+            if is_bare:
+                app.update(dt)                       # 内部推进 playback 播头
+            else:
+                app.time = t
+                if getattr(app, 'DURATION', None):
+                    app.time = t % app.DURATION
+                app.update(dt)
+            app._on_draw()
+            glFinish()
+            glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, buf)
+            proc.stdin.write(bytes(buf))
+            if (i + 1) % (fps * 5) == 0:
+                rate = (i + 1) / (time.time() - t0)
+                print(f'  [{entry["name"]}] frame {i + 1}/{n_frames} '
+                      f'({rate:.1f} fps)', flush=True)
+        proc.stdin.close()
+        proc.wait()
+        if proc.returncode != 0:
+            raise RuntimeError(f'ffmpeg 退出码 {proc.returncode}')
+        size_mb = os.path.getsize(out_path) / 1048576
+        print(f'[ok] {entry["name"]}: {n_frames} 帧 / {dur:.0f}s / '
+              f'{w}x{h} / {size_mb:.1f}MB -> {out_path}', flush=True)
+        return out_path, n_frames
+    finally:
+        try:
+            app.window.close()
+        except Exception:
+            pass
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--only', default='', help='逗号分隔的名字过滤（前缀匹配）')
+    ap.add_argument('--fps', type=int, default=DEFAULT_FPS)
+    ap.add_argument('--crf', type=int, default=20, help='x264 质量（越小越清晰）')
+    ap.add_argument('--out', default=OUT_DIR)
+    ap.add_argument('--dur-override', type=float, default=None,
+                    help='覆盖时长（秒），调试短录用')
+    ap.add_argument('--list', action='store_true')
+    args = ap.parse_args()
+
+    if args.list:
+        for e in ENTRIES:
+            print(f"{e['name']:<24} {e['mod']:<28} dur={e['dur']:.0f}s "
+                  f"size={e['size'] or 'native(960x540)'}")
+        return 0
+
+    entries = ENTRIES
+    if args.only:
+        keys = [k.strip() for k in args.only.split(',') if k.strip()]
+        entries = [e for e in entries if any(k in e['name'] for k in keys)]
+    if not entries:
+        raise SystemExit('没有匹配的录制目标')
+
+    os.makedirs(args.out, exist_ok=True)
+    print(f'recording {len(entries)} animations @ {args.fps}fps -> {args.out}')
+    results, failures = [], []
+    for e in entries:
+        print(f'--- {e["name"]} ---', flush=True)
+        try:
+            path, n = record(e, args.out, args.fps, args.crf, args.dur_override)
+            if n <= 0 or os.path.getsize(path) < 50 * 1024:
+                failures.append(f'{e["name"]}: 产物过小')
+            else:
+                results.append(path)
+        except Exception as exc:
+            import traceback
+            traceback.print_exc()
+            failures.append(f'{e["name"]}: {exc}')
+    print('-' * 72)
+    for p in results:
+        print('  [ok]', p)
+    for f in failures:
+        print('  [FAIL]', f)
+    if failures:
+        print(f'RECORD_FAILED ({len(failures)})')
+        return 1
+    print(f'ALL_RECORDED ({len(results)} files)')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
