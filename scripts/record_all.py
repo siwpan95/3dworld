@@ -57,6 +57,9 @@ ENTRIES = [
     dict(name='water_waves_40s',     mod='demos/water_waves.py',   cls=None,          dur=40.0, size=DEMO_SIZE),
     dict(name='engine_showcase_24s', mod='demos/engine_showcase.py', cls='ShowcaseApp', dur=24.0, size=DEMO_SIZE),
     dict(name='material_lab_30s',    mod='demos/material_lab.py',  cls='MaterialLabApp', dur=30.0, size=DEMO_SIZE),
+    dict(name='nordic_saga_60s',     mod='demos/nordic_saga.py',  cls='NordicSagaApp', dur=60.0, size=DEMO_SIZE,
+         audio='assets/nordic_saga_ost_60s.wav',
+         ost_fn='logic.nordic_audio:ensure_ost'),  # 北欧配乐（通用 ost 钩子）
 ]
 
 FFMPEG_CANDIDATES = [
@@ -184,10 +187,13 @@ def record(entry, out_dir, fps, crf, dur_override):
         proc.wait()
         if proc.returncode != 0:
             raise RuntimeError(f'ffmpeg 退出码 {proc.returncode}')
-        # 可选：把程序化配乐混进视频（kkrieger：OST 与时间轴同长，-shortest 对齐）
+        # 可选：把程序化配乐混进视频（OST 与时间轴同长，-shortest 对齐）。
+        # ost_fn 形如 'logic.xxx_audio:ensure_ost'；缺省沿用 kkrieger 的。
         if entry.get('audio'):
-            from logic.kkrieger_audio import ensure_ost
-            wav = ensure_ost()
+            spec = entry.get('ost_fn', 'logic.kkrieger_audio:ensure_ost')
+            mod_name, fn_name = spec.split(':')
+            ensure = getattr(importlib.import_module(mod_name), fn_name)
+            wav = ensure()
             muxed = out_path + '.mux.mp4'
             subprocess.run([ffmpeg_exe(), '-y', '-loglevel', 'error',
                             '-i', out_path, '-i', wav,

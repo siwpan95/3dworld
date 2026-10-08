@@ -22,3 +22,8 @@ recordings/
 
 # 程序化配乐缓存（可由 logic/kkrieger_audio.py 再生）
 assets/*.wav
+
+# 调试中间产物（nordic saga 排查期）
+docs/dbg_*.png
+docs/nordic_verify_*.png
+docs/_texcheck/

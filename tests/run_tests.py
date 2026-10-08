@@ -648,6 +648,123 @@ def test_kkrieger_timeline():
           'lights, act-V finale, act-VI sanctum)')
 
 
+def test_nordic_saga_timeline():
+    """诺德之境 60s 五幕：相机/龙轨迹/符文/周期件全链路（无窗口）。"""
+    from logic import nordic_saga as ns
+    from core.nordic_scene import DRAGON_HOVER
+    assert ns.DURATION == 60.0
+    assert len(ns.ACTS) == 5 and ns.ACTS[0][0] == 0.0 and ns.ACTS[4][0] == 50.0
+    # 相机循环闭合：t=0 与 t=60 完全一致
+    e0, g0 = ns.camera_pose(0.0)
+    e1, g1 = ns.camera_pose(60.0)
+    gap = (max(abs(a - b) for a, b in zip((e0.x, e0.y, e0.z),
+                                          (e1.x, e1.y, e1.z)))
+           + max(abs(a - b) for a, b in zip((g0.x, g0.y, g0.z),
+                                            (g1.x, g1.y, g1.z))))
+    assert gap < 1e-9, gap
+    # 周期性部件闭合（周期整除 60）
+    for f, name in ((ns.campfire_scale, 'campfire'), (ns.rune_beam, 'beam'),
+                    (ns.stars_bright, 'stars'), (ns.window_bright, 'win'),
+                    (ns.moon_bright, 'moon'), (ns.fire_light, 'firelight')):
+        assert abs(f(0.0) - f(60.0)) < 1e-9, name
+    for k in range(4):
+        a, b = ns.aurora_pose(k, 0.0), ns.aurora_pose(k, 60.0)
+        assert abs(a['bright'] - b['bright']) < 1e-9
+    # 龙：入场前/出场后都在画面外（距场景中心 > 55m）
+    for t in (0.0, 10.0, 20.0, 60.0):
+        p = ns.dragon_position(t)
+        d = math.sqrt(p.x ** 2 + (p.z + 40.0) ** 2)
+        assert d > 55.0, (t, p)
+    # 悬停段：对准场景里的悬停位、朝向龙语墙（-z）
+    h = ns.dragon_heading(43.5)
+    assert h[2] < -0.9, h
+    p = ns.dragon_position(43.5)
+    for a, b in zip((p.x, p.y, p.z), DRAGON_HOVER):
+        assert abs(a - b) < 0.6, (p, DRAGON_HOVER)
+    # 翼扑动：相位在首尾整圈（sin 归零）
+    assert abs(ns.wing_angle(0.0)) < 1e-9 and abs(ns.wing_angle(60.0)) < 1e-9
+    # 龙淡入淡出：首尾完全透明、中段实体
+    assert ns.dragon_alpha(0.0) == 0.0 and ns.dragon_alpha(60.0) == 0.0
+    assert ns.dragon_alpha(35.0) == 1.0
+    # 龙焰窗口（与 FIRE_T0/T1 一致）
+    assert ns.fire_scale(40.0) < 0.1
+    assert ns.fire_scale(46.5) > 1.0
+    assert ns.fire_scale(52.0) < 0.1
+    # 符文：喷火前不亮 → 点亮后强 → 黎明熄灭 → 尾帧归零
+    assert ns.rune_glow(30.0) == 0.0
+    assert ns.rune_glow(50.0) > 1.8
+    assert ns.rune_glow(54.0) > 1.5
+    assert ns.rune_glow(58.5) < 1.0
+    assert ns.rune_glow(60.0) < 1e-6
+    # 光柱随点亮升起、黎明前归零
+    assert ns.rune_beam(40.0) == 0.0
+    assert ns.rune_beam(50.0) > 0.9
+    assert ns.rune_beam(60.0) < 1e-6
+    print('  ok: nordic saga 60s timeline (loop-exact cam, dragon hover/takeoff, '
+          'rune ignition, periodic parts)')
+
+
+def test_nordic_camera_path_clearance():
+    """诺德之境镜头净空：不穿地、不撞龙语墙/石柱/拱门，且不贴脸巨龙。"""
+    from logic import nordic_saga as ns
+    from core.nordic_scene import COL_ROWS, COL_X
+    t = 0.0
+    while t <= ns.DURATION:
+        eye, _ = ns.camera_pose(t)
+        assert eye.y > 1.0, (t, eye.y)               # 掠地不得入地
+        # 龙语墙矩形（z=-43，9.4×5.4×1.4）不得穿入
+        if abs(eye.z + 43.0) < 1.3:
+            assert not (abs(eye.x) < 5.6 and eye.y < 6.4), (t, eye)
+        # 石柱两排：水平距离 > 1.0
+        for z0, _h in COL_ROWS:
+            if abs(eye.z - z0) < 2.6:
+                for sx in (-1.0, 1.0):
+                    assert math.hypot(eye.x - sx * COL_X, eye.z - z0) > 1.0, (t, eye)
+        # 左拱门（x=-11.6, z=-30）：过门时在门洞中间
+        if abs(eye.z + 30.0) < 1.2 and abs(eye.x + 11.6) < 3.5:
+            assert abs(eye.x + 11.6) < 1.5, (t, eye)
+        # 巨龙：相机与龙保持距离（防"贴脸翼膜糊满屏"）
+        dp = ns.dragon_position(t)
+        d = math.sqrt((eye.x - dp.x) ** 2 + (eye.y - dp.y) ** 2
+                      + (eye.z - dp.z) ** 2)
+        assert d > 4.0, (t, tuple(eye), tuple(dp))
+        t += 0.2
+    print('  ok: nordic camera clears ground, word wall, columns and dragon')
+
+
+def test_nordic_scene_geometry():
+    """诺德之境静态几何：无窗口构建、UV 完整、规模合理（回归 merge 丢 UV）。"""
+    from core import nordic_scene as nsc
+    acc = {}
+    nsc._add_ground(acc)
+    nsc._add_mountains(acc)
+    nsc._add_forest(acc)
+    nsc._add_longhouse(acc)
+    nsc._add_hut(acc)
+    nsc._add_ruins(acc)
+    nsc._add_campfire(acc)
+    nsc._add_details(acc)
+    from engine.geometry import merge_meshes
+    total = 0
+    tris = 0
+    for key, mds in acc.items():
+        for md in mds:
+            assert md.vertex_count > 0, key
+            assert len(md.uvs) >= md.vertex_count * 2, (key, md.name)
+            total += md.vertex_count
+            idx = md.indices if md.indices else range(md.vertex_count)
+            tris += len(list(idx)) // 3
+        m = merge_meshes(mds)                        # 合批后 UV 不得丢
+        assert len(m.uvs) == m.vertex_count * 2, key
+    assert 10000 < total < 400000, total
+    # 龙的部件可构建
+    body = nsc._dragon_body_mesh()
+    wing = nsc._dragon_wing_mesh()
+    assert body.triangle_count > 100 and wing.triangle_count > 8
+    print(f'  ok: nordic scene geometry ({total} verts / {tris} tris, '
+          f'{len(acc)} materials, UV kept through merge)')
+
+
 def test_kkrieger_camera_path_clearance():
     """镜头不得穿进场景实体：抽查机位与立柱/门框/地面/顶棚的间距。
 
@@ -934,4 +1051,7 @@ if __name__ == '__main__':
     print('test_blocks_camera_and_mobs');         test_blocks_camera_and_mobs()
     print('test_kkrieger_timeline');              test_kkrieger_timeline()
     print('test_kkrieger_camera_path_clearance'); test_kkrieger_camera_path_clearance()
+    print('test_nordic_saga_timeline');           test_nordic_saga_timeline()
+    print('test_nordic_camera_path_clearance');   test_nordic_camera_path_clearance()
+    print('test_nordic_scene_geometry');          test_nordic_scene_geometry()
     print('ALL_LOGIC_TESTS_PASSED')

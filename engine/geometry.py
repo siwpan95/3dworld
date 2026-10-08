@@ -403,10 +403,35 @@ def fullscreen_quad():
 
 
 def merge_meshes(meshes):
-    """把一批网格合并成一个（静态合批：N 次 draw call 变 1 次）。"""
-    out = MeshData([], [], [], [], [], [], name='merged')
+    """把一批网格合并成一个（静态合批：N 次 draw call 变 1 次）。
+
+    注意（踩坑记录）：不能用一个"空 MeshData"作累加器——``MeshData.merge``
+    对属性是"两边都有才保留"，空累加器的 uvs/normals 为空 ⇒ 整个合并结果
+    的 UV/法线列被静默丢弃。后果是"合并后的网格贴图全失效、变成单点采样
+    的纯色"（雪原/石墙全成了光板，排查了很久）。这里改为逐属性显式拼接，
+    并在缺失时本地补齐（缺法线先算、缺 UV 补 0），保证列宽一致。
+    """
+    meshes = list(meshes)
+    if not meshes:
+        return MeshData([], [], [], name='merged')
+    out = MeshData([], [], [], name='merged')
+    all_colors = all(m.colors for m in meshes)
+    all_tangents = all(m.tangents for m in meshes)
     for m in meshes:
-        out.merge(m)
+        mm = m.to_non_indexed() if m.indices else m
+        n = mm.vertex_count
+        if not mm.normals:
+            mm.compute_normals()
+        if not mm.uvs:
+            mm.uvs = [0.0] * (n * 2)
+        out.positions += mm.positions
+        out.normals += mm.normals
+        out.uvs += mm.uvs
+        if all_colors:
+            out.colors += mm.colors
+        if all_tangents:
+            out.tangents += mm.tangents
+    out.name = meshes[0].name
     return out
 
 
@@ -508,16 +533,25 @@ def tube(points, radius=0.1, radial=8, color=None, caps=True, name='tube',
     截面圆用平行传输标架定向（见 :func:`_parallel_transport`），
     端点各补一个中心扇形封盖（``caps=False`` 时省略——闭合曲线扫掠的
     管体首尾环重合，盖子只会藏在管内还可能 z-fighting）。
+    ``radius`` 可以是标量（等粗）或长度 == len(points) 的序列（渐变粗细，
+    做"脖子细-躯干粗-尾尖细"这类有机体）。
     ``frames`` 可外部传入预计算标架（闭合曲线要做和乐角补偿，见
     :func:`torus_knot`）。
     """
     pts = [(p[0], p[1], p[2]) for p in points]
     if len(pts) < 2:
         raise ValueError('tube 至少需要两个路径点')
+    if isinstance(radius, (list, tuple)):
+        if len(radius) != len(pts):
+            raise ValueError('radius 序列长度必须与路径点数一致')
+        radii = [float(r) for r in radius]
+    else:
+        radii = None
     frames = frames or _parallel_transport(pts)
     positions, normals, uvs, indices = [], [], [], []
     for i, (p, (t, n, b)) in enumerate(zip(pts, frames)):
         v = i / (len(pts) - 1)
+        ri = radii[i] if radii else radius
         for s in range(radial + 1):
             u = s / radial
             phi = u * 2.0 * math.pi
@@ -525,8 +559,7 @@ def tube(points, radius=0.1, radial=8, color=None, caps=True, name='tube',
             dx = n[0] * c + b[0] * sn
             dy = n[1] * c + b[1] * sn
             dz = n[2] * c + b[2] * sn
-            positions += [p[0] + dx * radius, p[1] + dy * radius,
-                          p[2] + dz * radius]
+            positions += [p[0] + dx * ri, p[1] + dy * ri, p[2] + dz * ri]
             normals += [dx, dy, dz]
             uvs += [u, v]
     stride = radial + 1
@@ -539,6 +572,7 @@ def tube(points, radius=0.1, radial=8, color=None, caps=True, name='tube',
 
     def _cap(idx, sign):
         t, n, b = frames[idx]
+        ri = radii[idx] if radii else radius
         base = md.vertex_count
         md.positions += list(pts[idx])
         md.normals += [t[0] * sign, t[1] * sign, t[2] * sign]
@@ -549,9 +583,9 @@ def tube(points, radius=0.1, radial=8, color=None, caps=True, name='tube',
             dx = n[0] * c + b[0] * sn
             dy = n[1] * c + b[1] * sn
             dz = n[2] * c + b[2] * sn
-            md.positions += [pts[idx][0] + dx * radius,
-                             pts[idx][1] + dy * radius,
-                             pts[idx][2] + dz * radius]
+            md.positions += [pts[idx][0] + dx * ri,
+                             pts[idx][1] + dy * ri,
+                             pts[idx][2] + dz * ri]
             md.normals += [t[0] * sign, t[1] * sign, t[2] * sign]
             md.uvs += [0.5 + 0.5 * c, 0.5 + 0.5 * sn]
         for s in range(radial):

@@ -20,7 +20,10 @@ import math
 __all__ = [
     'value_noise', 'fbm', 'height_to_normal',
     'make_marble', 'make_rust_metal', 'make_hex_panel', 'make_circuit',
-    'make_brushed', 'texture', 'material_from', 'PATTERN_CACHE',
+    'make_brushed',
+    'make_wood_planks', 'make_thatch', 'make_rock', 'make_rune_stone',
+    'make_snow', 'make_pine', 'make_dragon_scale',
+    'texture', 'material_from', 'PATTERN_CACHE',
 ]
 
 
@@ -251,10 +254,252 @@ def make_brushed(size=256, seed=5):
                 normal=height_to_normal(h, size, 0.9), size=size)
 
 
+# ------------------------------------------------- 北欧题材（nordic）--
+def make_wood_planks(size=256, seed=6, planks=5):
+    """木板墙：沿 u 拉长的木纹 + v 向板缝，每板独立相位与色调抖动。"""
+    base, mr, h = _blank(size), _blank(size), [0.0] * (size * size)
+    for y in range(size):
+        for x in range(size):
+            u, v = x / size, y / size
+            row = min(planks - 1, int(v * planks))
+            vv = v * planks - row
+            gap = min(vv, 1.0 - vv) < 0.035
+            # 木纹沿 u 拉长：u 低频（cells_u=3）、v 高频（cells_v=30）
+            grain = value_noise(u, v, cells_u=3, cells_v=30, seed=seed + row * 11)
+            fine = value_noise(u, v, cells_u=12, cells_v=110,
+                               seed=seed + row * 17 + 4)
+            k = 0.72 * grain + 0.28 * fine
+            tone = (0.78 + 0.40 * k) * (0.86 + 0.26 * _hash2(row, 3, seed))
+            r, g, b = 0.47 * tone, 0.335 * tone, 0.215 * tone
+            if gap:                                    # 板缝：深色阴影
+                r, g, b = r * 0.30, g * 0.28, b * 0.32
+            _px(base, size, x, y, r * 255, g * 255, b * 255)
+            _px(mr, size, x, y, 255, 208 - 66 * k, 0)
+            h[y * size + x] = 0.0 if gap else k * 0.55
+    return dict(base=bytes(base), mr=bytes(mr),
+                normal=height_to_normal(h, size, 2.4), size=size)
+
+
+def make_thatch(size=256, seed=7):
+    """茅草屋顶：细密草茎（沿 v 拉长）+ 层叠横带明暗。"""
+    base, mr, h = _blank(size), _blank(size), [0.0] * (size * size)
+    for y in range(size):
+        for x in range(size):
+            u, v = x / size, y / size
+            stem = value_noise(u, v, cells_u=64, cells_v=5, seed=seed)
+            cross = value_noise(u, v, cells_u=9, cells_v=40, seed=seed + 2)
+            layer = int(v * 4)
+            band = 0.80 + 0.20 * (_hash2(layer, 5, seed) * 0.7 + 0.3)
+            wob = 0.055 * math.sin((u * 13.0 + v * 2.3) * math.pi)
+            k = 0.72 * stem + 0.28 * cross + wob
+            tone = (0.50 + 0.32 * k) * band
+            _px(base, size, x, y, (0.62 * tone + 0.07) * 255,
+                (0.485 * tone + 0.055) * 255, (0.25 * tone + 0.03) * 255)
+            _px(mr, size, x, y, 255, 228 - 48 * k, 0)
+            h[y * size + x] = k * 0.9
+    return dict(base=bytes(base), mr=bytes(mr),
+                normal=height_to_normal(h, size, 2.0), size=size)
+
+
+def make_rock(size=256, seed=8):
+    """花岗岩：大块 fBm + 倒折叠裂缝（ridge），冷灰。"""
+    base, mr, h = _blank(size), _blank(size), [0.0] * (size * size)
+    for y in range(size):
+        for x in range(size):
+            u, v = x / size, y / size
+            n = fbm(u, v, 5, cells=7, seed=seed)
+            fold = 1.0 - abs(2.0 * fbm(u, v, 4, cells=13, seed=seed + 5) - 1.0)
+            crack = 1.0 if fold > 0.86 else 0.0
+            g = 96 + 80 * n
+            if crack:
+                g *= 0.42
+            _px(base, size, x, y, g * 1.02, g, g * 0.93)
+            _px(mr, size, x, y, 255, 168 + 58 * n, 0)
+            h[y * size + x] = n * 0.6 + fold * 0.35 - crack * 0.55
+    return dict(base=bytes(base), mr=bytes(mr),
+                normal=height_to_normal(h, size, 3.0), size=size)
+
+
+def make_rune_stone(size=256, seed=9, cols=4, rows=5):
+    """龙语石墙：青灰岩面 + 刻入的龙语字母（emissive 青蓝）。
+
+    字母 = 竖干 + 2~4 条斜划（Dovahzul 锐利折线的简化），用圆笔光栅化。
+    笔画落在确定性的 cols×rows 网格格内（不跨格 ⇒ 平铺无损）。
+    """
+    base, mr, em, h = _blank(size), _blank(size), _blank(size), \
+        [0.0] * (size * size)
+    # 1) 石底：青灰花岗岩
+    for y in range(size):
+        for x in range(size):
+            u, v = x / size, y / size
+            n = fbm(u, v, 5, cells=7, seed=seed)
+            fine = value_noise(u, v, cells_u=80, cells_v=80, seed=seed + 3)
+            g = 90 + 62 * n + 12 * fine
+            _px(base, size, x, y, g * 0.92, g * 0.98, g * 1.10)
+            _px(mr, size, x, y, 255, 172 + 52 * n, 0)
+            h[y * size + x] = n * 0.6 + fine * 0.15
+    # 2) 符文光栅化（圆笔逐点写入；mask 防重复涂黑）
+    drawn = bytearray(size * size)
+
+    def stroke(x0, y0, x1, y1, w):
+        steps = max(1, int(max(abs(x1 - x0), abs(y1 - y0))))
+        for i in range(steps + 1):
+            f = i / steps
+            cx, cy = x0 + (x1 - x0) * f, y0 + (y1 - y0) * f
+            for dy in range(-w, w + 1):
+                for dx in range(-w, w + 1):
+                    if dx * dx + dy * dy > w * w:
+                        continue
+                    px, py = int(cx) + dx, int(cy) + dy
+                    if not (0 <= px < size and 0 <= py < size):
+                        continue
+                    if drawn[py * size + px]:
+                        continue
+                    drawn[py * size + px] = 1
+                    i4 = (py * size + px) * 4
+                    em[i4:i4 + 4] = bytes((90, 215, 255, 255))
+                    for k2 in range(3):                # 刻槽压暗（对比要够狠，
+                        base[i4 + k2] = int(base[i4 + k2] * 0.25)   # 否则远看=平板）
+                    h[py * size + px] = -0.45
+
+    cw, ch = size // cols, size // rows
+    for gy in range(rows):
+        for gx in range(cols):
+            if _hash2(gx, gy, seed + 40) < 0.45:       # 稀疏分布
+                continue
+            ox, oy = gx * cw, gy * ch
+            sx = ox + int(cw * 0.42)
+            y0, y1 = oy + int(ch * 0.16), oy + int(ch * 0.84)
+            stroke(sx, y0, sx, y1, 2)                  # 竖干
+            k = 2 + int(_hash2(gx, gy, seed + 7) * 3)  # 2~4 条斜划
+            for j in range(k):
+                yy = y0 + int((y1 - y0) * (j + 1) / (k + 1))
+                ln = int(cw * (0.20 + 0.30 * _hash2(gx * 3 + j, gy, seed + 11)))
+                sgn = 1 if _hash2(gx + j, gy, seed + 13) > 0.45 else -1
+                stroke(sx, yy, sx + sgn * ln, yy - int(ln * 0.62), 2)
+            if _hash2(gx, gy, seed + 23) > 0.55:       # 更多变体：短横
+                yy = y0 + int((y1 - y0) * (0.35 + 0.3 * _hash2(gx, gy, seed + 31)))
+                stroke(sx, yy, sx + int(cw * 0.26), yy, 2)
+            if _hash2(gx, gy, seed + 37) > 0.8:        # 顶端小三角点
+                stroke(sx + int(cw * 0.14), oy + int(ch * 0.12),
+                       sx + int(cw * 0.2), oy + int(ch * 0.20), 1)
+    return dict(base=bytes(base), mr=bytes(mr), emissive=bytes(em),
+                normal=height_to_normal(h, size, 3.0), size=size)
+
+
+def make_snow(size=256, seed=10):
+    """积雪：雪丘缓坡 + 细颗粒 + 偶发闪点，冷白。"""
+    base, mr, h = _blank(size), _blank(size), [0.0] * (size * size)
+    for y in range(size):
+        for x in range(size):
+            u, v = x / size, y / size
+            dune = fbm(u, v, 3, cells=5, seed=seed)
+            grain = value_noise(u, v, cells_u=110, cells_v=110, seed=seed + 2)
+            sparkle = 1.0 if value_noise(u, v, cells_u=40, cells_v=40,
+                                         seed=seed + 9) > 0.93 else 0.0
+            k = 0.62 * dune + 0.38 * grain
+            b = 222 + 26 * k + 14 * sparkle
+            _px(base, size, x, y, b * 0.965, b * 0.985, b)
+            _px(mr, size, x, y, 255, 172 + 58 * grain, 0)
+            h[y * size + x] = dune * 0.8 + grain * 0.2
+    return dict(base=bytes(base), mr=bytes(mr),
+                normal=height_to_normal(h, size, 1.4), size=size)
+
+
+def make_pine(size=256, seed=11):
+    """针叶：墨绿团块 + 细密短针，带枯黄杂点。"""
+    base, mr, h = _blank(size), _blank(size), [0.0] * (size * size)
+    for y in range(size):
+        for x in range(size):
+            u, v = x / size, y / size
+            clump = fbm(u, v, 4, cells=12, seed=seed)
+            needle = value_noise(u, v, cells_u=96, cells_v=96, seed=seed + 4)
+            dry = value_noise(u, v, cells_u=24, cells_v=24, seed=seed + 8)
+            r0 = 0.055 + 0.15 * clump
+            g0 = 0.165 + 0.24 * clump
+            b0 = 0.085 + 0.11 * clump
+            if dry > 0.88:                            # 枯针
+                r0, g0, b0 = r0 + 0.24, g0 + 0.14, b0 + 0.02
+            f = 0.70 + 0.60 * needle
+            _px(base, size, x, y, r0 * f * 255, g0 * f * 255, b0 * f * 255)
+            _px(mr, size, x, y, 255, 215 - 40 * needle, 0)
+            h[y * size + x] = 0.5 * clump + 0.5 * needle
+    return dict(base=bytes(base), mr=bytes(mr),
+                normal=height_to_normal(h, size, 2.2), size=size)
+
+
+def make_dragon_scale(size=256, seed=12, cols=8):
+    """龙鳞：错位叠瓦圆鳞，深炭绿皮革底，鳞缘微光、瓦缝压暗。"""
+    base, mr, h = _blank(size), _blank(size), [0.0] * (size * size)
+    s = size / cols                                   # 鳞距（列向）
+    rh = s * 0.78                                     # 行距（叠瓦更密）
+    for y in range(size):
+        for x in range(size):
+            u, v = x / size, y / size
+            row = int(y / rh)
+            off = 0.5 * s if row % 2 else 0.0
+            best = 1e9
+            for dc in (-1, 0, 1):                     # 最近鳞心（同行三列）
+                cx = (int((x - off) / s) + dc + 0.5) * s + off
+                cy = (row + 0.5) * rh
+                best = min(best, math.hypot(x - cx, y - cy))
+            rad = s * 0.62
+            n = fbm(u, v, 3, cells=5, seed=seed + 3)
+            if best < rad:
+                inward = best / rad
+                shade = 0.60 + 0.60 * inward          # 鳞心深、鳞缘亮（微凸）
+                if inward > 0.86:
+                    shade *= 0.52                     # 叠瓦缝
+                hval = 0.85 - inward * 0.8
+            else:
+                shade = 0.45 + 0.35 * n               # 露出的皮革底
+                hval = 0.12
+            f = shade * (0.85 + 0.30 * n)
+            r0, g0, b0 = 0.135 + 0.19 * n, 0.150 + 0.21 * n, 0.130 + 0.18 * n
+            _px(base, size, x, y, r0 * f * 255, g0 * f * 255, b0 * f * 255)
+            rough = 150 + 80 * (1.0 - min(1.0, best / rad)) if best < rad else 205
+            _px(mr, size, x, y, 255, rough, 0)
+            h[y * size + x] = hval
+    return dict(base=bytes(base), mr=bytes(mr),
+                normal=height_to_normal(h, size, 2.6), size=size)
+
+
+def make_aurora(size=64, seed=13):
+    """极光渐变带：v 向青绿→蓝→紫的发光渐变，底部亮、顶部暗。
+
+    base 全黑——本体不反光，颜色全靠 emissive 通道（配合 Bloom 出光晕）。
+    贴在"帘幕"状 ribbon 网格上，v=0 在帘幕下沿。
+    """
+    base, mr, em = _blank(size), _blank(size), _blank(size)
+    for y in range(size):
+        for x in range(size):
+            u, v = x / size, y / size
+            if v < 0.45:
+                f = v / 0.45
+                r, g, b = 0.10 + 0.25 * f, 0.95 - 0.25 * f, 0.55 + 0.30 * f
+            else:
+                f = (v - 0.45) / 0.55
+                r, g, b = 0.35 + 0.35 * f, 0.70 - 0.45 * f, 0.85 + 0.10 * f
+            amp = 0.22 + 0.78 * (1.0 - v) ** 1.4    # 顶部保 22% 暗紫：
+            k = 0.85 + 0.30 * value_noise(u, v, cells_u=6, cells_v=3, seed=seed)   # 纯黑上沿会读成"黑布"
+            _px(em, size, x, y, r * 255 * amp * k, g * 255 * amp * k,
+                b * 255 * amp * k)
+            _px(base, size, x, y, 4, 4, 6)
+            _px(mr, size, x, y, 255, 255, 0)
+    flat = [0.5] * (size * size)
+    return dict(base=bytes(base), mr=bytes(mr), emissive=bytes(em),
+                normal=height_to_normal(flat, size, 0.0), size=size)
+
+
 PATTERNS = {
     'marble': make_marble, 'rust_metal': make_rust_metal,
     'hex_panel': make_hex_panel, 'circuit': make_circuit,
     'brushed': make_brushed,
+    # ---- 北欧题材（nordic saga）：木屋/茅草/岩壁/龙语石/雪地/针叶/龙鳞 ----
+    'wood_planks': make_wood_planks, 'thatch': make_thatch,
+    'rock': make_rock, 'rune_stone': make_rune_stone, 'snow': make_snow,
+    'pine': make_pine, 'dragon_scale': make_dragon_scale,
+    'aurora': make_aurora,
 }
 
 

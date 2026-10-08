@@ -574,6 +574,41 @@ def test_kkrieger_ost_structure():
     print(f'  ok: kkrieger OST 链路（4s 短渲染 rms={rms:.3f}）')
 
 
+def test_merge_meshes_keeps_uv():
+    """静态合批不得丢 UV/法线——曾经"空 MeshData 累加器"把 UV 整列清空的回归。"""
+    a = box(1.0, 1.0, 1.0)
+    b = sphere(0.5, 8, 6)          # 索引网格：合并时会展开（顶点数只增不减）
+    m = merge_meshes([a, b])
+    assert m.vertex_count >= a.vertex_count + b.vertex_count
+    assert len(m.uvs) == m.vertex_count * 2, (len(m.uvs), m.vertex_count * 2)
+    assert len(m.normals) == m.vertex_count * 3
+    # 单元素合并同样不得清空（bug 时代的重灾区）
+    single = merge_meshes([box(1, 1, 1)])
+    assert len(single.uvs) == single.vertex_count * 2
+    # 索引网格参与合并时保持一致
+    m2 = merge_meshes([sphere(0.4, 6, 4), box(0.5, 0.5, 0.5)])
+    assert len(m2.uvs) == m2.vertex_count * 2
+    print('  ok: merge_meshes keeps UV/normals（含单元素与索引输入）')
+
+
+def test_nordic_ost_structure():
+    """诺德之境配乐：短渲染走通全链路（事件越界安全截断）。"""
+    import tempfile
+    from logic.nordic_audio import build_ost
+    with tempfile.TemporaryDirectory() as td:
+        path, dur = build_ost(os.path.join(td, 'nordic.wav'), duration=4.0)
+        assert abs(dur - 4.0) < 1e-6
+        import wave as _w
+        with _w.open(path, 'rb') as w:
+            assert w.getnframes() == int(4.0 * 32000)
+            import struct as _s
+            samples = _s.unpack('<%dh' % w.getnframes(),
+                                w.readframes(w.getnframes()))
+        rms = math.sqrt(sum(s * s for s in samples) / len(samples)) / 32767.0
+        assert rms > 0.01, f'配乐全静音？rms={rms:.4f}'
+    print(f'  ok: nordic saga OST 链路（4s 短渲染 rms={rms:.3f}）')
+
+
 def test_advanced_geometry():
     """新建模：lathe/tube/torus_knot——顶点数、单位法线、闭合无缝。"""
     from engine.geometry import lathe, torus_knot, tube
@@ -653,7 +688,9 @@ def main():
         test_frustum_planes, test_spatial_hash,
         test_timeline_interpolations, test_playback,
         test_geometry_normals_and_bounds, test_merge_and_transform,
+        test_merge_meshes_keeps_uv,
         test_advanced_geometry, test_proctex_patterns, test_proctex_gl_material,
+        test_nordic_ost_structure,
         test_gltf_loader,
         test_physics_land_and_slide,
         test_picking_math, test_picking_screen_ray,
