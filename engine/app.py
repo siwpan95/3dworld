@@ -256,7 +256,9 @@ class EngineApp:
 
     def _on_draw(self):
         self.window.clear()
+        self.perf.begin_gpu()
         self.render()
+        self.perf.end_gpu()          # GPU 计时查询（异步回读，滞后 1~3 帧）
         if self.hud is not None:
             self.hud.set_status(self.status_text())
             if self.show_perf:
