@@ -63,20 +63,35 @@ ENTRIES = [
 ]
 
 FFMPEG_CANDIDATES = [
-    r'D:\private-radio-stations\apps\video\ffmpeg\ffmpeg.exe',
-    r'D:\musickit\radio\ffmpeg\ffmpeg.exe',
-    r'D:\musickit\remix\bin\ffmpeg.exe',
+    r'G:\repos\musickit\radio\ffmpeg\ffmpeg.exe',
+    r'G:\repos\pluginplayer\vendor\ffmpeg\bin\ffmpeg.exe',
+    r'G:\repos\audio-generation\remix\bin\ffmpeg.exe',
+    r'G:\repos\musickit\remix\bin\ffmpeg.exe',
 ]
 
 
 def ffmpeg_exe():
+    """按「PATH → 候选表」逐一**校验可用性**（-version 能跑才采用）。
+
+    PATH 里可能有不完整的 ffmpeg 包装器（实测踩过：G:\\Python314\\Scripts\\ffmpeg.exe
+    是个 108KB 的坏壳，直接采用会让录制在全黑输出后失败）——所以逐个试跑。
+    """
+    candidates = []
     p = shutil.which('ffmpeg')
     if p:
-        return p
-    for c in FFMPEG_CANDIDATES:
-        if os.path.exists(c):
-            return c
-    raise SystemExit('ffmpeg 未找到：请把它加入 PATH 或改脚本里的 FFMPEG_CANDIDATES')
+        candidates.append(p)
+    candidates.extend(FFMPEG_CANDIDATES)
+    for c in candidates:
+        if not os.path.exists(c):
+            continue
+        try:
+            r = subprocess.run([c, '-version'], capture_output=True, timeout=10)
+            blob = (r.stdout or b'') + (r.stderr or b'')
+            if r.returncode == 0 and b'ffmpeg version' in blob:
+                return c
+        except Exception:
+            continue
+    raise SystemExit('ffmpeg 未找到可用版本：请把它加入 PATH 或改脚本里的 FFMPEG_CANDIDATES')
 
 
 def import_module(rel_path, name):
