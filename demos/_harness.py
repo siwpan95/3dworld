@@ -357,13 +357,20 @@ class DemoApp:
         glEnable(GL_DEPTH_TEST)
 
     def _capture_due(self):
-        """播头越过截图时刻就抓帧；全部抓完后自动关闭窗口（--shot）。"""
+        """播头越过截图时刻就抓帧；全部抓完后自动关闭窗口（--shot）。
+
+        抓帧失败（目标目录只读/不可写——打包 exe 在受限目录运行时）只告警
+        并跳过该帧，不打断演示。
+        """
         while (self._shot_i < len(self._shots)
                and self.time >= self._shots[self._shot_i][0]):
             _, path = self._shots[self._shot_i]
             if not os.path.isabs(path):
                 path = os.path.join(PROJECT_ROOT, path)
-            print('[shot]', capture(self.window, path))
+            try:
+                print('[shot]', capture(self.window, path))
+            except Exception as e:                     # 不打断演示
+                print(f'[shot] failed ({path}): {e}')
             self._shot_i += 1
         if (self._shots and self._shot_i >= len(self._shots)
                 and not self._closing):
