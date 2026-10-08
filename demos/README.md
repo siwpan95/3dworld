@@ -50,6 +50,9 @@ python scripts\verify_demos.py --only boids,water  只验指定 demo
 | `boids.py` | 45s | **逻辑层纯数学 + 实例化渲染**：Reynolds 群集，着色器按速度定向 | `demo_boids_a/b.png` |
 | `shadow_map.py` | 30s | **两趟渲染 / render-to-texture**：R32F 离屏深度图 + 3×3/5×5 PCF 阴影 | `demo_shadow_a/b.png` |
 | `minecraft_style.py` | 48s | **程序化像素材质 + 昼夜统一光照 + 实例化下落方块**：五幕短片（日出飞越 / 村庄 / 建造 / 生物 / 日落入夜点灯），23 种 16×16 贴图启动时现算 | `demo_mc_dawn/build/mobs/dusk.png` |
+| `engine_showcase.py` | 24s | **引擎综合巡礼**：PBR/IBL、Bloom、SSAO、实例化、视锥剔除、拾取、物理、性能面板、场景序列化 | `engine_showcase_01/02.png` |
+| `material_lab.py` | 30s | **新建模 × 新素材**：车削/管扫/环面结 + 程序化 PBR 纹理（拉丝/大理石/电路板等 5 套） | `material_lab_01/02.png` |
+| `nordic_saga.py` | 60s | **《诺德之境》**：上古卷轴风格程序化动画（雪原遗迹/巨龙/龙语古墙 + 程序化配乐） | `nordic_01..06.png` |
 
 ### 演示专属开关（`--flag`，逗号可并列）
 
@@ -61,6 +64,7 @@ python scripts\verify_demos.py --only boids,water  只验指定 demo
 | `pcf5` / `noshadow` / `noon`（shadow_map） | 起始 5×5 PCF / 关阴影 / 关自动环绕 |
 | `all` / `seed2`（voxel_terrain） | 起始画全部面（对照剔除）/ 起始换一个种子 |
 | `reseed` / `reseed-sync`（terrain_flyover） | 1 秒后触发一次**渐进**重建 / **同步**重建（A/B 对照用） |
+| `nostatics`（engine_showcase） | 关掉静态柱林（看视锥剔除的差异） |
 
 常用按键（各 demo 底部有完整帮助行）：`SPACE` 暂停、`ESC` 退出是统一的；
 **方块世界** `N`/`P` 切幕、`←`/`→` 快退快进 5s、`C` 切电影/自由相机、`R` 重播；
