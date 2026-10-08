@@ -27,3 +27,6 @@ assets/*.wav
 docs/dbg_*.png
 docs/nordic_verify_*.png
 docs/_texcheck/
+
+# 本地研究材料（不入库）
+cordis-main.zip
