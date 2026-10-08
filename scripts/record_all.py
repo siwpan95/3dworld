@@ -136,7 +136,9 @@ def record(entry, out_dir, fps, crf, dur_override):
 
     app, cls = build_app(entry)
     try:
-        window = app.window
+        # 窗口位置两类宿主不同：harness/engine 在 app.window，
+        # presentation 裸 App（WorldApp/KKApp）在 app.renderer.window
+        window = getattr(app, 'window', None) or app.renderer.window
         window.switch_to()
         # HUD 帧率显示：离线录制不走实时 tick，手动把 EMA 值设为目标帧率
         for attr in ('fps', '_fps'):
@@ -186,7 +188,7 @@ def record(entry, out_dir, fps, crf, dur_override):
         return out_path, n_frames
     finally:
         try:
-            app.window.close()
+            window.close()
         except Exception:
             pass
 
