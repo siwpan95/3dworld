@@ -7,7 +7,7 @@
 - 场景动画通道（旋转环 / 脉冲核心 / 能量束 / 全息框 / 升降台 / 舱门 /
   灯带与频闪 / 风扇 / 无人机）
 
-时长 24s → **96s**，四幕结构：
+时长 24s → **96s** → **120s**，五幕结构：
 
 ===== =========== =====================================================
 幕     时间         内容
@@ -16,14 +16,20 @@
 二     24 – 48s    **大厅**：进入大厅，纪念碑唤醒，全息框扫描，平台升起
 三     48 – 72s    **核心**：过载——环加速、核心脉冲、能量束增亮，镜头逼近
 四     72 – 96s    **撤离**：镜头上撤，灯带逐段熄灭，拉回开场高空帧
+五     96 – 120s   **突入**：重启——心跳鼓点，高速穿越走廊（舱门速开速闭，
+                   数据流光带跑马），大厅全件过载，核心爆发白闪 + 碎片飞散，
+                   冲击波退出，回到开场帧
 ===== =========== =====================================================
 
-**循环连续性**：``pose(0) == pose(96)``。所有周期项写成
+**循环连续性**：``pose(0) == pose(120)``。所有周期项写成
 ``2πn·t/DURATION``（n 为整数）或整数圈自旋；一次性动作（开门、平台升降、
-灯带熄灭）都用"窗口包络"在幕内完成并归零。自旋角一律写成
+灯带熄灭、碎片飞散）都用"窗口包络"在幕内完成并归零。自旋角一律写成
 ``360°×(整圈数×t/DURATION + 额外整圈数×S(t))``，其中 ``S`` 是 0→1 的
 smoothstep——这样加速段之后**不会倒转**（早期写成"加一圈再减一圈"，
 视觉上就是风扇突然反转，已修正）。
+
+配乐见 ``logic/kkrieger_audio.py``：曲式与这里共用同一套时间常量，
+音画同步是"编译期"对齐。
 """
 import bisect
 import math
@@ -32,8 +38,8 @@ from pyglet.math import Vec3
 
 from logic.animation import Channel, Sampler, Timeline, quat_from_axis_angle
 
-DURATION = 96.0
-A2, A3, A4 = 24.0, 48.0, 72.0            # 第二/三/四幕起点
+DURATION = 120.0
+A2, A3, A4, A5 = 24.0, 48.0, 72.0, 96.0   # 第二/三/四/五幕起点
 
 CAM = 'camera'
 CAM_TGT = 'cam_target'
@@ -43,6 +49,7 @@ ACTS = (
     (24.0, '第二幕 · 大厅', '纪念碑唤醒：全息扫描 + 升降平台'),
     (48.0, '第三幕 · 核心', '过载：环加速、核心脉冲、能量束增亮'),
     (72.0, '第四幕 · 撤离', '撤退：灯带逐段熄灭，拉回开场高空帧'),
+    (96.0, '第五幕 · 突入', '重启突入：高速穿越，核心爆发白闪'),
 )
 
 # ---- 场景常量（与 core/kkrieger_scene.py 对齐；测试会拿这里的半径校验几何） ----
@@ -51,12 +58,26 @@ DOOR_OPEN_T = (5.0, 10.0, 15.0)          # 三道舱门开始开启的时刻
 # t≈86.5 过 z=-32、t≈90 过 z=-14）——关早了镜头会从门板里穿过去。
 DOOR_CLOSE_T = (92.5, 88.5, 85.0)
 DOOR_SLIDE = 1.75
+# 第五幕重启突入：舱门在镜头到达前 1s 速开（1.0s 开完），镜头过后再速闭。
+# 开门时刻按第五幕相机过门时刻（≈102.6 / 106.2 / 110.2）反推，闭门晚于过门。
+V_DOOR_OPEN_T = (101.0, 104.8, 108.0)
+V_DOOR_CLOSE_T = (113.5, 114.5, 115.5)
 
 STRIP_N = 14
 STRIP_BLACKOUT_T0, STRIP_BLACKOUT_STEP = 76.0, 0.85   # 灯带逐段熄灭
 ALIGHT_N = 4
 LIFT_REST_Y, LIFT_TOP_Y = 0.15, 3.4
 ATRIUM_LIGHTS = ((-5, -61), (5, -61), (-5, -71), (5, -71))
+
+# 第五幕终局：碎片飞散与核心爆发（音频在 logic/kkrieger_audio.py 用同一时刻）
+SPARK_T0, SPARK_DUR = 114.0, 3.6
+BOOM_T = 117.5
+# 碎片飞散方向（单位向量，8 向近似均匀）
+SPARK_DIRS = (
+    (0.90, 0.55, -0.75), (-0.90, 0.55, -0.75), (0.85, -0.45, -0.85),
+    (-0.85, -0.45, -0.85), (0.95, 0.30, 0.35), (-0.95, 0.30, 0.35),
+    (0.20, 0.95, -0.45), (-0.20, -0.95, -0.45),
+)
 
 # 相机漫游关键帧：(时间, eye, target)——与 core/kkrieger_scene.py 布局对齐
 _CAM_KEYS = (
@@ -87,7 +108,24 @@ _CAM_KEYS = (
     (84.0, (0.0, 2.2, -40.0),   (0.0, 1.6, -20.0)),   # 走廊后撤
     (89.0, (0.0, 2.0, -18.0),   (0.0, 1.6, 4.0)),
     (93.0, (0.0, 3.0, -4.0),    (0.0, 2.0, 8.0)),     # 出走廊
-    (96.0, (0.0, 9.0, 12.0),    (0.0, 1.6, -24.0)),   # 回到开场帧（硬切回开头）
+    (96.0, (0.0, 9.0, 12.0),    (0.0, 1.6, -24.0)),   # 第四幕末 = 第五幕初（循环帧）
+    # ---- 第五幕 96–120：重启突入 ----
+    (98.0, (0.0, 6.5, 9.0),     (0.0, 2.0, -20.0)),   # 急坠
+    (99.5, (0.0, 2.6, 5.0),     (0.0, 1.6, -24.0)),   # 降人视（门 0 将速开）
+    (102.0, (0.5, 1.9, -9.0),   (-0.4, 1.5, -30.0)),  # 高速过门 0（z=-14 @≈102.6）
+    (105.0, (-0.5, 2.0, -24.0), (0.4, 1.6, -42.0)),   # 蛇形（门 1 @≈106.2）
+    (107.5, (0.4, 2.1, -36.0),  (-0.3, 1.7, -52.0)),  # （门 2 @≈110.0）
+    (109.5, (0.0, 2.4, -48.0),  (0.0, 2.2, -62.0)),
+    (111.0, (0.0, 2.9, -56.0),  (0.0, 3.4, -66.0)),   # 冲进大厅
+    (113.0, (3.4, 4.0, -59.5),  (0.0, 4.2, -66.0)),   # 绕碑（过载重建）
+    (115.0, (-2.8, 4.6, -61.5), (0.0, 4.5, -66.0)),
+    (116.8, (-0.8, 4.7, -63.8), (0.0, 4.5, -66.0)),
+    (117.6, (0.0, 4.6, -64.4),  (0.0, 4.5, -66.0)),   # 核心贴脸（爆发瞬间）
+    (117.9, (0.0, 4.6, -64.4),  (0.0, 4.5, -66.0)),   # 驻留 0.3s：让白闪被看见
+    (118.2, (0.0, 4.2, -58.0),  (0.0, 3.0, -30.0)),   # 冲击波退出（保持在廊高内）
+    (119.2, (0.0, 3.8, -20.0),  (0.0, 1.8, 2.0)),
+    (119.6, (0.0, 3.6, 2.0),    (0.0, 2.2, 10.0)),    # 出入口（z>0 后才拉高）
+    (120.0, (0.0, 9.0, 12.0),   (0.0, 1.6, -24.0)),   # 归位 = 开场帧
 )
 
 
@@ -151,29 +189,37 @@ def _pulse(t, period, phase=0.0):
 def _ring_pose(i, t):
     axis = ((0, 1, 0), (1, 0, 0), (0, 0, 1))[i % 3]
     turns = (i + 1) * 2
-    # 过载幕：额外 (i+1) 整圈在 [46, 70] 内加完，之后维持高速滑行
-    deg = _spin(t, turns, extra=(i + 1) * 2, t0=46.0, t1=70.0)
+    # 过载幕：额外 (i+1) 整圈在 [46, 70] 内加完；第五幕爆发前再甩 (i+1)*3 圈
+    # （都是整圈数 × S(t)，t=120 时相位是整圈 ⇒ 与 t=0 姿态一致）
+    deg = (_spin(t, turns, extra=(i + 1) * 2, t0=46.0, t1=70.0)
+           + 360.0 * (i + 1) * 3 * _step(t, 108.0, 117.6))
     return {'rotation': quat_from_axis_angle(axis, deg)}
 
 
 def _core_pose(t):
-    # 尺寸脉冲周期 6s（整除 96s）；过载幕幅度放大、频率不变
-    amp = 0.14 + 0.16 * _window(t, A3 - 4.0, A4, ease=6.0)
-    s = 1.0 + amp * (2 * _pulse(t, 6.0) - 1.0)
+    # 尺寸脉冲周期 6s（整除 96s/120s）；三/五幕过载幅度放大，爆发瞬间白闪
+    amp = (0.14 + 0.16 * _window(t, A3 - 4.0, A4, ease=6.0)
+           + 0.30 * _window(t, 108.0, 117.6, ease=4.0))
+    flash = _window(t, 117.0, 118.8, ease=0.5)
+    s = 1.0 + amp * (2 * _pulse(t, 6.0) - 1.0) + 0.55 * flash
     bright = 1.0 + 0.5 * _window(t, A3 - 6.0, A4, ease=6.0)
     return {'rotation': quat_from_axis_angle((0, 1, 0), _spin(t, 2)),
             'scale': Vec3(s, s, s),
-            'tint': Vec3(bright, bright * 0.72, bright * 0.34),
-            'glow': 0.25 + 0.65 * _window(t, A3 - 6.0, A4, ease=6.0)}
+            'tint': Vec3(bright + 1.3 * flash, bright * 0.72 + 1.3 * flash,
+                         bright * 0.34 + 1.3 * flash),
+            'glow': 0.25 + 0.65 * _window(t, A3 - 6.0, A4, ease=6.0)
+                    + 1.1 * _window(t, 106.0, 117.6, ease=4.0) + 2.2 * flash}
 
 
 def _beam_pose(t):
     over = _window(t, A3 - 6.0, A4, ease=6.0)          # 过载包络
-    w = 1.0 + 1.4 * over + 0.10 * (2 * _pulse(t, 4.0) - 1.0)
+    over2 = _window(t, 106.0, 117.6, ease=4.0)         # 第五幕过载
+    flash = _window(t, 117.0, 118.8, ease=0.5)
+    w = 1.0 + 1.4 * over + 1.2 * over2 + 0.10 * (2 * _pulse(t, 4.0) - 1.0)
     h = 1.0 + 0.22 * over
     return {'scale': Vec3(w, h, w),
-            'tint': Vec3(1.0 + 0.3 * over, 0.70, 0.30),
-            'glow': 0.15 + 0.85 * over}
+            'tint': Vec3(1.0 + 0.3 * over + 0.6 * flash, 0.70, 0.30),
+            'glow': 0.15 + 0.85 * over + 0.9 * over2 + 1.3 * flash}
 
 
 def _holo_pose(t):
@@ -187,25 +233,32 @@ def _holo_pose(t):
 
 
 def _lift_pose(t):
-    # 第二幕升起 → 第三幕过载时轻微下沉 → 第四幕落回原位
-    # （必须回到 REST_Y：否则 t=96 与 t=0 差 3 米多，循环回绕会看到平台瞬移）
+    # 第二幕升起 → 第三幕过载时轻微下沉 → 第四幕落回原位；
+    # 第五幕 104–108 再升一次、114–118 落回（与原窗口在时间上不重叠，直接相加）
+    # （必须回到 REST_Y：否则循环回绕会看到平台瞬移）
     up = _step(t, 26.0, 36.0)
     down = _step(t, 70.0, 78.0)
     dip = _window(t, A3 + 4.0, A4 - 6.0, ease=5.0) * 0.6
-    y = LIFT_REST_Y + (LIFT_TOP_Y - LIFT_REST_Y) * up * (1.0 - down) - dip
+    up2 = _step(t, 104.0, 108.0) * (1.0 - _step(t, 114.0, 118.0))
+    y = LIFT_REST_Y + (LIFT_TOP_Y - LIFT_REST_Y) * (up * (1.0 - down) + up2) - dip
     return {'translation': Vec3(0.0, y, -58.0)}
 
 
 def _atrium_fan_pose(t):
-    return {'rotation': quat_from_axis_angle(
-        (0, 1, 0), _spin(t, 4, extra=8, t0=A3 - 6.0, t1=A4))}
+    deg = (_spin(t, 4, extra=8, t0=A3 - 6.0, t1=A4)
+           + 360.0 * 10 * _step(t, 100.0, 117.0))
+    return {'rotation': quat_from_axis_angle((0, 1, 0), deg)}
 
 
 def _door_pose(i, t):
-    open_ = _step(t, DOOR_OPEN_T[i], DOOR_OPEN_T[i] + 2.2)
-    shut = _step(t, DOOR_CLOSE_T[i], DOOR_CLOSE_T[i] + 2.2)
-    a = open_ * (1.0 - shut)
-    return a
+    """两段开合窗口取并集：第一幕慢开慢闭 + 第五幕速开速闭（时间上不重叠）。"""
+    open1 = _step(t, DOOR_OPEN_T[i], DOOR_OPEN_T[i] + 2.2)
+    shut1 = _step(t, DOOR_CLOSE_T[i], DOOR_CLOSE_T[i] + 2.2)
+    a1 = open1 * (1.0 - shut1)
+    open2 = _step(t, V_DOOR_OPEN_T[i], V_DOOR_OPEN_T[i] + 1.0)
+    shut2 = _step(t, V_DOOR_CLOSE_T[i], V_DOOR_CLOSE_T[i] + 1.0)
+    a2 = open2 * (1.0 - shut2)
+    return max(a1, a2)
 
 
 def _door_translation(i, tag, t):
@@ -215,43 +268,61 @@ def _door_translation(i, tag, t):
 
 
 def _strip_pose(i, t):
-    """天花板灯带：第二幕转暖、第三幕过载增亮、第四幕依次熄灭后回亮到开场态。"""
+    """天花板灯带：二幕转暖、三幕过载增亮、四幕依次熄灭后回亮到开场态；
+    五幕先是跑马流光（突入段），终局全员黑场再归位。"""
     over = _window(t, A3 - 8.0, A4, ease=8.0)
     # 熄灭：第 i 段在 76 + 0.85i 秒变黑；撤离尾声（t>94）统一回位到开场亮度
     dark = _step(t, STRIP_BLACKOUT_T0 + STRIP_BLACKOUT_STEP * i,
                  STRIP_BLACKOUT_T0 + STRIP_BLACKOUT_STEP * i + 1.0)
     restore = _step(t, 94.0, 96.0)
-    level = _lerp(1.0, 0.04, dark * (1.0 - restore))
+    # 第五幕终局黑场（爆闪后全灭），119–120 归位到开场亮度
+    v_dark = _step(t, BOOM_T, BOOM_T + 0.4)
+    v_restore = _step(t, 119.0, 120.0)
+    kill = max(dark * (1.0 - restore), v_dark * (1.0 - v_restore))
+    level = _lerp(1.0, 0.04, kill)
     warm = 0.55 * over
+    # 突入段跑马流光：相位随段号错开，99–109.5 窗口内可见
+    chase = _window(t, 99.0, 109.5, ease=1.5) * \
+        (0.5 + 0.5 * math.sin(2 * math.pi * (t / 0.8 - i * 0.5))) ** 8
     return {'tint': Vec3(level, level * (1.0 - 0.18 * warm), level * (1.0 - 0.45 * warm)),
-            'glow': (1.15 + 0.5 * over) * level}
+            'glow': ((1.15 + 0.5 * over) * level + 0.85 * chase * level)}
 
 
 def _alight_pose(i, t):
-    """大厅悬浮灯环：第四幕熄灭（比走廊灯带更早，衬托撤离）。"""
+    """大厅悬浮灯环：第四幕熄灭（比走廊灯带更早），五幕终局再灭一次。"""
     dark = _step(t, 74.0 + 1.2 * i, 75.5 + 1.2 * i)
     restore = _step(t, 94.5, 96.0)
-    level = _lerp(1.0, 0.05, dark * (1.0 - restore))
+    v_dark = _step(t, BOOM_T, BOOM_T + 0.4)
+    v_restore = _step(t, 119.0, 120.0)
+    kill = max(dark * (1.0 - restore), v_dark * (1.0 - v_restore))
+    level = _lerp(1.0, 0.05, kill)
     return {'tint': Vec3(level, level, level), 'glow': 1.0 * level}
 
 
 def _strobe_pose(i, t):
-    """琥珀警示频闪：锯齿脉冲周期 3s（整除 96s），撤离幕熄灭。"""
+    """琥珀警示频闪：锯齿脉冲周期 3s（整除 96s/120s），四幕熄灭、五幕复活。"""
     phase = 0.7 * i
     blink = max(0.0, math.sin(2 * math.pi * t / 3.0 + phase)) ** 6
     alive = 1.0 - _step(t, 80.0, 84.0) + _step(t, 95.0, 96.0)
+    # 五幕终局黑场再归位（频闪周期 3s 整除 120 ⇒ t=0/120 相位一致）
+    alive *= (1.0 - _step(t, BOOM_T, BOOM_T + 0.4) + _step(t, 119.0, 120.0))
     alive = max(0.0, min(1.0, alive))
     g = 1.2 * blink * alive
     return {'tint': Vec3(1.0, 0.62, 0.22), 'glow': g}
 
 
 def _fan_pose(i, t):
-    return {'rotation': quat_from_axis_angle(
-        (1, 0, 0), _spin(t, 8 + 2 * i, extra=6 + i, t0=A3 - 4.0, t1=A4))}
+    deg = (_spin(t, 8 + 2 * i, extra=6 + i, t0=A3 - 4.0, t1=A4)
+           + 360.0 * (3 + i) * _step(t, 100.0, 117.0))
+    return {'rotation': quat_from_axis_angle((1, 0, 0), deg)}
 
 
 def _drone_pose(i, t):
-    """三架无人机：两架巡逻走廊（折返），一架环绕大厅。"""
+    """三架无人机：两架巡逻走廊（折返），一架环绕大厅。
+
+    第五幕 97–118.5 全员收拢到纪念碑（r 越转越小 = 献祭式俯冲），
+    窗口闭合后回到各自巡逻位（保证 t=120 与 t=0 一致）。
+    """
     if i < 2:
         period = 24.0
         u = (t % period) / period
@@ -259,14 +330,55 @@ def _drone_pose(i, t):
         z = -4.0 - (44.0 if i == 0 else 30.0) * tri - (0.0 if i == 0 else 8.0)
         x = (1.4 if i == 0 else -1.2) * math.sin(2 * math.pi * t / 12.0)
         y = 2.6 + 0.35 * math.sin(2 * math.pi * t / 3.0)
+        px, py, pz = x, y, z
     else:
         ang = 2 * math.pi * 2.0 * t / DURATION
         r = 5.6 + 0.8 * math.sin(2 * math.pi * t / 16.0)
-        z = -66.0 + r * math.sin(ang)
-        x = r * math.cos(ang)
-        y = 5.2 + 0.6 * math.sin(2 * math.pi * t / 8.0)
-    return {'translation': Vec3(x, y, z),
-            'rotation': quat_from_axis_angle((0, 1, 0), _spin(t, 6))}
+        pz = -66.0 + r * math.sin(ang)
+        px = r * math.cos(ang)
+        py = 5.2 + 0.6 * math.sin(2 * math.pi * t / 8.0)
+    w = _window(t, 97.0, 118.5, ease=2.0)
+    if w > 0.0:
+        r = (3.2 + 0.4 * i) * (1.0 - 0.62 * _step(t, 114.0, 117.6))
+        ang = 2 * math.pi * t / 6.0
+        cx, cy, cz = r * math.cos(ang), 4.4 + 0.3 * math.sin(2 * math.pi * t / 5.0), \
+            -66.0 + r * math.sin(ang)
+        px, py, pz = (_lerp(px, cx, w), _lerp(py, cy, w), _lerp(pz, cz, w))
+    glow = 0.10 + 0.55 * _window(t, 114.0, 118.5, ease=1.5)
+    return {'translation': Vec3(px, py, pz),
+            'rotation': quat_from_axis_angle((0, 1, 0), _spin(t, 6)),
+            'glow': glow}
+
+
+def _spark_pose(i, t):
+    """爆发碎片：从核心以 8 向弹道飞散（带重力），窗口闭合回到枢轴。"""
+    d = SPARK_DIRS[i % len(SPARK_DIRS)]
+    tau = t - SPARK_T0
+    if tau <= 0.0 or tau >= SPARK_DUR + 0.4:
+        env = 0.0
+        tau = 0.0
+    else:
+        env = 1.0 - _step(tau, SPARK_DUR - 0.5, SPARK_DUR)
+    v = 4.5 + 0.55 * i
+    g = -3.2
+    x = d[0] * v * tau
+    y = d[1] * v * tau + 0.5 * g * tau * tau
+    z = d[2] * v * tau
+    return {'translation': Vec3(x * env, y * env, z * env),
+            'glow': 2.2 * env * (1.0 - 0.35 * tau / SPARK_DUR)}
+
+
+def _conduit_pose(i, t):
+    """数据流光带（第五幕新增的走廊墙面装饰）：常态慢速跑马，突入段提速加倍。
+
+    只动 glow（颜色由场景内置 tint 提供），黑场/归位与灯带同一套窗口。
+    """
+    chase = (0.5 + 0.5 * math.sin(2 * math.pi * (t / 1.5 - i / 6.0))) ** 6
+    boost = _window(t, 99.0, 110.0, ease=1.5) * \
+        (0.5 + 0.5 * math.sin(2 * math.pi * (t / 0.45 - i / 6.0))) ** 6
+    alive = 1.0 - _step(t, BOOM_T, BOOM_T + 0.4) + _step(t, 119.0, 120.0)
+    alive = max(0.0, min(1.0, alive))
+    return {'glow': (0.45 + 0.55 * chase + 0.95 * boost) * alive}
 
 
 def _scene_props(name, t):
@@ -296,6 +408,10 @@ def _scene_props(name, t):
         return _fan_pose(int(name.rsplit('_', 1)[1]), t)
     if name.startswith('drone_'):
         return _drone_pose(int(name.rsplit('_', 1)[1]), t)
+    if name.startswith('spark_'):
+        return _spark_pose(int(name.rsplit('_', 1)[1]), t)
+    if name.startswith('conduit_'):
+        return _conduit_pose(int(name.rsplit('_', 1)[1]), t)
     return None
 
 
@@ -394,7 +510,7 @@ def build_scene_channels(animated_meta, duration=DURATION, step=0.25):
 
 
 def build_kkrieger_timeline(animated_meta, duration=DURATION):
-    """相机 + 场景动画合一时间轴（96s 四幕循环）。"""
+    """相机 + 场景动画合一时间轴（120s 五幕循环）。"""
     return Timeline(duration,
                     build_camera_channels(duration) +
                     build_scene_channels(animated_meta, duration))

@@ -543,7 +543,7 @@ def test_arm_channels():
 
 
 def test_kkrieger_timeline():
-    """M6：kkrieger 96s 四幕——相机键帧、场景对象循环连续、材质通道。"""
+    """M6+扩展：kkrieger 120s 五幕——相机键帧、场景对象循环连续、材质通道。"""
     from logic.kkrieger import (ACTS, CAM, CAM_TGT, DURATION,
                                 build_kkrieger_timeline)
     meta = ([('monument_ring_%d' % i, Vec3(0, 4.4, -66)) for i in range(5)]
@@ -556,10 +556,13 @@ def test_kkrieger_timeline():
             + [('alight_%d' % i, Vec3(0, 8.65, -61 - 10 * (i % 2))) for i in range(4)]
             + [('strobe_%d' % i, Vec3(2.9, 3.05, -6 - 6.5 * i)) for i in range(8)]
             + [('fan_%d' % i, Vec3(2.72, 2.3, -8 - 12 * i)) for i in range(4)]
-            + [('drone_%d' % i, Vec3(0, 2.6, -4)) for i in range(3)])
+            + [('drone_%d' % i, Vec3(0, 2.6, -4)) for i in range(3)]
+            + [('conduit_%d' % i, Vec3(2.94, 0.62, -6 - 9 * i)) for i in range(6)]
+            + [('spark_%d' % i, Vec3(0, 4.4, -66)) for i in range(8)])
     tl = build_kkrieger_timeline(meta)
-    assert tl.duration == DURATION == 96.0
-    assert len(ACTS) == 4 and ACTS[0][0] == 0.0 and ACTS[3][0] == 72.0
+    assert tl.duration == DURATION == 120.0
+    assert len(ACTS) == 5 and ACTS[0][0] == 0.0 and ACTS[3][0] == 72.0 \
+        and ACTS[4][0] == 96.0
     tl.seek(0.0)
     s0 = tl.sample()
     assert CAM in s0 and CAM_TGT in s0
@@ -569,7 +572,8 @@ def test_kkrieger_timeline():
     s1 = tl.sample()
     for name in ('monument_ring_0', 'monument_ring_4', 'monument_core', 'beam',
                  'holo_frame', 'lift', 'atrium_fan', 'door0_a', 'strip_0',
-                 'alight_2', 'strobe_3', 'fan_1', 'drone_0', 'drone_2'):
+                 'alight_2', 'strobe_3', 'fan_1', 'drone_0', 'drone_2',
+                 'conduit_0', 'spark_3'):
         q0, q1 = s0[name].get('rotation'), s1[name].get('rotation')
         if q0 is not None:
             if sum(a * b for a, b in zip(q0, q1)) < 0:
@@ -590,6 +594,12 @@ def test_kkrieger_timeline():
         assert abs(tl.sample()[f'door{i}_a']['translation'].x) > 1.5
         tl.seek(DOOR_CLOSE_T[i] + 2.5)
         assert abs(tl.sample()[f'door{i}_a']['translation'].x) < 0.01
+        # 第五幕重启突入：舱门速开速闭（开/闭都晚于镜头过门时刻）
+        from logic.kkrieger import V_DOOR_CLOSE_T, V_DOOR_OPEN_T
+        tl.seek(V_DOOR_OPEN_T[i] + 1.5)
+        assert abs(tl.sample()[f'door{i}_a']['translation'].x) > 1.5
+        tl.seek(V_DOOR_CLOSE_T[i] + 1.5)
+        assert abs(tl.sample()[f'door{i}_a']['translation'].x) < 0.01
     # 升降平台：第二幕升起、第四幕落回原位（否则循环回绕会瞬移）
     tl.seek(20.0)
     y_rest = tl.sample()['lift']['translation'].y
@@ -605,12 +615,23 @@ def test_kkrieger_timeline():
     tl.seek(96.0)
     back = tl.sample()['strip_3']['glow']
     assert lit > 0.3 and dark < 0.1 and abs(back - 1.15) < 1e-6, (lit, dark, back)
-    # 无人机折返巡逻始终在走廊/大厅范围内
+    # 第五幕：核心爆发白闪（glow 尖峰）+ 碎片飞散后归位
+    tl.seek(117.6)
+    assert tl.sample()['monument_core']['glow'] > 2.0
+    tl.seek(115.0)
+    assert tl.sample()['spark_0']['glow'] > 0.5
+    tl.seek(120.0)
+    assert tl.sample()['spark_0']['glow'] == 0.0
+    # 无人机折返巡逻始终在走廊/大厅范围内（第五幕收拢段单独校验）
     for i in range(0, 96, 3):
         tl.seek(float(i))
         d0 = tl.sample()['drone_0']['translation']
         assert -52.5 <= d0.z <= -3.5, (i, d0.z)
-    print('  ok: kkrieger 96s four acts (cam keys, loop-exact, doors, lift, lights)')
+    tl.seek(112.0)
+    d0 = tl.sample()['drone_0']['translation']
+    assert math.hypot(d0.x, d0.z + 66.0) < 5.5, d0      # 收拢到纪念碑附近
+    print('  ok: kkrieger 120s five acts (cam keys, loop-exact, doors, lift, '
+          'lights, act-V finale)')
 
 
 def test_kkrieger_camera_path_clearance():

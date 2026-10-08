@@ -474,6 +474,106 @@ def test_gl_pipeline():
           f'渲染一帧 中心像素={px}')
 
 
+def test_audio_track_and_render():
+    """Track 合成 + WAV 写盘：确定性、时长精确、归一化不削波。"""
+    import tempfile
+    from engine.audio import Track, render_wav
+
+    def build():
+        tr = Track(1.0, rate=8000)
+        tr.tone(0.0, 0.5, 440.0, wave='sine', amp=0.5)
+        tr.tone(0.25, 0.5, 660.0, 330.0, wave='square', amp=0.3, lp=0.2)
+        tr.noise(0.5, 0.4, amp=0.3, decay=6.0, seed=7)
+        return tr
+
+    with tempfile.TemporaryDirectory() as td:
+        p1, d1 = render_wav(build(), os.path.join(td, 'a.wav'), normalize=0.9)
+        p2, d2 = render_wav(build(), os.path.join(td, 'b.wav'), normalize=0.9)
+        assert d1 == d2 == 1.0
+        with open(p1, 'rb') as f:
+            b1 = f.read()
+        with open(p2, 'rb') as f:
+            b2 = f.read()
+        assert b1 == b2, '合成不确定（同参数不同结果）'
+        import wave as _w
+        with _w.open(p1, 'rb') as w:
+            assert w.getframerate() == 8000 and w.getnframes() == 8000
+            import struct as _s
+            samples = _s.unpack('<%dh' % w.getnframes(), w.readframes(w.getnframes()))
+        peak = max(abs(s) for s in samples) / 32767.0
+        assert 0.85 <= peak <= 0.92, f'归一化异常 peak={peak:.3f}'
+        # attack 起步（0.004s=32 样本）：首样本应远小于满幅
+        assert abs(samples[0]) < 4000, f'开头未做 attack：{samples[0]}'
+    print('  ok: Track 合成确定性 / WAV 时长与归一化')
+
+
+def test_audio_timeline_player():
+    """TimelineAudio：seek 后播放位置跟随（无声卡环境自动跳过）。
+
+    不用 TemporaryDirectory 的自动清理：XAudio2 流式播放会一直握着文件句柄，
+    Windows 上清理目录会 WinError 32。手动建目录，收尾尽力而为。
+    """
+    import shutil
+    import tempfile
+    import time as _t
+    from engine.audio import TimelineAudio, Track, render_wav
+    if not audio_ok():
+        print('  SKIP: 无音频驱动')
+        return
+    td = tempfile.mkdtemp(prefix='audio_test_')
+    try:
+        tr = Track(2.0, rate=8000)
+        tr.tone(0.0, 2.0, 440.0, wave='sine', amp=0.4)
+        p, _ = render_wav(tr, os.path.join(td, 't.wav'))
+        a = TimelineAudio(p, loop=True, volume=0.4)
+        assert a.ok and abs(a.duration - 2.0) < 0.05
+        a.play()
+        _t.sleep(0.25)
+        a.seek(1.5)
+        _t.sleep(0.15)
+        assert a.time > 1.4, f'seek 未生效: {a.time}'
+        a.toggle_mute()
+        assert a.muted
+        a.close()
+        print('  ok: TimelineAudio 播放/seek/静音')
+    finally:
+        try:
+            a.delete() if hasattr(a, 'delete') else None
+        except Exception:
+            pass
+        try:
+            shutil.rmtree(td, ignore_errors=True)
+        except Exception:
+            pass
+
+
+def audio_ok():
+    try:
+        import pyglet
+        from pyglet.media import get_audio_driver
+        drv = get_audio_driver()
+        return drv is not None and 'silent' not in type(drv).__module__
+    except Exception:
+        return False
+
+
+def test_kkrieger_ost_structure():
+    """kkrieger 配乐：短渲染走通全链路（音效事件越界安全截断）。"""
+    import tempfile
+    from logic.kkrieger_audio import build_ost
+    with tempfile.TemporaryDirectory() as td:
+        path, dur = build_ost(os.path.join(td, 'ost.wav'), duration=4.0)
+        assert abs(dur - 4.0) < 1e-6
+        import wave as _w
+        with _w.open(path, 'rb') as w:
+            assert w.getnframes() == int(4.0 * 32000)
+            import struct as _s
+            samples = _s.unpack('<%dh' % w.getnframes(), w.readframes(w.getnframes()))
+        rms = math.sqrt(sum(s * s for s in samples) / len(samples)) / 32767.0
+        assert rms > 0.01, f'配乐全静音？rms={rms:.4f}'
+    print(f'  ok: kkrieger OST 链路（4s 短渲染 rms={rms:.3f}）')
+
+
 # ------------------------------------------------------------------ 跑 --
 def main():
     tests = [
@@ -486,6 +586,8 @@ def main():
         test_picking_math, test_picking_screen_ray,
         test_scene_hierarchy_and_culling, test_serialize_roundtrip,
         test_scene_watcher, test_cameras,
+        test_audio_track_and_render, test_audio_timeline_player,
+        test_kkrieger_ost_structure,
         test_gl_pipeline,
     ]
     failed = []

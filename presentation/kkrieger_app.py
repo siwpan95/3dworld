@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
-"""kkrieger 致敬 Demo 装配：96s 四幕程序化走廊漫游。
+"""kkrieger 致敬 Demo 装配：120s 五幕程序化走廊漫游（含程序化配乐）。
 
 数据流（单向，沿用 M1~M6 分层约定）：
   clock → PlaybackController.advance（logic）→ Timeline 采样
         → look-at 视图矩阵 + 场景对象 model 矩阵 + 材质（tint/glow）→ 渲染
+音频：logic/kkrieger_audio.py 离线渲染的配乐（与动画共用时间常量），
+      engine/audio.TimelineAudio 播放 + 漂移校正同步。
 
-交互：SPACE 暂停/继续，R 重播，N/P 下一幕/上一幕，←/→ 快退快进，ESC 退出。
+交互：SPACE 暂停/继续，R 重播，N/P 下一幕/上一幕，←/→ 快退快进，
+L 循环，M 静音，ESC 退出。
 相机由时间轴脚本驱动（电影感漫游），不做鼠标轨道——轨道模式见 main.py。
 
 DPI 实测记录（2026-09-29，pyglet 2.1.16 / Win10 150%）：默认 "platform" 模式下
@@ -20,17 +23,19 @@ pyglet.options['dpi_scaling'] = 'real'
 from pyglet.math import Mat4, Vec3
 
 from core.kkrieger_scene import KKRenderer
+from engine.audio import TimelineAudio
 from logic.animation import quat_to_mat4
 from logic.camera import look_at_matrix
 from logic.kkrieger import (ACTS, CAM, CAM_TGT, DURATION, build_kkrieger_timeline,
                             next_act_time, prev_act_time)
+from logic.kkrieger_audio import ensure_ost
 from logic.playback import PlaybackController
 from presentation.hud import Hud
 from presentation.shot import capture_window
 from presentation.timeline_ui import TimelineUI
 
 HELP_TEXT = ('SPACE 暂停/继续   R 重播   N/P 下一幕/上一幕   '
-             '←/→ 快退/快进   L 循环   ESC 退出')
+             '←/→ 快退/快进   L 循环   M 静音   ESC 退出')
 
 
 class KKApp:
@@ -49,7 +54,7 @@ class KKApp:
             duration=self.timeline.duration,
             on_toggle_play=self.playback.toggle,
             on_toggle_loop=self.playback.set_looping,
-            on_seek=self.playback.seek,
+            on_seek=self._seek,
             acts=ACTS)
 
         w = self.renderer.window
@@ -63,6 +68,19 @@ class KKApp:
         self._apply_frame()                  # t=0 初始位姿（避免首帧黑屏）
         pyglet.clock.schedule_interval(self.update, 1 / 60.0)
 
+        # ---- 程序化配乐：缺失则现场渲染（一次性，之后走缓存）----
+        self.audio = None
+        try:
+            wav = ensure_ost(duration=DURATION)
+            self.audio = TimelineAudio(wav, loop=True, volume=0.8)
+            if self.audio.ok:
+                self.audio.play()
+            else:
+                print('[audio] unavailable (silent driver / no device)')
+        except Exception as e:                   # 音频失败不阻断视觉演出
+            print(f'[audio] init failed: {e}')
+            self.audio = None
+
     # ---- 主循环 ----
     def update(self, dt):
         if dt > 1e-6:
@@ -70,6 +88,9 @@ class KKApp:
             self._fps = inst if self._fps <= 0.0 else self._fps * 0.9 + inst * 0.1
         self.playback.advance(dt)
         self._apply_frame()
+        # 音频跟随：播放中做漂移校正（>0.25s 才 seek），暂停则一起停
+        if self.audio is not None:
+            self.audio.sync(self.timeline.playhead, self.playback.playing)
 
     def _apply_frame(self):
         sampled = self.timeline.sample()
@@ -108,18 +129,27 @@ class KKApp:
         elif symbol == key.SPACE:
             self.playback.toggle()
         elif symbol == key.R:
-            self.playback.seek(0.0)
+            self._seek(0.0)
             self.playback.play()
         elif symbol == key.N:
-            self.playback.seek(next_act_time(self.timeline.playhead))
+            self._seek(next_act_time(self.timeline.playhead))
         elif symbol == key.P:
-            self.playback.seek(prev_act_time(self.timeline.playhead))
+            self._seek(prev_act_time(self.timeline.playhead))
         elif symbol == key.L:
             self.playback.set_looping(not self.playback.looping)
+        elif symbol == key.M:
+            if self.audio is not None:
+                self.audio.toggle_mute()
         elif symbol == key.LEFT:
-            self.playback.seek(max(0.0, self.timeline.playhead - 5.0))
+            self._seek(max(0.0, self.timeline.playhead - 5.0))
         elif symbol == key.RIGHT:
-            self.playback.seek(self.timeline.playhead + 5.0)
+            self._seek(self.timeline.playhead + 5.0)
+
+    def _seek(self, t):
+        """时间轴与音频一起 seek（音频不跟的话下一帧漂移校正会爆音）。"""
+        self.playback.seek(t)
+        if self.audio is not None:
+            self.audio.seek(t)
 
     def _on_draw(self):
         self.renderer.draw()
@@ -153,8 +183,13 @@ class KKApp:
         for a in ACTS:
             if self.timeline.playhead >= a[0]:
                 act = a
+        audio = '-'
+        if self.audio is not None and self.audio.ok:
+            audio = 'MUTED' if self.audio.muted else 'ON'
         return (f'{act[1]}   {self.timeline.playhead:6.2f} / '
-                f'{self.timeline.duration:.2f}s   {self._fps:5.1f} fps')
+                f'{self.timeline.duration:.2f}s   {self._fps:5.1f} fps   audio {audio}')
 
     def close(self):
+        if self.audio is not None:
+            self.audio.close()
         self.renderer.window.close()

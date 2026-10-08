@@ -15,8 +15,10 @@
 
   走廊  z 0 → -56，宽 6，高 4.5：金属板墙 + 立柱 + 天花板灯带（可逐段熄灭）
         + 三道舱门（z = -14 / -32 / -50，双开滑门）+ 管道/货箱 + 琥珀警示频闪
+        + 数据流光带（墙面装饰，第五幕突入段跑马提速）
   大厅  z -56 → -76，宽 16，高 9：中央纪念碑（基座 + 五旋转环 + 脉冲核心
         + 贯通天花板的能量束）+ 全息扫描框 + 升降平台 + 顶部大风扇 + 悬浮灯环
+        + 爆发碎片（第五幕终局从核心飞散的发光块）
 
 静态几何合并为单个 VertexList（一次 draw call）；
 动画对象（环/核心/灯/门/风扇/无人机…）各自独立，model 矩阵与材质逐帧驱动。
@@ -136,6 +138,7 @@ class KKRenderer:
         self._build_fans()
         self._build_drones()
         self._build_atrium_show()
+        self._build_act5()
 
     # ---------------------------------------------------- 静态几何 --
     def _add_box(self, sx, sy, sz, ox, oy, oz, rgb):
@@ -385,6 +388,22 @@ class KKRenderer:
             v, c = box_data(1.5, 0.12, 1.5, 0, 0, 0, (0.90, 0.96, 1.0))
             self._push_animated(f'alight_{i}', Vec3(lx, ATRIUM_H - 0.35, lz),
                                 v, c, glow=1.0)
+
+    def _build_act5(self):
+        """第五幕演出件：数据流光带（走廊）+ 爆发碎片（大厅核心）。"""
+        # 数据流光带：贴墙低位的青色发光条，跑马节奏由时间轴驱动
+        for i in range(6):
+            side = -1 if i % 2 == 0 else 1
+            z = -6.0 - 9.0 * i
+            v, c = box_data(0.10, 0.18, 4.2, 0, 0, 0, (0.35, 0.85, 1.0))
+            self._push_animated(f'conduit_{i}',
+                                Vec3(side * (CORRIDOR_W / 2 - 0.06), 0.62, z),
+                                v, c, tint=(0.35, 0.85, 1.0), glow=0.45)
+        # 爆发碎片：8 个小发光块，枢轴在核心（弹道平移由时间轴给出）
+        for i in range(8):
+            v, c = box_data(0.16, 0.16, 0.16, 0, 0, 0, (1.0, 0.62, 0.16))
+            self._push_animated(f'spark_{i}', Vec3(*MONUMENT), v, c,
+                                tint=(1.0, 0.70, 0.30), glow=0.0)
 
     # ---------------------------------------------------- 渲染 --
     def set_animated_model(self, index, matrix):

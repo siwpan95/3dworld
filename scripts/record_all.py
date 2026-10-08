@@ -43,7 +43,8 @@ DEMO_SIZE = (1280, 720)
 # name, 模块路径(相对 ROOT), App 类名(None=自动找 DemoApp 子类), 时长兜底, 尺寸(None=App 自带)
 ENTRIES = [
     dict(name='main_48s',            mod='main.py',                cls='WorldApp',    dur=48.0, size=None),
-    dict(name='kkrieger_96s',        mod='kkrieger_demo.py',       cls='KKApp',       dur=96.0, size=None),
+    dict(name='kkrieger_120s',       mod='kkrieger_demo.py',       cls='KKApp',       dur=120.0, size=None,
+         audio='assets/kkrieger_ost.wav'),   # 录完把程序化配乐混进视频
     dict(name='boids_45s',           mod='demos/boids.py',         cls=None,          dur=45.0, size=DEMO_SIZE),
     dict(name='demoscene_tunnel_24s', mod='demos/demoscene_tunnel.py', cls=None,      dur=24.0, size=DEMO_SIZE),
     dict(name='minecraft_style_48s', mod='demos/minecraft_style.py', cls=None,        dur=48.0, size=DEMO_SIZE),
@@ -182,6 +183,16 @@ def record(entry, out_dir, fps, crf, dur_override):
         proc.wait()
         if proc.returncode != 0:
             raise RuntimeError(f'ffmpeg 退出码 {proc.returncode}')
+        # 可选：把程序化配乐混进视频（kkrieger：OST 与时间轴同长，-shortest 对齐）
+        if entry.get('audio'):
+            from logic.kkrieger_audio import ensure_ost
+            wav = ensure_ost()
+            muxed = out_path + '.mux.mp4'
+            subprocess.run([ffmpeg_exe(), '-y', '-loglevel', 'error',
+                            '-i', out_path, '-i', wav,
+                            '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k',
+                            '-shortest', muxed], check=True)
+            os.replace(muxed, out_path)
         size_mb = os.path.getsize(out_path) / 1048576
         print(f'[ok] {entry["name"]}: {n_frames} 帧 / {dur:.0f}s / '
               f'{w}x{h} / {size_mb:.1f}MB -> {out_path}', flush=True)

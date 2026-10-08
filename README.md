@@ -7,7 +7,7 @@
 
 - `main.py`（`pyglet_3d_demo`）—— **48 秒五幕演出**：环形立方体升起 → 环形波 →
   机械臂逆运动学取放宝石 → 螺旋柱 → 归位，双相机模式 + 幕字幕 + 时间轴面板；
-- `kkrieger_demo.py` —— **96 秒四幕程序化走廊漫游**（致敬 .kkrieger）：
+- `kkrieger_demo.py` —— **120 秒五幕程序化走廊漫游 + 程序化配乐**（致敬 .kkrieger）：
   走廊舱门/管道/货箱/频闪 → 大厅纪念碑/全息扫描/升降平台 → 核心过载 →
   撤离时逐段熄灯；
 - `demos/` —— **10 个独立示例**：无限隧道、SDF 光线步进、GPU 实例化粒子、
@@ -34,7 +34,8 @@ core/                核心层：窗口/渲染/几何/资源（允许 pyglet.gl�
 logic/               逻辑层：场景与动画（禁止 pyglet.gl，可无窗口单测）
   animation.py         时间轴/关键帧/插值（glTF TRS 对齐 + tint/glow 材质通道）
   choreography.py      main.py 的 48s 五幕编排（含两连杆逆运动学）
-  kkrieger.py          kkrieger 的 96s 四幕编排（相机脚本 + 场景动画）
+  kkrieger.py          kkrieger 的 120s 五幕编排（相机脚本 + 场景动画）
+  kkrieger_audio.py    kkrieger 程序化配乐（离线合成 120s 电子乐，音画同源对齐）
   camera.py            轨道相机状态机 + 手写 look-at 矩阵
   playback.py          播放控制器：播放/暂停/循环/倍速/seek
   skeleton.py          节点级层级动画（转台→大臂→小臂→夹爪）
@@ -42,7 +43,7 @@ logic/               逻辑层：场景与动画（禁止 pyglet.gl，可无窗�
   boids.py  waves.py   demos 的纯数学模块（群集 / Gerstner 波）
 presentation/        表现层：装配窗口事件 → 逻辑层 → 渲染
   app.py               WorldApp：48s 演出装配（双相机模式 + 夹持混合）
-  kkrieger_app.py      KKApp：96s 漫游装配 + 跳帧截图
+  kkrieger_app.py      KKApp：120s 漫游装配 + 跳帧截图 + 音频同步
   hud.py               幕字幕（淡入/停留/淡出）+ 状态行
   timeline_ui.py       底部时间轴面板（播放/循环/拖动/幕标记）
   shot.py              离屏抓帧（glReadPixels，DPI 无关）
@@ -123,17 +124,19 @@ python main.py --shot --only 2    只截第 3 张（调试单帧）
 > `t=0` 与 `t=48` 逐分量相等、幕边界无跳变，以及夹爪在 t=22/t=26.5
 > 分别落在宝石与台座 0.3 单位内。
 
-## kkrieger 致敬 Demo —— 96 秒四幕程序化走廊漫游
+## kkrieger 致敬 Demo —— 120 秒五幕程序化走廊漫游（含程序化配乐）
 
 参考 2004 年 Breakpoint 96k 冠军作品 .kkrieger（Farbrausch/.theprodukkt）的
 "程序化生成"精神：**零外部素材**——金属板、灯带、舱门、管道、货箱、立柱、
-五环纪念碑、全息扫描框、升降平台、能量束、风扇、无人机全部由代码即时生成，
-面板颜色用确定性哈希抖动模拟"程序化纹理"。
+五环纪念碑、全息扫描框、升降平台、能量束、风扇、无人机、数据流光带、爆发
+碎片全部由代码即时生成，面板颜色用确定性哈希抖动模拟"程序化纹理"；
+**配乐同样是程序生成的**（`logic/kkrieger_audio.py` 离线合成 120s 电子乐，
+首次运行渲染缓存到 `assets/kkrieger_ost.wav`，音画共用同一套时间常量）。
 
 ```bat
-python kkrieger_demo.py            正常运行（SPACE 暂停 / R 重播 / N,P 切幕）
+python kkrieger_demo.py            正常运行（SPACE 暂停 / R 重播 / N,P 切幕 / M 静音）
 python kkrieger_demo.py --smoke    冒烟测试（2.5s 自动关闭）
-python kkrieger_demo.py --shot     四幕各抓一张截图到 docs/（跳帧采样，约 3s）
+python kkrieger_demo.py --shot     各幕抓一张截图到 docs/（跳帧采样，约 3s）
 ```
 
 | 幕 | 时间 | 内容 |
@@ -141,9 +144,15 @@ python kkrieger_demo.py --shot     四幕各抓一张截图到 docs/（跳帧采
 | 一 · 走廊 | 0–24s | 俯冲进走廊，三道舱门依次开启，管道/货箱/警示频闪入画 |
 | 二 · 大厅 | 24–48s | 纪念碑唤醒：五环转动、全息扫描框上下扫、升降平台升起 |
 | 三 · 核心 | 48–72s | 过载：环加速、核心脉冲、能量束增亮、镜头逼近至"贴脸" |
-| 四 · 撤离 | 72–96s | 后撤，走廊灯带与大厅灯环逐段熄灭，拉回开场高空帧后硬切回开头 |
+| 四 · 撤离 | 72–96s | 后撤，走廊灯带与大厅灯环逐段熄灭，拉回开场高空帧 |
+| 五 · 突入 | 96–120s | 重启：心跳鼓点，高速穿越（舱门速开速闭、数据流光带跑马），全件过载，核心爆发白闪 + 碎片飞散，冲击波退出归位 |
+
+音频：`M` 静音；seek（R/N/P/←→）时音频同步跳转；循环无缝（源时长=时间轴时长）。
+配乐结构与画面对位：开门气浪在开门时刻、核心亚低频脉冲与视觉脉冲同相、
+灯带熄灭的轻响逐段对应、117.5s 爆发低频坠落。
 
 截图：`docs/kkrieger_corridor.png` / `_atrium.png` / `_core.png` / `_blackout.png`
+/ `_sprint.png` / `_converge.png` / `_flash.png`
 
 > 已知平台坑（实测 pyglet 2.1.16 / Win10 150% DPI）：`dpi_scaling` 默认
 > "platform" 模式下实际 framebuffer = 请求尺寸，但 viewport setter 会乘

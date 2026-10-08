@@ -19,3 +19,6 @@ Thumbs.db
 
 # 离线录制的视频产物（体积大，不入库）
 recordings/
+
+# 程序化配乐缓存（可由 logic/kkrieger_audio.py 再生）
+assets/*.wav
