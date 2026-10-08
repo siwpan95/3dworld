@@ -30,3 +30,6 @@ docs/_texcheck/
 
 # 本地研究材料（不入库）
 cordis-main.zip
+
+# 实验区音频产物（脚本可复现，不入库）
+experiments/bloodmusic_ost/*.wav
