@@ -36,6 +36,7 @@ class AdaptiveBgm:
         self._engine = None
         self._stream = None
         self._last_state = None
+        self._extra = {}           # 附加 game_state 字段（v3.3：COMBAT/VICTORY）
         self.enabled = bool(enabled) and os.environ.get('WORLD3D_BGM', '1') != '0'
         if not self.enabled:
             print('[bgm] disabled by env', flush=True)
@@ -67,6 +68,13 @@ class AdaptiveBgm:
         self._until = float(seconds)
         print(f'[bgm] arouse {level:.2f} for {seconds:.1f}s', flush=True)
 
+    def set_extra(self, extra):
+        """注入附加 game_state 字段（如 ``enemy_count=3`` → COMBAT_LOW、
+        ``victory=True`` → VICTORY）；传 None/{} 清除。"""
+        self._extra = dict(extra or {})
+        if self.enabled:
+            print(f'[bgm] extra={self._extra or "-"}', flush=True)
+
     def tick(self, dt):
         """主线程每帧调用：警觉衰减回落 EXPLORE。"""
         if not self.enabled or self._until <= 0:
@@ -90,7 +98,9 @@ class AdaptiveBgm:
     def _cb(self, outdata, frames, time_info, status):
         try:
             eng = self._engine
-            eng.update({'intensity': self._arousal}, frames / float(SR))
+            state = {'intensity': self._arousal}
+            state.update(self._extra)
+            eng.update(state, frames / float(SR))
             st = eng.current_state
             if st != self._last_state:
                 self._last_state = st

@@ -8,6 +8,8 @@
     - 演出变体：zhuangtaiji 马尔可夫链驱动发光元素（氛围每次不同，
       不可用时回退正弦呼吸）；
     - 交互：点击拾取场景元素；E 键唤醒**最近**的发光元素（脉冲高亮）；
+      **玩法目标**：唤醒全部 3 个 orb —— 音乐叙事随之推进
+      （探索→警觉→紧张→胜利；HUD 显示唤醒进度）；
     - 音景：bloodmusic SFX 反馈音（跳跃/落地/拾取/互动；`assets/sfx/*.wav`，
       由 scripts/gen_sfx.py 生成）+ **自适应 BGM**（互动/拾取推高张力，
       EXPLORE ⇄ TENSION 平滑过渡；需安装 bloodmusic，缺失则静默降级）；
@@ -95,6 +97,9 @@ class WalkerApp(DemoApp):
         self._msg = ''
         self._auto_t = None                    # --flag interact 自检
         self._hot_t = None                     # --flag hotreload 自检
+        self._awakened = set()                 # 已唤醒元素（玩法目标：3 个 orb）
+        self._victory_until = 0.0              # 胜利余韵截止
+        self._victory_t = None                 # --flag victory 自检
         super().__init__(width, height, args=args)
 
     # -------------------------------------------------------------- setup --
@@ -202,6 +207,11 @@ class WalkerApp(DemoApp):
                 self.walk = True
                 self._sync_eye()
             self.body.position = (5.0, 2.5, 0.0)   # 近移确保在互动半径内
+        if 'victory' in self.args.flags:
+            self._victory_t = 3.0
+            if 'walk' not in self.args.flags:
+                self.walk = True
+                self._sync_eye()
 
     def _rebuild_statics(self):
         """（重建）把场景几何注册为静态碰撞——热重载后调用以同步碰撞。"""
@@ -316,7 +326,9 @@ class WalkerApp(DemoApp):
         self._pulse[name] = self.time + 1.2
         self._msg = f'唤醒 {name}（距离 {dist:.1f}m）'
         self.sfx.play('power_up')
-        self.bgm.arouse(6.0, 0.55)
+        if name not in self._awakened:
+            self._awakened.add(name)
+            self._update_music_stage(len(self._awakened))
         if self._mc is not None:
             for _ in range(3):
                 if self._mc.current != 'dim':
@@ -326,6 +338,18 @@ class WalkerApp(DemoApp):
                   flush=True)
         else:
             print(f'[interact] wake {name} (breath mode)', flush=True)
+
+    def _update_music_stage(self, n):
+        """唤醒进度 -> 音乐叙事阶段：探索 → 警觉 → 紧张 → 胜利。"""
+        if n >= 3:
+            self.bgm.set_extra({'victory': True})
+            self._victory_until = self.time + 6.0
+            print('[goals] all orbs awakened -> VICTORY', flush=True)
+        elif n == 2:
+            self.bgm.set_extra({'enemy_count': 3})     # 引擎阈值 -> COMBAT_LOW
+            print('[goals] 2/3 awakened -> COMBAT_LOW', flush=True)
+        else:
+            self.bgm.arouse(6.0, 0.55)                 # -> TENSION
 
     def _on_close(self):
         """退出前停掉 BGM 流（尽力；不拦截默认关闭流程）。"""
@@ -358,6 +382,14 @@ class WalkerApp(DemoApp):
         if self._hot_t is not None and self.time >= self._hot_t:
             self._hot_t = None
             self._hotreload_step()
+        if self._victory_t is not None and self.time >= self._victory_t:
+            self._victory_t = None
+            print('[selftest] auto victory', flush=True)
+            self._awakened = {'orb_a', 'orb_b', 'orb_c'}
+            self._update_music_stage(3)
+        if self._victory_until and self.time >= self._victory_until:
+            self._victory_until = 0.0
+            self.bgm.set_extra({})          # 胜利余韵结束，回到探索
         if self.walk:
             ks = self._keys
             f = (1.0 if 'W' in ks else 0.0) - (1.0 if 'S' in ks else 0.0)
@@ -466,7 +498,7 @@ class WalkerApp(DemoApp):
             mc = self._mc.current if self._mc is not None else 'breath'
             return (f'{base}   [WALK] pos=({p[0]:5.1f},{p[1]:4.1f},{p[2]:5.1f}) '
                     f'ground={int(self.body.on_ground)} ember={mc} '
-                    f'bgm={self.bgm.state_name}{msg}')
+                    f'bgm={self.bgm.state_name} 唤醒{len(self._awakened)}/3{msg}')
         return f'{base}   [ORBIT]   V 进入漫游{msg}'
 
 
