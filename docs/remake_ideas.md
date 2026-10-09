@@ -247,7 +247,7 @@ DeepSeek Harness 的运行时内核。
 
 ## 10. P1-③ 射线 FPS 切片 · 设计 note（待 review 放行后执行）
 
-> 状态：**规划**（先问 4 问已完成，全哥已答；待全哥 review 放行后执行）
+> 状态：**已执行**（2026-10-10，commit `edbf8ed`；先问 4 问由全哥答定）
 > 机制致敬：`Wolfenstein 3D`(1992) / `Doom`(1993) 的「走廊迷宫 + 第一人称射击」循环；
 > **不碰任何原 IP 名称、美术、音效、关卡**（合规见 §7）。技术骨架复用本项目
 > `raymarch_sdf`（SDF 全屏管线）、`blockworld`（DDA 射线思路）、`engine.FlyCamera`（第一人称相机）。
@@ -318,3 +318,17 @@ DeepSeek Harness 的运行时内核。
 - **性能**：敌人求交加重每步成本 → 敌人先用包围球粗剔除再精确形；必要时 SHADOW_STEPS 降 12。
 - **手感**：慢速光弹的"可躲性"要求弹体视觉半径与判定半径分调并用同一常量表。
 - **无头验证**：环境无 GL/driver 时 `RenderService` 仅记账（既有范式），逻辑与命中判定全部 headless 可测。
+
+### 10.9 执行结果（2026-10-10，commit `edbf8ed`）
+- `config_boot.py fps` → `FPSKERNEL_OK`：seed=20261010 / 15×15 / hp=100 / ammo=60 / 敌 8；
+  auto-pilot **19.8s** 抵达出口（`kills=7`、`hp=88`、`ammo=63`），GL 回滚 `3 → 0`。
+- **种子鲁棒性**：10 个不同种子全部通关（12.9~34.8s，击杀 4~8，HP 88~100）——
+  专门验证"程序化随机迷宫"这条选择（迷宫必连通 + auto-pilot 必可解）。
+- 三内核回归：`TDKERNEL_OK` / `GODHAND_OK` / `FPSKERNEL_OK` 全绿，既有内核未受影响
+  （`RulesService` 只加了两条新事件分支）。
+- 踩到并记录**第 5 条 Cordis 坑**：Service 里**不能用 `@staticmethod`**——`Traceable`
+  代理对任何方法都注入 self，静态辅助方法会多收一个参数而报
+  `TypeError: takes 3 positional arguments but 4 were given`；改成实例方法即可
+  （已沉淀进 `~/.workbuddy/skills/cordis-v4-integration`）。
+- 待办：demo 实机录制（`record_all.py --only rayhold`）与 `--shot` 截图需本机补跑——
+  沙箱 pyglet 原生 GL 受限（既往已两次遇到）；逻辑与 headless 验收已全绿。

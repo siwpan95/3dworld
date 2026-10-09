@@ -58,8 +58,9 @@ python scripts\verify_demos.py --only boids,water  只验指定 demo
 | `kid_a_walker_3d.py` | 交互 | **KID-A WALKER 3D**（arcade 伪 3D 重制为真 3D）：41 个房间模版 → 区块无限走廊 + **能量/碎片/传送门/暗室** + 区域驱动调色与程序化配乐（ZoneSynth 风格）+ 发光踢脚线走廊美学 | `kid_a_3d_01..03.png` |
 | `scene_viewer.py` | 工具 | **场景查看器（非定时演出）**：加载 `--file` 指定的场景 JSON 并实时渲染，改文件即热重载（坏 JSON 会被拒绝、保留旧场景）——「LLM 场景生成工作流」的"看"这一端；**未声明 `SHOTS`，批量验收跳过截图阶段** | — |
 | `mountain.py` | 观察式 | **《山》**（致敬 David OReilly 的 Mountain）：复用 terrain_flyover 噪声管线生成**悬浮孤峰**（顶/底两面在边界闭合）+ 片元级动态光照昼夜交替 + 云/雨/雪气象轮替 + 坠落物体与生长植物 + 哲学独白叠层 + **人格测验答案嵌进生成参数**（N 键）+ 键盘钢琴（A~K 即时合成五声音阶）+ 流星撞击崩解重生（C 键） | `mountain_day/dusk.png` |
+| `rayhold.py` | 交互 | **《迷堡枪影 / Rayhold》**（P1-③ 射线 FPS，机制致敬 Wolfenstein 3D / Doom）：**程序化随机迷宫**（递归回溯 + 12% 编织，种子可复现）+ **全屏片元着色器 SDF 光线步进**（墙 / 地板 / 敌人 / 光弹在同一场景，迷宫距离场与命中判定同源）+ hitscan 射线枪 + 2 种敌人状态机（近战游荡者 / 远程哨卫投光弹）+ 弹药与医疗拾取；玩法全在 `experiments/cordis/fps_kernel.py`，由 `cordis.fps.yml` 配置树挂载（平衡参数集中在 yml） | `rayhold_a/b.png` |
 
-> 上表 18 项与 `demos/*.py`（不含 `_harness.py`）一一对应，也是
+> 上表 19 项与 `demos/*.py`（不含 `_harness.py`）一一对应，也是
 > `scripts/verify_demos.py` 逐项冒烟的对象；唯一不参与截图阶段的是
 > `scene_viewer.py`——它由 `--file` 驱动、没有固定剧照时刻。
 
@@ -85,6 +86,7 @@ python demos\scene_viewer.py --file docs\llm_scene_demo.json --smoke 3
 | `timed` / `victory`（scene_walker） | 自检：短时限挑战 / 自动三连唤醒（验证结算卡与音乐叙事） |
 | `digdemo` / `topdown`（blockworld） | 自检：自动挖→放闭环（验证 DDA + 区块重建）/ 高空俯瞰诊断视角 |
 | `go`（kid_a_walker_3d） | 自检/录制：自动探索（航点导航 + 走廊居中 + 自动收集） |
+| `auto` / `seedN`（rayhold） | 自动驾驶（BFS 奔出口 + 遇敌自动射击，与 headless 验收同款）/ 开局换种子（如 `seed1234`） |
 
 常用按键（各 demo 底部有完整帮助行）：`SPACE` 暂停、`ESC` 退出是统一的；
 **方块世界** `N`/`P` 切幕、`←`/`→` 快退快进 5s、`C` 切电影/自由相机、`R` 重播；
