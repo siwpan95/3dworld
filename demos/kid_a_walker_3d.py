@@ -392,6 +392,12 @@ class KidAApp(DemoApp):
         self.chunk_cell = {}
         self._go = False                        # --flag go 自动探索
         self._go_turn = 0.0
+        self._go_path = None                    # BFS 路径（格子序列）
+        self._go_path_age = 0.0
+        self._go_last = None
+        self._prev_chunk = None                 # 来路区块（回避回头路）
+        self._visited_prev = None
+        self._go_stuck = 0.0
         self.lamp = True
         self.msg = ''
         self.msg_until = 0.0
@@ -608,15 +614,18 @@ class KidAApp(DemoApp):
             return
         if self._go:
             self._go_step(dt)
+            self.pitch = -7.0              # 自动探索：轻微俯视，构图更稳
         else:
             self.stepper.advance(dt)
         ccx, ccy = self._chunk()
         if (ccx, ccy) not in self.visited:
             self.visited.add((ccx, ccy))
+            self._prev_chunk = getattr(self, '_visited_prev', None)
             self._sync_chunks()
             if self._go:
                 print(f'[go] 区块({ccx},{ccy}) 已探索 {len(self.visited)} 区 '
                       f'zone={self.zone}', flush=True)
+        self._visited_prev = (ccx, ccy)
         cell = self.world.cell(self.px, self.pz)
         self.energy.update(dt, cell, getattr(self, '_moving', False),
                            self._near_glow())
@@ -662,54 +671,137 @@ class KidAApp(DemoApp):
         return best[1], best[2]
 
     def _go_step(self, dt):
-        """自动探索：航点转向 + 前进 + 侧滑避障（录制/自检用）。"""
-        target = self._go_target()
-        if target is not None:
+        """自动探索：**BFS 寻路**到目标出口（栅格已知，稳定不卡死）。"""
+        import collections
+        # 选定目标出口（优先未访问区块）
+        ccx, ccy = self._chunk()
+        exits = self.world.exits.get((ccx, ccy), set())
+        if not exits:
+            self._moving = False
+            return
+        if self._go_path is None or not self._go_path:
+            # 选一个出口：优先未访问邻居 + **回避来路**（防止门间乒乓振荡）。
+            # 位置型判定（"附近有门就跳过"）不可行——"接近门要走"与
+            # "刚从门进来"位置重合；改用**来路记忆**做惩罚。
+            best = None
+            for d in exits:
+                nb = (ccx + (1 if d == 'E' else -1 if d == 'W' else 0),
+                      ccy + (1 if d == 'S' else -1 if d == 'N' else 0))
+                score = (2.0 if nb not in self.visited else 0.0)
+                if nb == self._prev_chunk:
+                    score -= 4.0                    # 来路重罚（仅当无路可走才回头）
+                if best is None or score > best[0]:
+                    best = (score, self._exit_pos(ccx, ccy, d), d)
+            target, tdir = best[1], best[2]
             tx, tz = target
-            want = math.degrees(math.atan2(tz - self.pz, tx - self.px))
-            diff = (want - self.yaw + 540.0) % 360.0 - 180.0
-            self.yaw += max(-150.0 * dt, min(150.0 * dt, diff))
-        fx, fz = self._forward()
-        step = MOVE_SPEED * 1.1 * dt
+            # 已在门口（2.2 内）：目标改为「门外 2.5」——继续穿过门进下一区块。
+            # ⚠️ 门槛必须够大：门槛过小时目标就是脚下格子，会出现
+            # "每帧 pop→重规划→再 pop"的死循环（曾把探索锁死在门口）。
+            if math.hypot(tx - self.px, tz - self.pz) < 2.2:
+                if tdir == 'W':
+                    tx -= 2.5
+                elif tdir == 'E':
+                    tx += 2.5
+                elif tdir == 'N':
+                    tz -= 2.5
+                else:
+                    tz += 2.5
+            self._go_path = self._bfs_path((int(self.px), int(self.pz)),
+                                           (int(tx), int(tz)))
+            if not self._go_path:
+                # 兜底：门外目标也解不出（异常地形）→ 换一个出口
+                for d in exits:
+                    if d == tdir:
+                        continue
+                    ex, ez = self._exit_pos(ccx, ccy, d)
+                    self._go_path = self._bfs_path((int(self.px), int(self.pz)),
+                                                   (int(ex), int(ez)))
+                    if self._go_path:
+                        tdir = d
+                        break
+            self._go_path_age = 0.0
+            self._go_last = (ccx + (1 if tdir == 'E' else -1 if tdir == 'W' else 0),
+                             ccy + (1 if tdir == 'S' else -1 if tdir == 'N' else 0))
+        self._go_path_age += dt
 
-        def clear(x, z):
-            return not self._blocked(x, z)
-
-        # 前向 + 左右探针（贴墙时自动向走廊中线回正，避免"贴墙走"）
-        if clear(self.px + fx * (step + 0.4), self.pz + fz * (step + 0.4)):
-            self.px += fx * step
-            self.pz += fz * step
-            self._moving = True
+        # 沿路径走：**位移与朝向解耦**（朝目标格中心直接平移，贴墙滑动；
+        # 朝向只做视觉平滑跟随——避免"绕着格心打转、永远对不齐"的振荡）
+        moved = False
+        if self._go_path:
+            nxt = self._go_path[0]
+            cx, cz = nxt[0] + 0.5, nxt[1] + 0.5
+            if math.hypot(cx - self.px, cz - self.pz) < 0.4:
+                self._go_path.pop(0)
+                if self._go_path:
+                    nxt = self._go_path[0]
+                    cx, cz = nxt[0] + 0.5, nxt[1] + 0.5
+                else:
+                    nxt = None
+            if nxt is not None:
+                dx, dz = cx - self.px, cz - self.pz
+                L = math.hypot(dx, dz) or 1.0
+                step = MOVE_SPEED * 1.55 * dt
+                mx, mz = dx / L * step, dz / L * step
+                if not self._blocked(self.px + mx + (0.05 if mx > 0 else -0.05), self.pz):
+                    self.px += mx
+                    moved = True
+                if not self._blocked(self.px, self.pz + mz + (0.05 if mz > 0 else -0.05)):
+                    self.pz += mz
+                    moved = True
+                # 朝向：平滑跟随移动方向（视觉）
+                want = math.degrees(math.atan2(dz, dx))
+                diff = (want - self.yaw + 540.0) % 360.0 - 180.0
+                self.yaw += max(-260.0 * dt, min(260.0 * dt, diff))
+        self._moving = moved
+        # 停滞兜底：1.5s 没动 -> 强行换向（清路径，随机转身再探索）
+        if moved:
+            self._go_stuck = 0.0
         else:
-            rx, rz = -fz, fx
-            if clear(self.px + rx * (step + 0.4), self.pz + rz * (step + 0.4)):
-                self.px += rx * step * 0.9
-                self.pz += rz * step * 0.9
-                self.yaw += 20.0 * dt
-                self._moving = True
-            elif clear(self.px - rx * (step + 0.4), self.pz - rz * (step + 0.4)):
-                self.px -= rx * step * 0.9
-                self.pz -= rz * step * 0.9
-                self.yaw -= 20.0 * dt
-                self._moving = True
-            else:
-                self.yaw += 150.0 * dt
-                self._moving = False
-        # 居中力：左右两侧距离差 -> 轻微向中线修正（走廊内走得更"正"）
-        rx, rz = -fz, fx
-        for d in (0.9, 1.6, 2.4):
-            lw = self._blocked(self.px - rx * d, self.pz - rz * d)
-            rw = self._blocked(self.px + rx * d, self.pz + rz * d)
-            if lw != rw:
-                sign = 1.0 if lw else -1.0
-                self.px += rx * sign * 1.6 * dt
-                self.pz += rz * sign * 1.6 * dt
-                break
+            self._go_stuck = getattr(self, '_go_stuck', 0.0) + dt
+            if self._go_stuck > 1.5:
+                self._go_stuck = 0.0
+                self._go_path = None
+                self.yaw += 137.0
+                print('[go] 停滞兜底：换向重规划', flush=True)
         self._autocollect -= dt
         if self._autocollect <= 0:
             self._autocollect = 0.2
             self._try_collect()
         self._portal_check()
+
+    def _bfs_path(self, start, goal):
+        """栅格 BFS：返回从 start 到 goal 的格子序列（不含起点）；无解返回 []。
+
+        ⚠️ 必须先 ensure_neighbors——"门外一格"属于邻居区块，未生成时
+        ``cell()`` 一律返回 WALL，BFS 会直接失败（曾导致原地卡死）。
+        """
+        import collections
+        self.world.ensure_neighbors(*self._chunk())
+        if start == goal:
+            return []
+        seen = {start}
+        q = collections.deque([(start, [])])
+        n = K.CHUNK
+        ccx, ccy = self._chunk()
+        # 搜索范围：当前区块 ± 1 区块（3×3 已加载区域）
+        lo_x, lo_z = (ccx - 1) * n, (ccy - 1) * n
+        hi_x, hi_z = (ccx + 2) * n, (ccy + 2) * n
+        while q:
+            (x, z), path = q.popleft()
+            if len(path) > 400:
+                return []
+            for dx, dz in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nx, nz = x + dx, z + dz
+                if not (lo_x <= nx < hi_x and lo_z <= nz < hi_z):
+                    continue
+                if (nx, nz) in seen or self.world.cell(nx + 0.5, nz + 0.5) == K.WALL:
+                    continue
+                np_ = path + [(nx, nz)]
+                if (nx, nz) == goal:
+                    return np_
+                seen.add((nx, nz))
+                q.append(((nx, nz), np_))
+        return []
 
     def update(self, dt):
         try:

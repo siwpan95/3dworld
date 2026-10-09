@@ -55,9 +55,10 @@ python scripts\verify_demos.py --only boids,water  只验指定 demo
 | `nordic_saga.py` | 60s | **《诺德之境》**：上古卷轴风格程序化动画（雪原遗迹/巨龙/龙语古墙 + 程序化配乐） | `nordic_01..06.png` |
 | `scene_walker.py` | 交互 | **可漫步场景（交互化）**：S1 场景 JSON → 第一人称物理漫步（固定步长抗卡帧）+ 马尔可夫演出变体 + 拾取/E 互动 + **限时挑战（T 键）与跨幕转场结算卡**（音乐张力阶梯 COMBAT_LOW→HIGH）+ SFX/自适应 BGM + 场景热重载 | `scene_walker_01.png` |
 | `blockworld.py` | 交互 | **方块世界 · 可交互版**（voxel_terrain × minecraft_style 结合）：第一人称漫步/跳跃 + **DDA 准星拾取 + 左键挖/右键放 + hotbar(1-6)** + **区块化网格重建**（16 列/块，边界邻块同步；实测编辑 ≈11ms）+ 程序化像素图集与昼夜 | `blockworld_01.png` |
+| `kid_a_walker_3d.py` | 交互 | **KID-A WALKER 3D**（arcade 伪 3D 重制为真 3D）：41 个房间模版 → 区块无限走廊 + **能量/碎片/传送门/暗室** + 区域驱动调色与程序化配乐（ZoneSynth 风格）+ 发光踢脚线走廊美学 | `kid_a_3d_01..03.png` |
 | `scene_viewer.py` | 工具 | **场景查看器（非定时演出）**：加载 `--file` 指定的场景 JSON 并实时渲染，改文件即热重载（坏 JSON 会被拒绝、保留旧场景）——「LLM 场景生成工作流」的"看"这一端；**未声明 `SHOTS`，批量验收跳过截图阶段** | — |
 
-> 上表 16 项与 `demos/*.py`（不含 `_harness.py`）一一对应，也是
+> 上表 17 项与 `demos/*.py`（不含 `_harness.py`）一一对应，也是
 > `scripts/verify_demos.py` 逐项冒烟的对象；唯一不参与截图阶段的是
 > `scene_viewer.py`——它由 `--file` 驱动、没有固定剧照时刻。
 
@@ -82,6 +83,7 @@ python demos\scene_viewer.py --file docs\llm_scene_demo.json --smoke 3
 | `walk` / `interact` / `hotreload`（scene_walker） | 起始进入漫游 / 无人值守自检互动 / 自检热重载（临时副本） |
 | `timed` / `victory`（scene_walker） | 自检：短时限挑战 / 自动三连唤醒（验证结算卡与音乐叙事） |
 | `digdemo` / `topdown`（blockworld） | 自检：自动挖→放闭环（验证 DDA + 区块重建）/ 高空俯瞰诊断视角 |
+| `go`（kid_a_walker_3d） | 自检/录制：自动探索（航点导航 + 走廊居中 + 自动收集） |
 
 常用按键（各 demo 底部有完整帮助行）：`SPACE` 暂停、`ESC` 退出是统一的；
 **方块世界** `N`/`P` 切幕、`←`/`→` 快退快进 5s、`C` 切电影/自由相机、`R` 重播；

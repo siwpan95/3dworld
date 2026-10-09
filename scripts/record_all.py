@@ -62,6 +62,8 @@ ENTRIES = [
          ost_fn='logic.nordic_audio:ensure_ost'),  # 北欧配乐（通用 ost 钩子）
     dict(name='blockworld_30s',      mod='demos/blockworld.py',   cls='BlockWorldApp', dur=30.0,
          size=DEMO_SIZE, flags='cine'),            # 可交互方块世界（脚本化运镜）
+    dict(name='kid_a_walker_3d_40s', mod='demos/kid_a_walker_3d.py', cls='KidAApp', dur=40.0,
+         size=DEMO_SIZE, flags='go'),              # KID-A WALKER 3D（自动探索运镜）
 ]
 
 FFMPEG_CANDIDATES = [
