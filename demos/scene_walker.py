@@ -100,6 +100,13 @@ class WalkerApp(DemoApp):
         self._awakened = set()                 # 已唤醒元素（玩法目标：3 个 orb）
         self._victory_until = 0.0              # 胜利余韵截止
         self._victory_t = None                 # --flag victory 自检
+        self.challenge = False                 # 限时挑战（T 键开始/重开）
+        self._challenge_secs = 90.0
+        self._time_left = 0.0
+        self._best = None                      # 最佳用时（session）
+        self._tier = 0                         # 紧张阶梯（0/1/2）
+        self._end = None                       # 结算卡 (phase, t0, title, sub)
+        self._end_objs = None                  # 结算卡绘制对象（懒建）
         super().__init__(width, height, args=args)
 
     # -------------------------------------------------------------- setup --
@@ -212,6 +219,12 @@ class WalkerApp(DemoApp):
             if 'walk' not in self.args.flags:
                 self.walk = True
                 self._sync_eye()
+        if 'timed' in self.args.flags:         # --flag timed：自检（短时限挑战）
+            self._challenge_secs = 8.0
+            if 'walk' not in self.args.flags:
+                self.walk = True
+                self._sync_eye()
+            self._start_challenge()
 
     def _rebuild_statics(self):
         """（重建）把场景几何注册为静态碰撞——热重载后调用以同步碰撞。"""
@@ -237,6 +250,8 @@ class WalkerApp(DemoApp):
                 self._sync_eye()
         elif name == 'E':
             self._interact()
+        elif name == 'T':
+            self._start_challenge()            # 开始/重开限时挑战
 
     def _on_key_release(self, symbol, modifiers):
         key = pyglet.window.key
@@ -345,6 +360,99 @@ class WalkerApp(DemoApp):
         else:
             print(f'[awaken] {name} (breath mode)', flush=True)
 
+    # ---------------------------------------------------------- 限时挑战 --
+    def _start_challenge(self):
+        """开始（或重开）限时挑战：限时内唤醒全部 3 个 orb。"""
+        self._awakened.clear()
+        self.challenge = True
+        self._reopen = False
+        self._time_left = self._challenge_secs
+        self._tier = 0
+        self._msg = f'挑战开始：{self._challenge_secs:.0f} 秒内唤醒 3 个 orb（T 重开）'
+        self.sfx.play('power_up')
+        print(f'[challenge] start {self._challenge_secs:.0f}s', flush=True)
+
+    def _end_challenge(self, success):
+        """挑战结束：出结算卡（跨幕转场式）；淡出后自动重开。"""
+        self.challenge = False
+        used = self._challenge_secs - max(0.0, self._time_left)
+        if success:
+            self._best = used if self._best is None else min(self._best, used)
+            title, sub = '祭坛苏醒！', f'用时 {used:.1f}s · 最佳 {self._best:.1f}s'
+            print(f'[challenge] SUCCESS used={used:.1f}s', flush=True)
+        else:
+            title, sub = '时间到', f'唤醒 {len(self._awakened)}/3'
+            self.bgm.set_extra({'game_over': True})     # DEFEAT 一幕
+            print(f'[challenge] FAIL awake={len(self._awakened)}/3', flush=True)
+        self._end = (1, self.time, title, sub)
+        self._tier = 0
+        self._reopen = True
+
+    def _endcard_tick(self):
+        """结算卡状态机：淡入 0.6s → 保持 4s → 淡出 0.8s → 自动重开。"""
+        if self._end is None:
+            return
+        phase, t0, title, sub = self._end
+        el = self.time - t0
+        if phase == 1 and el >= 0.6:
+            self._end = (2, self.time, title, sub)
+        elif phase == 2 and el >= 4.0:
+            self._end = (3, self.time, title, sub)
+        elif phase == 3 and el >= 0.8:
+            self._end = None
+            self.bgm.set_extra({})                     # 清 DEFEAT（如为失败局）
+            self._msg = ''
+            if getattr(self, '_reopen', False):        # 街机节奏：自动下一局
+                self._reopen = False
+                self._start_challenge()
+            return
+        self._draw_endcard(title, sub)
+
+    def _draw_endcard(self, title, sub):
+        """全屏遮罩 + 中央大字（正交投影；pyglet shapes/text 懒建复用）。"""
+        from pyglet import shapes, text
+        from pyglet.math import Mat4
+        phase, t0, _t, _s = self._end
+        el = self.time - t0
+        if phase == 1:
+            a = min(1.0, el / 0.6)
+        elif phase == 2:
+            a = 1.0
+        else:
+            a = max(0.0, 1.0 - el / 0.8)
+        w, h = self.window.width, self.window.height
+        if self._end_objs is None:
+            font = None
+            try:
+                from engine.fonts import resolve_cjk_font
+                font = resolve_cjk_font()
+            except Exception:
+                pass
+            rect = shapes.Rectangle(0, 0, w, h, color=(8, 10, 16))
+            t1 = text.Label(title, font_size=46, weight='bold', font_name=font,
+                            color=(240, 240, 255, 255), anchor_x='center',
+                            anchor_y='center')
+            t2 = text.Label(sub, font_size=18, font_name=font,
+                            color=(180, 190, 215, 255), anchor_x='center',
+                            anchor_y='center')
+            self._end_objs = (rect, t1, t2)
+        rect, t1, t2 = self._end_objs
+        rect.width, rect.height = w, h
+        rect.opacity = int(200 * a)
+        t1.text = title
+        t2.text = sub
+        t1.x, t1.y = w // 2, int(h * 0.56)
+        t2.x, t2.y = w // 2, int(h * 0.56) - 52
+        t1.opacity = int(255 * a)
+        t2.opacity = int(235 * a)
+        saved_p, saved_v = self.window.projection, self.window.view
+        self.window.projection = Mat4.orthogonal_projection(0, w, 0, h, -255, 255)
+        self.window.view = Mat4()
+        rect.draw()
+        t1.draw()
+        t2.draw()
+        self.window.projection, self.window.view = saved_p, saved_v
+
     def _update_music_stage(self, n):
         """唤醒进度 -> 音乐叙事阶段：探索 → 警觉 → 紧张 → 胜利。"""
         if n >= 3:
@@ -355,6 +463,10 @@ class WalkerApp(DemoApp):
             self._msg = '祭坛苏醒！'
             print(f'[goals] all orbs awakened -> VICTORY '
                   f'(pulse {len(self._glow)} nodes)', flush=True)
+            if self.challenge:
+                self._end_challenge(True)          # 挑战成功 → 结算卡
+            elif self._end is None:
+                self._end = (1, self.time, '祭坛苏醒！', '唤醒 3/3')
         elif n == 2:
             self.bgm.set_extra({'enemy_count': 3})     # 引擎阈值 -> COMBAT_LOW
             print('[goals] 2/3 awakened -> COMBAT_LOW', flush=True)
@@ -399,7 +511,21 @@ class WalkerApp(DemoApp):
             self._update_music_stage(3)
         if self._victory_until and self.time >= self._victory_until:
             self._victory_until = 0.0
-            self.bgm.set_extra({})          # 胜利余韵结束，回到探索
+            if not self.challenge:              # 挑战中 extra 由结算/重开流程管理
+                self.bgm.set_extra({})
+        if self.challenge:
+            self._time_left -= dt
+            tier = 2 if self._time_left <= 10 else (1 if self._time_left <= 30 else 0)
+            if tier != self._tier:          # 张力阶梯：<30s COMBAT_LOW / <10s COMBAT_HIGH
+                self._tier = tier
+                if tier == 2:
+                    self.bgm.set_extra({'enemy_count': 3, 'boss_active': True})
+                elif tier == 1:
+                    self.bgm.set_extra({'enemy_count': 3})
+                print(f'[challenge] tier -> {tier} (left {self._time_left:.0f}s)',
+                      flush=True)
+            if self._time_left <= 0.0:
+                self._end_challenge(False)
         if self.walk:
             ks = self._keys
             f = (1.0 if 'W' in ks else 0.0) - (1.0 if 'S' in ks else 0.0)
@@ -493,6 +619,7 @@ class WalkerApp(DemoApp):
         cam = self.eye if self.walk else self.camera
         w, h = self.window.width, self.window.height
         self.renderer.render(cam, self.scene, w / float(h), self.window)
+        self._endcard_tick()          # 结算卡（跨幕转场式叠加）
 
     def _on_resize(self, width, height):
         result = super()._on_resize(width, height)
@@ -506,9 +633,11 @@ class WalkerApp(DemoApp):
         if self.walk:
             p = self.body.position
             mc = self._mc.current if self._mc is not None else 'breath'
+            ch = (f' [{self._time_left:4.1f}s]' if self.challenge else '')
             return (f'{base}   [WALK] pos=({p[0]:5.1f},{p[1]:4.1f},{p[2]:5.1f}) '
                     f'ground={int(self.body.on_ground)} ember={mc} '
-                    f'bgm={self.bgm.state_name} 唤醒{len(self._awakened)}/3{msg}')
+                    f'bgm={self.bgm.state_name} 唤醒{len(self._awakened)}/3'
+                    f'{ch}{msg}')
         return f'{base}   [ORBIT]   V 进入漫游{msg}'
 
 
