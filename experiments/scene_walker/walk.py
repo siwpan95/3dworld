@@ -1,20 +1,20 @@
 # -*- coding: utf-8 -*-
-"""scene_walker —— 可漫步场景雏形（交互化第一小步，实验）。
+"""scene_walker —— 可漫步场景（交互化深化版 v3）。
 
-把三块既有成果组合成「可交互场景」的模板：
+在 v2（S1 场景 + FixedStepper 物理漫步 + 马尔可夫演出变体）基础上深化交互：
 
-    S1 场景 JSON（engine.scene_build 构建，含几何/材质/环境）
-    + FixedStepper（渲染帧率与物理解耦，卡帧不穿透）
-    + 物理漫步（AABB 走墙/站地/跳跃；场景几何自动注册为碰撞）
-    + 发光元素呼吸（演出活性的最小体现；字体走 engine.fonts）
+    v3 新增——拾取与近身互动：
+      鼠标点击 → 拾取场景元素（Picker 射线）→ 状态行显示命中
+      E 键 → 唤醒**最近**的发光元素（脉冲高亮 + 强制马尔可夫档位回升）
+      交互反馈 = 发光脉冲（SFX 音效为下一层，见 README）
 
 用法::
 
-    <项目 .venv python> experiments/scene_walker/walk.py
-    ... --file docs/llm_scene_demo.json --smoke 3 --flag walk
+    <项目 venv python> experiments/scene_walker/walk.py
+    ... --smoke 6 --flag walk --flag interact   # 无键盘环境自检：自动触发一次互动
 
-键位：V 轨道/漫游切换   WASD 走   SPACE 跳（漫游态）   SHIFT 加速
-      鼠标拖动：轨道环绕 / 漫游转视角
+键位：V 轨道/漫游   WASD 走   SPACE 跳（漫游）   SHIFT 加速
+      E 近身互动（漫游）   鼠标拖动：轨道环绕 / 漫游转视角   点击：拾取
 """
 from __future__ import annotations
 
@@ -55,8 +55,9 @@ def _extract_file(argv):
 
 
 class WalkerApp(DemoApp):
-    TITLE = 'scene walker · 可漫步场景（实验）'
-    HELP = 'V 轨道/漫游   WASD 走   SPACE 跳   SHIFT 加速   鼠标拖动看'
+    TITLE = 'scene walker · 可漫步场景（实验 v3）'
+    HELP = ('V 轨道/漫游  WASD 走  SPACE 跳  SHIFT 加速  E 互动  '
+            '鼠标拖动看  点击拾取')
     FOV = 60.0
     Z_FAR = 600.0
     JSON_PATH = None
@@ -65,6 +66,7 @@ class WalkerApp(DemoApp):
     SPRINT = 1.9
     JUMP_V = 7.0              # 跳起 ~1.1m（g=-22）
     EYE = 0.7                 # 眼高（相对身体中心）
+    REACH = 6.5               # 近身互动半径（m）
 
     def __init__(self, width, height, args=None):
         self._json_path = os.path.abspath(self.JSON_PATH or DEFAULT_JSON)
@@ -72,6 +74,10 @@ class WalkerApp(DemoApp):
         self.walk = False
         self.yaw, self.pitch = 180.0, -6.0
         self._landed_reported = False
+        self.selected = None
+        self._pulse = {}                       # name -> 高亮截止时刻
+        self._msg = ''
+        self._auto_t = None                    # --flag interact：自检触发时刻
         super().__init__(width, height, args=args)
 
     # -------------------------------------------------------------- setup --
@@ -80,6 +86,7 @@ class WalkerApp(DemoApp):
         from engine.env import LightEnvironment
         from engine.fixedstep import FixedStepper
         from engine.physics import Body, PhysicsWorld
+        from engine.picking import Picker
         from engine.renderer import Renderer
         from engine.scene_build import build_scene, load_json
         from engine.shaders import get
@@ -91,6 +98,7 @@ class WalkerApp(DemoApp):
         self.renderer = Renderer(self.window.width, self.window.height,
                                  environment=self.env)
         self.scene = build_scene(self._data, get('pbr'))
+        self.picker = Picker()                 # v3：拾取
 
         # 物理：场景几何自动注册为静态碰撞（世界 AABB）
         self.physics = PhysicsWorld(gravity=-22.0, cell=6.0)
@@ -117,7 +125,8 @@ class WalkerApp(DemoApp):
         self._drag_orbit_input = orbit_camera_input(self, self.camera)
         self.on_mouse_drag, self.on_mouse_scroll = (
             self._drag_dispatch, self._drag_orbit_input[1])
-        self.window.push_handlers(on_key_release=self._on_key_release)
+        self.window.push_handlers(on_key_release=self._on_key_release,
+                                  on_mouse_press=self.on_mouse_press)
 
         # 发光元素基线（呼吸动画不累积乘）
         self._glow = {}
@@ -152,6 +161,12 @@ class WalkerApp(DemoApp):
         if 'walk' in self.args.flags:              # --flag walk：直接进入漫游
             self.walk = True
             self._sync_eye()
+        if 'interact' in self.args.flags:          # --flag interact：自检互动
+            self._auto_t = 1.2
+            if 'walk' not in self.args.flags:
+                self.walk = True
+                self._sync_eye()
+            self.body.position = (5.0, 2.5, 0.0)   # 近移（确保在互动半径内）
 
     # -------------------------------------------------------------- 输入 --
     def on_key(self, symbol, modifiers):
@@ -164,6 +179,8 @@ class WalkerApp(DemoApp):
             self.walk = not self.walk
             if self.walk:
                 self._sync_eye()
+        elif name == 'E':
+            self._interact()
 
     def _on_key_release(self, symbol, modifiers):
         key = pyglet.window.key
@@ -188,6 +205,63 @@ class WalkerApp(DemoApp):
         else:
             self._drag_orbit_input[0](x, y, dx, dy, buttons, modifiers)
 
+    def on_mouse_press(self, x, y, button, modifiers):
+        """v3 拾取：射线命中场景元素 → 记录选中并显示距离。"""
+        cam = self.eye if self.walk else self.camera
+        w, h = self.window.width, self.window.height
+        try:
+            hit = self.picker.pick(x, y, w, h, cam, self.scene,
+                                   aspect=w / float(h), precise=True)
+        except Exception as e:
+            self._msg = f'pick failed: {e}'
+            return
+        if hit is None:
+            self.selected = None
+            self._msg = '拾取：未命中'
+            return
+        self.selected = hit.drawable
+        self._msg = f'拾取 {hit.drawable.name} 距离 {hit.distance:.1f}m'
+
+    # ---------------------------------------------------------- 近身互动 --
+    def _nearest_glow(self):
+        """返回 (name, 距离) —— 最近的发光元素（限 REACH 内）。"""
+        p = self.body.position
+        best, bd = None, self.REACH
+        for name in self._glow:
+            n = self.scene.root.find(name)
+            d = n.drawable if n is not None else None
+            box = getattr(d, 'world_aabb', None) if d is not None else None
+            if box is None:
+                continue
+            c = box.center
+            dist = math.dist((c[0], c[1], c[2]), p)
+            if dist < bd:
+                best, bd = name, dist
+        return (best, bd) if best else None
+
+    def _interact(self):
+        """v3：唤醒最近发光元素（脉冲高亮 + 马尔可夫档位回升）。"""
+        if not self.walk:
+            self._msg = '先按 V 进入漫游，再近身互动'
+            return
+        tgt = self._nearest_glow()
+        if tgt is None:
+            self._msg = '附近没有可互动的元素'
+            print('[interact] no target within reach', flush=True)
+            return
+        name, dist = tgt
+        self._pulse[name] = self.time + 1.2
+        self._msg = f'唤醒 {name}（距离 {dist:.1f}m）'
+        if self._mc is not None:
+            for _ in range(3):                 # 简单策略：最多 3 步离开 dim
+                if self._mc.current != 'dim':
+                    break
+                self._mc.step()
+            print(f'[interact] wake {name} -> ember {self._mc.current}',
+                  flush=True)
+        else:
+            print(f'[interact] wake {name} (breath mode)', flush=True)
+
     def _sync_eye(self):
         p = self.body.position
         self.eye.position = (p[0], p[1] + self.EYE, p[2])
@@ -197,6 +271,10 @@ class WalkerApp(DemoApp):
 
     # ------------------------------------------------------------ 主循环 --
     def update(self, dt):
+        if self._auto_t is not None and self.time >= self._auto_t:
+            self._auto_t = None
+            print('[selftest] auto interact', flush=True)
+            self._interact()
         if self.walk:
             ks = self._keys
             f = (1.0 if 'W' in ks else 0.0) - (1.0 if 'S' in ks else 0.0)
@@ -224,7 +302,8 @@ class WalkerApp(DemoApp):
         self.scene.update(dt)
 
     def _breathe(self, t):
-        """发光元素活性：马尔可夫模式（演出变体）或正弦呼吸（回退）。"""
+        """发光元素活性：马尔可夫模式（演出变体）或正弦呼吸（回退）；
+        叠加交互脉冲（v3）。"""
         if self._mc is not None:
             if t - self._mc_t >= 1.6:              # 每 1.6s 演化一步（随机变体）
                 self._mc_t = t
@@ -235,13 +314,16 @@ class WalkerApp(DemoApp):
                 n = self.scene.root.find(name)
                 d = n.drawable if n is not None else None
                 if d is not None and getattr(d, 'material', None) is not None:
-                    d.material.emissive = tuple(c * gain for c in base)
+                    g = gain * (1.6 if t < self._pulse.get(name, -1.0) else 1.0)
+                    d.material.emissive = tuple(c * g for c in base)
             return
         for i, (name, base) in enumerate(self._glow.items()):
             n = self.scene.root.find(name)
             d = n.drawable if n is not None else None
             if d is not None and getattr(d, 'material', None) is not None:
                 k = 0.75 + 0.45 * (0.5 + 0.5 * math.sin(t * 1.7 + i * 1.31))
+                if t < self._pulse.get(name, -1.0):
+                    k *= 1.6
                 d.material.emissive = tuple(c * k for c in base)
 
     def render(self):
@@ -257,12 +339,13 @@ class WalkerApp(DemoApp):
 
     def status_text(self):
         base = super().status_text()
+        msg = f'   {self._msg}' if self._msg else ''
         if self.walk:
             p = self.body.position
             mc = self._mc.current if self._mc is not None else 'breath'
             return (f'{base}   [WALK] pos=({p[0]:5.1f},{p[1]:4.1f},{p[2]:5.1f}) '
-                    f'ground={int(self.body.on_ground)} ember={mc}')
-        return f'{base}   [ORBIT]   V 进入漫游'
+                    f'ground={int(self.body.on_ground)} ember={mc}{msg}')
+        return f'{base}   [ORBIT]   V 进入漫游{msg}'
 
 
 def main():

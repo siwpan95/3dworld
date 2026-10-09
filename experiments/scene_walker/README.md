@@ -35,11 +35,16 @@ FixedStepper（1/60 固定步长驱动物理；卡帧不穿透——见 fixed_ti
   （从空中下落到站地——**物理 + 固定步长工作正常**）+ `EXIT_OK` ✓
 - **v2 演出变体**：`--smoke 8 --flag walk` → `[mc] ember -> glow / dim / dim / glow`
   （zhuangtaiji `MarkovChain` 每 1.6s 演化发光模式；不可用时回退正弦呼吸）+ `EXIT_OK` ✓
+- **v3 拾取 / 近身互动**：`--smoke 6 --flag walk --flag interact` →
+  `[selftest] auto interact` + **`[interact] wake orb_a -> ember glow`**
+  （E 键唤醒最近发光元素：脉冲高亮 + 马尔可夫档位回升；点击走 Picker 射线拾取）
+  + `EXIT_OK` ✓
 
 ## 已知边界（v2）
 
 - 场景碰撞为 AABB 近似（圆柱柱子=方盒；台阶 0.5m 高需跳上，无自动踏步）；
-- 未接场景热重载 / 拾取（engine_showcase 已有，可按需移植）；
+- **拾取已接入**（v3：点击命中 + 距离显示；E 近身互动唤醒发光元素）；
+  场景热重载未接（engine_showcase 已有，可按需移植）；
 - **演出变体已接入**：zhuangtaiji 马尔可夫链驱动发光元素（`ZHUANGTAIJI_PATH`
   可用时自动启用）——「随机变体进交互场景」的接入点已落地；
 - SFX/自适应音乐（bloodmusic）为下一层接入点。
