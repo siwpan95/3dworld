@@ -43,6 +43,10 @@ FixedStepper（1/60 固定步长驱动物理；卡帧不穿透——见 fixed_ti
   **`[sfx] ready: ['jump','land','pickup','power_up']`** + `[sfx] play land` /
   `[sfx] play power_up`（跳跃/落地/拾取/互动四个反馈音；bloodmusic 预设渲染）
   + `EXIT_OK` ✓
+- **v3.2 自适应 BGM**：`--smoke 10 --flag walk --flag interact` →
+  `[bgm] adaptive engine started (EXPLORE)` → 互动 → **`[bgm] state -> TENSION`** →
+  `[bgm] calm down -> EXPLORE`（bloodmusic interactive：intensity 驱动
+  EXPLORE⇄TENSION 平滑过渡、3s 交叉淡化）+ `EXIT_OK` ✓
 
 ## 已知边界（v2）
 
@@ -54,4 +58,6 @@ FixedStepper（1/60 固定步长驱动物理；卡帧不穿透——见 fixed_ti
 - **SFX 已接入（v3.1）**：bloodmusic 预设渲染（`gen_sfx.py` → `sfx/*.wav`：
   jump / gold_pickup / power_up / block_hit 四个语义映射），跳跃/落地/拾取/互动
   四反馈音；无音频设备时**静默降级**（`WORLD3D_SFX=0` 可显式禁用）；
-- 自适应音乐（bloodmusic interactive）为下一层候选。
+- **自适应 BGM 已接入（v3.2）**：bloodmusic interactive 引擎（sounddevice 流式输出，
+  回调内单线程驱动；`WORLD3D_BGM=0` 可禁用；无设备静默降级）——交互事件
+  （互动/拾取）驱动 EXPLORE→TENSION→自动回落，「**玩法行为改变音乐**」的闭环已成立。

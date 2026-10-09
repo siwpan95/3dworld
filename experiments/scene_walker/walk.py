@@ -30,6 +30,7 @@ import pyglet                                                       # noqa: E402
 
 from _harness import (DemoApp, PROJECT_ROOT, orbit_camera_input,    # noqa: E402
                       run)
+from bgm import AdaptiveBgm                                         # noqa: E402
 
 DEFAULT_JSON = os.path.join(PROJECT_ROOT, 'docs', 'llm_scene_demo.json')
 _ENV_KEYS = ('sun_dir', 'sun_color', 'sun_intensity', 'sky_zenith',
@@ -169,6 +170,9 @@ class WalkerApp(DemoApp):
         # 交互音效（v3.1）：预载 SFX；无设备/缺文件时静默降级
         self.sfx = SfxPlayer(os.path.join(
             os.path.dirname(os.path.abspath(__file__)), 'sfx'))
+        # 自适应 BGM（v3.2）：bloodmusic interactive 引擎（失败自降级）
+        self.bgm = AdaptiveBgm()
+        self.window.push_handlers(on_close=self._on_close)
 
         # 发光元素基线（呼吸动画不累积乘）
         self._glow = {}
@@ -265,6 +269,7 @@ class WalkerApp(DemoApp):
         self.selected = hit.drawable
         self._msg = f'拾取 {hit.drawable.name} 距离 {hit.distance:.1f}m'
         self.sfx.play('pickup')
+        self.bgm.arouse(3.0, 0.42)     # 轻微警觉（v3.2）
 
     # ---------------------------------------------------------- 近身互动 --
     def _nearest_glow(self):
@@ -297,6 +302,7 @@ class WalkerApp(DemoApp):
         self._pulse[name] = self.time + 1.2
         self._msg = f'唤醒 {name}（距离 {dist:.1f}m）'
         self.sfx.play('power_up')
+        self.bgm.arouse(6.0, 0.55)     # 音乐进入 TENSION（v3.2）
         if self._mc is not None:
             for _ in range(3):                 # 简单策略：最多 3 步离开 dim
                 if self._mc.current != 'dim':
@@ -306,6 +312,13 @@ class WalkerApp(DemoApp):
                   flush=True)
         else:
             print(f'[interact] wake {name} (breath mode)', flush=True)
+
+    def _on_close(self):
+        """退出前停掉 BGM 流（尽力；不拦截默认关闭流程）。"""
+        try:
+            self.bgm.close()
+        except Exception:
+            pass
 
     def _sync_eye(self):
         p = self.body.position
@@ -346,6 +359,7 @@ class WalkerApp(DemoApp):
                 p = self.body.position
                 print(f'[walk] landed at ({p[0]:.2f}, {p[1]:.2f}, {p[2]:.2f}) '
                       f'（物理与固定步长工作正常）', flush=True)
+        self.bgm.tick(dt)              # 自适应 BGM：警觉衰减（v3.2）
         self._breathe(self.time)
         self.scene.update(dt)
 
@@ -392,7 +406,8 @@ class WalkerApp(DemoApp):
             p = self.body.position
             mc = self._mc.current if self._mc is not None else 'breath'
             return (f'{base}   [WALK] pos=({p[0]:5.1f},{p[1]:4.1f},{p[2]:5.1f}) '
-                    f'ground={int(self.body.on_ground)} ember={mc}{msg}')
+                    f'ground={int(self.body.on_ground)} ember={mc} '
+                    f'bgm={self.bgm.state_name}{msg}')
         return f'{base}   [ORBIT]   V 进入漫游{msg}'
 
 
