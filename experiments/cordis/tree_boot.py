@@ -53,6 +53,7 @@ CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
 # 各配置树就绪所需的最低服务集（demo 与 headless 验证共用，避免两处漂移）
 WANT_TD = ('tower_defense', 'render', 'rules', 'economy', 'entity')
 WANT_GODHAND = ('godhand', 'render', 'terrain', 'rules', 'economy', 'entity')
+WANT_FPS = ('fps', 'render', 'rules', 'economy', 'entity', 'maze')
 
 
 def config_path(name: str) -> str:
@@ -117,6 +118,6 @@ async def mount_tree(path: str, want=(), timeout: float = 8.0):
 
 
 __all__ = [
-    'CONFIG_DIR', 'WANT_TD', 'WANT_GODHAND',
+    'CONFIG_DIR', 'WANT_TD', 'WANT_GODHAND', 'WANT_FPS',
     'config_path', 'load_tree', 'await_ready', 'mount_tree',
 ]

@@ -1,0 +1,42 @@
+# 试点三 · cordis.yml 配置树（射线 FPS「迷堡枪影 / Rayhold」· P1-③）
+#
+# 声明「本次挂哪些插件」——共同核 + 内核全由配置驱动；Cordis 按 inject 依赖图自动
+# 排序挂载（FpsKernel.inject = [render, entity, rules, economy, maze]，零手工编排）。
+# 扁平 entry 列表（嵌套 plugin-group 会让子服务对根 ctx 不可见，见 cordis.godhand.yml 注释）。
+#
+# 平衡参数集中在本文件：改种子/格数/敌人数量/玩家血量都不用动 Python。
+#   seed        —— 迷宫种子（同种子 → 同迷宫，保证录制与 headless 验收可锁定）
+#   cells       —— 迷宫格数（奇数）
+#   cell_size   —— 格距（世界单位）
+#   braid       —— 死胡同编织成环路的比例
+#   base_hp     —— 玩家 HP（RulesService 的"基地血"在此复用为玩家血）
+#   enemies     —— 敌人总数（约 1/3 为远程哨卫）
+#
+# 本文件同时是 demos/rayhold.py 的实际挂载声明（tree_boot.mount_tree 加载本文件）——
+# 「demo 怎么挂的 = headless 验证怎么挂的」，接线只有这一份。
+#
+# 运行（headless 验证）：python experiments/cordis/config_boot.py fps
+- name: experiments.cordis.services.render
+  id: render
+- name: experiments.cordis.services.economy
+  id: economy
+  config:
+    gold: 0                  # 本内核不用金币；弹药由内核开局注入 economy.add('ammo')
+- name: experiments.cordis.services.entity
+  id: entity
+- name: experiments.cordis.services.rules
+  id: rules
+  config:
+    base_hp: 100
+- name: experiments.cordis.services.maze
+  id: maze
+  config:
+    seed: 20261010
+    cells: 15
+    cell_size: 3.0
+    braid: 0.12
+- name: experiments.cordis.services.fps_kernel
+  id: fps_kernel
+  config:
+    seed: 20261010
+    enemies: 8

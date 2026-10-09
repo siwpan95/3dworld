@@ -395,6 +395,15 @@ class RulesService(Service):
         elif t == 'settlements_cleared':
             # 神之手：全部敌方聚落被淹没/掩埋 -> 胜
             self._state, self.won = 'won', True
+        elif t == 'player_hit':
+            # 射线 FPS：玩家受伤（base_hp 在此复用为玩家血）
+            self.base_hp -= event.get('dmg', 1)
+            if self.base_hp <= 0:
+                self.base_hp = 0
+                self._state, self.lost = 'lost', True
+        elif t == 'exit_reached':
+            # 射线 FPS：抵达出口 -> 胜
+            self._state, self.won = 'won', True
 
     def reset(self):
         self.wave_index = 0

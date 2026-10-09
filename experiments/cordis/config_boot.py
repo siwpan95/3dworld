@@ -26,9 +26,10 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from experiments.cordis.tree_boot import (  # noqa: E402
-    WANT_GODHAND, WANT_TD, config_path, mount_tree,
+    WANT_FPS, WANT_GODHAND, WANT_TD, config_path, mount_tree,
 )
 from experiments.cordis.godhand_kernel import START_MANA  # noqa: E402
+from experiments.cordis.fps_kernel import START_AMMO  # noqa: E402
 from experiments.cordis.tower_defense_kernel import (  # noqa: E402
     START_GOLD, WAVES as TD_WAVES,
 )
@@ -36,6 +37,7 @@ from experiments.cordis.tower_defense_kernel import (  # noqa: E402
 CONFIGS = {
     'td': ('cordis.td.yml', WANT_TD),
     'godhand': ('cordis.godhand.yml', WANT_GODHAND),
+    'fps': ('cordis.fps.yml', WANT_FPS),
 }
 
 
@@ -103,22 +105,56 @@ async def run_godhand(ctx):
     await _rollback(ctx, kernel, render, 'GODHAND')
 
 
+async def run_fps(ctx):
+    """射线 FPS：auto-pilot 走迷宫 + 遇敌射击 → 抵达出口为胜（与 demo --flag auto 同逻辑）。"""
+    kernel = ctx.fps
+    render = ctx.render
+    maze = ctx.maze
+    # config 传递核验 + 迷宫自身的可玩性核验（出口必须可达，否则 auto-pilot 永远到不了）
+    hp0 = ctx.rules.base_hp
+    ammo0 = kernel.ammo()
+    print(f"[config] seed={maze.seed} cells={maze.n}x{maze.n} hp={hp0} "
+          f"ammo={ammo0:.0f} enemies={len(kernel.enemies)}")
+    assert hp0 == 100, f"yaml base_hp 未到达 rules: {hp0}"
+    assert ammo0 == START_AMMO, f"开局弹药应为 {START_AMMO}，实际 {ammo0}"
+    assert len(kernel.enemies) > 0, "敌人未生成"
+    assert render.live_count() > 0, "GL 资源未取得"
+    assert maze.find_path(maze.start, maze.exit), "迷宫起点到出口不连通（生成有 bug）"
+    assert maze.is_wall_cell(*maze.exit) is False, "出口落在墙里"
+
+    dt = 1.0 / 60.0
+    t = 0.0
+    while ctx.rules.state() not in ('won', 'lost') and t < 180.0:
+        kernel.auto_step(dt)
+        kernel.update(dt)
+        ctx.entity.update(dt)
+        t += dt
+    r = ctx.rules
+    print(f"RESULT state={r.state()} t={t:.1f} kills={kernel.kills} "
+          f"hp={r.base_hp} ammo={kernel.ammo():.0f} "
+          f"enemies_left={len(kernel.enemies)}")
+    assert r.state() == 'won', f"预期 auto-pilot 抵达出口，实际 {r.state()}"
+    await _rollback(ctx, kernel, render, 'FPSKERNEL')
+
+
 async def run_one(kind):
     name, want = CONFIGS[kind]
     ctx = await mount_tree(config_path(name), want=want)
     if kind == 'td':
         await run_td(ctx)
-    else:
+    elif kind == 'godhand':
         await run_godhand(ctx)
+    else:
+        await run_fps(ctx)
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="试点三 cordis.yml 配置树引导")
     ap.add_argument('kind', nargs='?', default='all',
-                    choices=['td', 'godhand', 'all'],
+                    choices=['td', 'godhand', 'fps', 'all'],
                     help='运行哪个配置树（默认 all）')
     args = ap.parse_args(argv)
-    kinds = ['td', 'godhand'] if args.kind == 'all' else [args.kind]
+    kinds = (['td', 'godhand', 'fps'] if args.kind == 'all' else [args.kind])
     for k in kinds:
         print(f"\n########## 配置树：{k} ##########")
         asyncio.run(run_one(k))
