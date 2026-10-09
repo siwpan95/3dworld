@@ -60,6 +60,8 @@ ENTRIES = [
     dict(name='nordic_saga_60s',     mod='demos/nordic_saga.py',  cls='NordicSagaApp', dur=60.0, size=DEMO_SIZE,
          audio='assets/nordic_saga_ost_60s.wav',
          ost_fn='logic.nordic_audio:ensure_ost'),  # 北欧配乐（通用 ost 钩子）
+    dict(name='blockworld_30s',      mod='demos/blockworld.py',   cls='BlockWorldApp', dur=30.0,
+         size=DEMO_SIZE, flags='cine'),            # 可交互方块世界（脚本化运镜）
 ]
 
 FFMPEG_CANDIDATES = [
@@ -125,9 +127,13 @@ def build_app(entry):
 
     if issubclass(cls, DemoApp):
         argv = ['--size', f'{w}x{h}', '--fps', '60']
+        if entry.get('flags'):
+            argv += ['--flag', entry['flags']]
         app = cls(w, h, args=harness_args(argv))
     elif issubclass(cls, EngineApp):
         argv = ['--size', f'{w}x{h}', '--fps', '60']
+        if entry.get('flags'):
+            argv += ['--flag', entry['flags']]
         app = cls(w, h, args=engine_args(argv))
     else:
         # presentation 层裸 App（WorldApp/KKApp）：固定 960x540，无 args 参数

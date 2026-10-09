@@ -140,6 +140,24 @@ for _a, _b in _LINKS:
     _BOX_VERTS.append(_BOX_LINES[_a])
     _BOX_VERTS.append(_BOX_LINES[_b])
 
+# ----------------------------------------------------- cine 运镜（录制用）--
+# (t, x, y, z, yaw, pitch)：高空俯瞰 → 沿路面进场 → 近观"挖+砌墙" → 拉起回望 → 黄昏收尾
+_CINE_KEYS = (
+    (0.0,  36.5, 46.0, 76.0, 270.0, -30.0),
+    (7.0,  36.5, 27.0, 60.0, 270.0, -21.0),
+    (12.5, 36.5, 20.5, 52.0, 270.0, -25.0),
+    (14.5, 36.5, 18.2, 48.5, 270.0, -28.0),
+    (19.5, 36.5, 18.2, 48.5, 270.0, -28.0),
+    (23.0, 36.5, 20.5, 53.0, 269.0, -18.0),
+    (26.5, 38.0, 25.0, 57.0, 267.0, -12.0),
+    (30.0, 37.0, 27.5, 56.0, 265.0, -13.0),
+)
+# 脚本动作：挖开路面一块 → 砌"3 宽矮墙 + 中心塔"（相对洞口的偏移，确定性）
+_CINE_ACTIONS = ((15.8, 'dig'), (16.6, 'place_w1'), (17.2, 'place_up1'),
+                 (17.8, 'place_w3'), (18.4, 'place_up2'))
+_CINE_PLACE_OFFSET = {'place_w1': (-1, 1, 0), 'place_up1': (0, 1, 0),
+                      'place_w3': (1, 1, 0), 'place_up2': (0, 2, 0)}
+
 
 class BlockWorldApp(DemoApp):
     TITLE = 'blockworld · 方块世界（可交互：漫步 / 挖掘 / 放置）'
@@ -173,6 +191,9 @@ class BlockWorldApp(DemoApp):
         self.paused_day = False
         self._dig_t = None                 # --flag digdemo 自检
         self._edit_ms = 0.0
+        self._cine = False                 # --flag cine：脚本化运镜（录制/演示）
+        self._cine_done = set()
+        self._cine_hole = None             # 挖出的洞坐标（后续 place 依据）
         super().__init__(width, height, args=args)
 
     # ------------------------------------------------------------ setup --
@@ -251,6 +272,17 @@ class BlockWorldApp(DemoApp):
             self.px, self.py, self.pz = 36.5, 40.0, 36.5
             self.yaw, self.pitch = 90.0, -62.0
             self.eye.position = (self.px, self.py, self.pz)
+        if 'cine' in self.args.flags:      # 录制/演示：脚本化运镜 + 定时挖放
+            self._cine = True
+            self.walk = False
+            self.paused_day = True         # 昼夜由 cine 时间轴驱动（正午→金色时刻）
+            self.day_phase = 0.33
+            self.slot = 2                  # 石头（放置演示更醒目）
+            k0 = _CINE_KEYS[0]
+            self.px, self.py, self.pz = k0[1], k0[2], k0[3]
+            self.yaw, self.pitch = k0[4], k0[5]
+            self.eye.position = (self.px, self.py, self.pz)
+            print('[blockworld] cine mode (scripted cam + dig/place)', flush=True)
 
     def _mesh_list(self, tile, size, tint, offset=(0.0, 0.0, 0.0)):
         p, c, u = B.box_mesh(self.tile_index[tile], len(self.tile_index),
@@ -446,7 +478,9 @@ class BlockWorldApp(DemoApp):
     def _raycast(self, reach=None):
         """DDA 体素步进（Amanatides & Woo）：返回 (x,y,z, nx,ny,nz) 或 None。"""
         reach = self.REACH if reach is None else reach
-        ox, oy, oz = self.px, self.py + self.EYE, self.pz
+        # 眼位与渲染相机一致：walk 时脚+EYE；cine/自由飞时 py 即眼高
+        oy_cam = self.py + self.EYE if self.walk else self.py
+        ox, oy, oz = self.px, oy_cam, self.pz
         dx, dy, dz = self._forward()
         ix, iy, iz = int(math.floor(ox)), int(math.floor(oy)), int(math.floor(oz))
         sx = 1 if dx > 0 else (-1 if dx < 0 else 0)
@@ -593,11 +627,12 @@ class BlockWorldApp(DemoApp):
             else:
                 print('[digdemo] no solid under feet', flush=True)
             self.pitch = -10.0
-        if self.walk:
+        if self._cine:
+            self._cine_update()
+        elif self.walk:
             self.stepper.advance(dt)
-            self.eye.position = (self.px, self.py + self.EYE, self.pz)
         else:
-            # 自由飞：直接平移 eye
+            # 自由飞：直接平移
             sp = self.WALK_SPEED * 4 * dt
             ks = self._keys
             fwd = self._forward()
@@ -609,14 +644,54 @@ class BlockWorldApp(DemoApp):
             self.px += mv[0]
             self.py += mv[1]
             self.pz += mv[2]
-            self.eye.position = (self.px, self.py, self.pz)
-        # 渲染相机朝向同步（关键：否则渲染与射线/移动朝向不一致）
+        # 渲染相机同步（位置 + 朝向；cine 时 py 即眼高）
+        eye_y = self.py + self.EYE if self.walk else self.py
+        self.eye.position = (self.px, eye_y, self.pz)
         self.eye.yaw = self.yaw
         self.eye.pitch = self.pitch
         if not self.paused_day:
             self.day_phase = (self.day_phase + dt / self.DAY_SECONDS) % 1.0
         self.sky_state = B.sky_state(self.day_phase)
         self.sel = self._raycast()
+
+    def _cine_update(self):
+        """脚本化运镜（录制/演示）：关键帧插值 + 定时挖/放，全程确定性。"""
+        t = self.time
+        keys = _CINE_KEYS
+        if t <= keys[0][0]:
+            a, b, k = keys[0], keys[0], 0.0
+        elif t >= keys[-1][0]:
+            a, b, k = keys[-1], keys[-1], 0.0
+        else:
+            a = b = keys[0]
+            k = 0.0
+            for i in range(len(keys) - 1):
+                if keys[i][0] <= t <= keys[i + 1][0]:
+                    a, b = keys[i], keys[i + 1]
+                    k = (t - a[0]) / max(1e-6, b[0] - a[0])
+                    break
+        self.px = a[1] + (b[1] - a[1]) * k
+        self.py = a[2] + (b[2] - a[2]) * k
+        self.pz = a[3] + (b[3] - a[3]) * k
+        self.yaw = a[4] + (b[4] - a[4]) * k
+        self.pitch = a[5] + (b[5] - a[5]) * k
+        self.day_phase = 0.34 + min(t, 30.0) * 0.004   # 白天 → 金色时刻收尾
+        for idx, (ta, kind) in enumerate(_CINE_ACTIONS):
+            if t >= ta and idx not in self._cine_done:
+                self._cine_done.add(idx)
+                if kind == 'dig':
+                    self.sel = self._raycast(reach=16.0)
+                    ok = self._dig()
+                    if ok:
+                        self._cine_hole = (self.sel[0], self.sel[1], self.sel[2])
+                elif self._cine_hole is not None:
+                    dx, dy, dz = _CINE_PLACE_OFFSET[kind]
+                    hx, hy, hz = self._cine_hole
+                    self.sel = (hx + dx, hy + dy, hz + dz, 0, 0, 0)
+                    ok = self._place()
+                else:
+                    ok = False
+                print(f'[cine] {kind} -> {ok}', flush=True)
 
     def update(self, dt):
         try:
