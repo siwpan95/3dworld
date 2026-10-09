@@ -9,11 +9,14 @@
 - **获取方式**：GitHub「Download ZIP」of `main` 分支 → 文件 `cordis-py-main.zip`
   （落于 `G:/repos/3dworld/cordis-py-main.zip`，**请勿删除**，留作溯源）
 - **版本 / 提交锁定**：
-  - 包版本 `__version__ = "4.0.0"`（pyproject `version = "4.0.0"`）
+  - 包版本 `__version__ = "4.0.0"`（pyproject `version = "4.0.0"`），与 vendored 源码一致 ✓
   - 分支 `main`，下载日期 **2026-10-09**
-  - ⚠️ **精确 commit 未钉死**：GitHub 的 Download ZIP 不含 `.git`/commit 哈希，无法拿到 SHA。
-    待沙箱放开 github.com TLS 后，应 `git clone` 该仓库并 `git rev-parse HEAD` 把精确 SHA
-    补记于此（届时同步 `pyproject` 版本号核对是否一致）。
+  - ✅ **精确 commit 已钉死**：`a3d0c171571c6bbb465d04c06eab2de53d270814`（短 `a3d0c17`，
+    "test(paper): render the Cordis paper as an executable test suite"，2026-08-14）。
+    `main` 仅 3 个 commit，Download ZIP 之 tip 即本 commit；且解压 zip 含 `tests/paper/`
+    （该 commit 的新增目录），指纹吻合。
+  - 🔒 溯源契约见 **`vendor/cordis.lock`**（含 zip SHA-256 `b216a2b8…2a31616` 与复核命令）。
+    TLS 放开后可用 `git clone` + `git rev-parse HEAD` 复核仍等于 `a3d0c17`。
 - **同一仓库另有 `cordis-main.zip`（Sep 30）**：那是 `cordiverse/cordis` 原版（TypeScript/JS）的 zip，
   **不是**本 Python 移植，请勿混淆。本 vendor 只用 `cordis-py-main.zip`。
 

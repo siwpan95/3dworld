@@ -1,0 +1,25 @@
+# 试点三 · cordis.yml 配置树（塔防 / Roadwarden）
+#
+# 声明「本次挂哪些插件」——共同核 + 内核，全由配置驱动，无需在 Python 里逐个
+# ctx.plugin(...)。Cordis v4.0.0 原生 EntryTree/EntryGroup 会按依赖图自动排序挂载
+# （内核只声明 inject 取所需核心，零编排——接线完全由本文件描述）。
+#
+# 每个 entry 的 name 经 importlib 解析为一个模块，取其 default（即 Service 类）；
+# config 透传给该 Service 的构造。想做更深嵌套时可用 @cordisjs/plugin-group 当子树
+# 根（见 cordis.godhand.yml 注释），但本试点用扁平列表即足以收口。
+#
+# 运行：python experiments/cordis/config_boot.py td
+- name: experiments.cordis.services.render
+  id: render
+- name: experiments.cordis.services.economy
+  id: economy
+  config:
+    gold: 300
+- name: experiments.cordis.services.entity
+  id: entity
+- name: experiments.cordis.services.rules
+  id: rules
+  config:
+    total_waves: 5
+- name: experiments.cordis.services.td_kernel
+  id: td_kernel

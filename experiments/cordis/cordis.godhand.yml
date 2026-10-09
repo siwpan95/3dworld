@@ -1,0 +1,25 @@
+# 试点三 · cordis.yml 配置树（神之手 / GodHand）
+#
+# 复用 tower_defense_kernel 的共同核（render/economy/entity/rules），新增 terrain 共同核
+# 与 godhand 内核；接线同样全部由本文件声明。
+#
+# 注：本试点用扁平 entry 列表（足够收口）。若需嵌套子树，可把本文件整体包进一个
+#   - name: '@cordisjs/plugin-group'
+#       config: [ ... 这里所有 entry ... ]
+# 的 entry 下，Cordis 会递归展开子树（子插件经 group.update 挂载）。
+#
+# 运行：python experiments/cordis/config_boot.py godhand
+- name: experiments.cordis.services.render
+  id: render
+- name: experiments.cordis.services.economy
+  id: economy
+  config:
+    mana: 0
+- name: experiments.cordis.services.entity
+  id: entity
+- name: experiments.cordis.services.terrain
+  id: terrain
+- name: experiments.cordis.services.rules
+  id: rules
+- name: experiments.cordis.services.godhand_kernel
+  id: godhand_kernel

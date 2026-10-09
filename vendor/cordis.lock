@@ -1,0 +1,43 @@
+# Cordis vendor lock —— 精确提交钉死 + 溯源校验
+#
+# 生成方式：github.com/geohotstan/cordis-py 的 main 分支 Download ZIP → cordis-py-main.zip
+# 该 zip 落于仓库根目录 cordis-py-main.zip（.gitignore 已忽略，仅留作溯源，不入库）。
+# 本 lock 文件是 vendor 转正的"提交契约"：Cordis 接线依赖的公开 API 以本 commit 为准。
+
+[source]
+repo          = "https://github.com/geohotstan/cordis-py"
+branch        = "main"
+import_name   = "cordis"
+port_of       = "cordiverse/cordis v4 (TypeScript/JS 原版)"
+license       = "MIT"
+
+[pin]
+commit          = "a3d0c171571c6bbb465d04c06eab2de53d270814"
+commit_short    = "a3d0c17"
+commit_message  = "test(paper): render the Cordis paper as an executable test suite"
+commit_date     = "2026-08-14"
+package_version = "4.0.0"
+download_date   = "2026-10-09"
+# 解析方法说明：
+#   github.com 在本沙箱被 TLS 拦截（git ls-remote 报 schannel 中断），故改用 WebFetch 读
+#   仓库 commits 页面。main 仅有 3 个 commit（Initial → fix(hmr) → test(paper)），
+#   而 Download ZIP 永远取 main 之 tip，故 zip 即本 commit。
+#   佐证：解压 zip 含 tests/paper/（test(paper) commit 的新增目录），与 commit_message 吻合。
+
+[artifact]
+zip_name      = "cordis-py-main.zip"
+zip_path      = "G:/repos/3dworld/cordis-py-main.zip"
+zip_sha256    = "b216a2b8506802dfadc1457395721e8b53013e007c3a81eaf29b8a9652a31616"
+zip_size_bytes = 107537
+gitignored    = true
+note          = "cordis-main.zip（Sep 30）是 TypeScript 原版，非本 Python 移植，请勿混淆"
+
+[verification]
+# 复核命令一（TLS 放开后）：
+#   git clone https://github.com/geohotstan/cordis-py /tmp/cp && cd /tmp/cp && git rev-parse HEAD
+#   期望输出：a3d0c171571c6bbb465d04c06eab2de53d270814
+# 复核命令二（本地 zip 完整性）：
+#   sha256sum cordis-py-main.zip
+#   期望输出：b216a2b8506802dfadc1457395721e8b53013e007c3a81eaf29b8a9652a31616
+# 复核命令三（zip 内容指纹，无需联网）：
+#   unzip -l cordis-py-main.zip | grep tests/paper   # 应命中 test_theorems.py 等 5 个文件
