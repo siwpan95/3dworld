@@ -1,17 +1,25 @@
 # -*- coding: utf-8 -*-
-"""场景管线的 Cordis 化试点（试点一）。
+"""场景管线的 Cordis 化试点（试点一 · v4.0.0 fiber 属性式重写）。
 
-用 Cordis（「时空可组合性」元框架，DeepSeek Harness 的运行时内核；此处为
-其 Python 移植）的「服务 + inject + 可逆副作用」组织 3dworld 的场景管线：
+用 Cordis v4.0.0（geohotstan/cordis-py，忠实移植 cordiverse/cordis v4）的
+**fiber 属性式 API** 组织 3dworld 的场景管线：
 
-    checker  插件 → 提供 scene_check 服务（包装 engine.scene_build.validate）
-    loader   插件 → inject scene_check；装载场景 JSON 并注册 scene 服务（可逆）
-    reporter 插件 → inject scene；输出统计（依赖消失时自动停用）
+    SceneCheckService  -> 提供 ``scene_check`` 服务（包装 engine.scene_build.validate）
+    LoaderService      -> inject scene_check；装载场景并注册 ``scene`` 服务（可逆）
+    ReporterService    -> inject scene；输出统计（依赖消失时自动停用）
+
+v4.0.0 相对旧式 functional 写法的重要变化：
+  * 插件用 ``Service`` 子类 + 声明式 ``inject = [...]``（属性式依赖声明），
+    不再手动给函数挂 ``plugin.inject = [...]`` 属性。
+  * ``ctx.provide(name, value)`` 返回**可回滚的 FiberEffect**——服务在所属
+    fiber dispose 时自动撤回，无需再套一层 ``ctx.effect`` 去手动撤回。
+  * ``ctx.effect(execute)`` 接受「返回 disposer 的 callable」或「yield disposer
+    的 generator」，所有副作用都绑定到 fiber，dispose 时统一清理（可逆副作用）。
 
 演示点：
   1. inject 依赖自动排序（无需手工编排启动顺序）
-  2. 卸载即回滚（loader 卸载 → scene 服务撤回）
-  3. coeffect 级联（依赖消失 → reporter 自动停用）
+  2. 卸载即回滚（loader 卸载 -> scene 服务撤回）
+  3. coeffect 级联（依赖消失 -> reporter 自动停用）
 
 依赖：cordis 的 Python 移植（安装见 experiments/cordis/README.md）。
 运行::
@@ -42,72 +50,95 @@ except ImportError:
         sys.exit('[cordis] 未找到 cordis 包。安装方式见 '
                  'experiments/cordis/README.md（或设置 CORDIS_SRC）')
 
-from cordis import Context                          # noqa: E402
+from cordis import Context, Service                 # noqa: E402
 from engine.scene_build import load_json, validate  # noqa: E402
 
 
-def make_plugins(log):
-    """构建三个插件（闭包持有 log 便于演示输出）。"""
+def log(msg: str) -> None:
+    print(msg)
 
-    async def checker_plugin(ctx, config):
-        """校验服务：包装 engine.scene_build 的 JSON 校验器。"""
 
-        def check(path):
-            data = load_json(path)
-            issues = validate(data)
-            errors = [i for i in issues if i[0] == 'error']
-            stats = next(i[2] for i in issues if i[0] == 'stats')
-            return errors, stats
+class SceneCheckService(Service):
+    """校验服务：把 engine.scene_build 的 JSON 校验器包装成 ``scene_check`` 服务。"""
 
-        ctx.provide('scene_check', check)
+    def __init__(self, ctx, config):
+        super().__init__(ctx, "scene_check")
+
+    def check(self, path: str):
+        data = load_json(path)
+        issues = validate(data)
+        errors = [i for i in issues if i[0] == 'error']
+        stats = next(i[2] for i in issues if i[0] == 'stats')
+        return errors, stats
+
+    def __cordis_init__(self):
         log('[checker] service ready: scene_check')
+        return None
 
-    async def loader_plugin(ctx, config):
-        """装载插件：inject scene_check；把已装载场景注册为服务（可逆）。"""
-        check = ctx.get('scene_check')
-        errors, stats = check(config['scene'])
+
+class LoaderService(Service):
+    """装载插件：inject scene_check；把已装载场景注册为 ``scene`` 服务（可逆）。"""
+
+    inject = ['scene_check']
+
+    def __init__(self, ctx, config):
+        super().__init__(ctx, "scene")
+        errors, stats = ctx.scene_check.check(config['scene'])
         if errors:
             raise RuntimeError(f'{len(errors)} scene error(s): {errors[:2]}')
+        self.path = config['scene']
+        self.stats = stats
+
+    def __cordis_init__(self):
+        log(f"[loader] loaded {os.path.basename(self.path)}: "
+            f"nodes={self.stats['nodes']} verts={self.stats['vertices']}")
+
+        # 可逆副作用：loader fiber 卸载时自动触发——证明服务撤回与
+        # 副作用回滚是绑定的（v4.0.0 的 effect 语义）。
+        ctx = self.ctx
 
         def unload():
             log('[loader] unloaded: scene service withdrawn (effect reverted)')
 
         ctx.effect(lambda: unload)
-        ctx.provide('scene', {'path': config['scene'], 'stats': stats})
-        log(f"[loader] loaded {os.path.basename(config['scene'])}: "
-            f"nodes={stats['nodes']} verts={stats['vertices']}")
+        return None
 
-    loader_plugin.inject = ['scene_check']
 
-    async def reporter_plugin(ctx, config):
-        """报告插件：inject scene；依赖消失时自动停用（coeffect）。"""
-        scene = ctx.get('scene')
-        st = scene['stats']
-        log(f"[reporter] {os.path.basename(scene['path'])}: "
+class ReporterService(Service):
+    """报告插件：inject scene；依赖消失时自动停用（coeffect 级联）。"""
+
+    inject = ['scene']
+
+    def __init__(self, ctx, config):
+        super().__init__(ctx, "reporter")
+
+    def __cordis_init__(self):
+        scene = self.ctx.scene
+        st = scene.stats
+        log(f"[reporter] {os.path.basename(scene.path)}: "
             f"meshes={st['meshes']} tris={st['triangles']}")
+
+        ctx = self.ctx
 
         def deactivated():
             log('[reporter] deactivated: scene withdrawn (coeffect reacted)')
 
         ctx.effect(lambda: deactivated)
-
-    reporter_plugin.inject = ['scene']
-
-    return checker_plugin, loader_plugin, reporter_plugin
+        return None
 
 
-async def run_pipeline(scene_path):
+async def run_pipeline(scene_path: str) -> int:
     ctx = Context()
 
-    def log(msg):
-        print(msg)
-
-    checker, loader, reporter = make_plugins(log)
-
     log('== mount plugin tree (order by dependency graph) ==')
-    await ctx.plugin(checker)
-    loader_fiber = await ctx.plugin(loader, {'scene': scene_path})
-    await ctx.plugin(reporter)
+    checker_fiber = await ctx.plugin(SceneCheckService)
+    loader_fiber = await ctx.plugin(LoaderService, {'scene': scene_path})
+    reporter_fiber = await ctx.plugin(ReporterService)
+
+    # 等待依赖图解析完成（checker 无依赖，应立即激活；loader/reporter 待其上游）
+    await checker_fiber
+    await loader_fiber
+    await reporter_fiber
 
     log('== dispose loader (service rollback + downstream deactivation) ==')
     await loader_fiber.dispose()
@@ -118,7 +149,7 @@ async def run_pipeline(scene_path):
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(description='scene pipeline on cordis (pilot 1)')
+    p = argparse.ArgumentParser(description='scene pipeline on cordis (pilot 1, v4.0.0)')
     p.add_argument('--scene',
                    default=os.path.join(ROOT, 'docs', 'llm_scene_demo.json'))
     args = p.parse_args(argv)
