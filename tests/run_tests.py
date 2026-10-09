@@ -1017,6 +1017,70 @@ def test_voxel_mesh_invariants():
           f'= {cut:.1%} removed; arrays sized consistently')
 
 
+def test_kid_a_templates_valid():
+    """KID-A 房间模版：21×21 尺寸 + **声明出口与网格开口一致**。
+
+    原版曾把 tech_nook/data_temple 放在 N/E/W 组（实现只开 N/S/E）——
+    玩家从西侧进入会撞墙。此测试即防这类"分类错误"回归。
+    """
+    import random
+    from logic import kid_a as K
+    rng = random.Random(12345)
+    exits_pos = {'N': ((0, 9), (0, 10), (0, 11)),
+                 'S': ((20, 9), (20, 10), (20, 11)),
+                 'W': ((9, 0), (10, 0), (11, 0)),
+                 'E': ((9, 20), (10, 20), (11, 20))}
+    count = 0
+    for key, pool in K._ALL_TEMPLATES.items():
+        for fn in pool:
+            g = fn(rng)
+            assert len(g) == K.CHUNK and all(len(r) == K.CHUNK for r in g), fn.__name__
+            for d in key:
+                for (r, c) in exits_pos[d]:
+                    assert g[r][c] == '.', f'{fn.__name__} 出口 {d} 未开口 @({r},{c})'
+            count += 1
+    print(f'  ok: kid_a {count} 个模版尺寸/出口一致（21x21，声明==开口）')
+
+
+def test_kid_a_worldmap_exits_connected():
+    """相邻区块出口必须互连（我声明 N，北邻必须声明 S）——否则走出即撞墙。"""
+    from logic import kid_a as K
+    wm = K.WorldMap(seed=99)
+    wm.ensure_neighbors(0, 0)
+    for (cx, cy), ex in wm.exits.items():
+        for d, (dx, dy) in K._DIR_DELTA.items():
+            nb = (cx + dx, cy + dy)
+            if nb in wm.exits and d in ex:
+                assert K._OPPOSITE[d] in wm.exits[nb], f'互连破坏 {(cx, cy)} {d}'
+    # 世界可复现：同种子同结果
+    wm2 = K.WorldMap(seed=99)
+    wm2.ensure_neighbors(0, 0)
+    assert wm.chunks == wm2.chunks, '同种子世界必须逐位一致'
+    print(f'  ok: kid_a worldmap {len(wm.chunks)} 区块出口互连且同种子可复现')
+
+
+def test_kid_a_energy_and_fragments():
+    """能量：保护期不扣、之后移动 1/s、红区 +3/s；碎片：同键不可重复收集。"""
+    from logic import kid_a as K
+    e = K.EnergySystem()
+    for _ in range(60):                                    # 1s（保护期内）
+        e.update(1 / 60, K.AIR, True, False)
+    assert e.energy == K.ENERGY_MAX, e.energy
+    e.grace = 0.0                                          # 跳过保护期
+    for _ in range(120):                                   # 2s 移动
+        e.update(1 / 60, K.AIR, True, False)
+    assert abs(e.energy - (K.ENERGY_MAX - 2.0)) < 0.05, e.energy
+    for _ in range(60):                                    # 1s 红区
+        e.update(1 / 60, K.RED, False, False)
+    assert abs(e.energy - (K.ENERGY_MAX - 5.0)) < 0.05, e.energy
+    f = K.FragmentSystem()
+    assert f.collect(K.GLOW, (0, 0, 3, 3))
+    assert not f.collect(K.GLOW, (0, 0, 3, 3))              # 同键拒绝
+    assert f.collect(K.GOLD, (0, 0, 4, 4))
+    print(f'  ok: kid_a 能量={e.energy:.1f}（-5.0）碎片 total={f.total()} '
+          f'types={f.unique_types()}')
+
+
 if __name__ == '__main__':
     print('test_camera_initial_pose');     test_camera_initial_pose()
     print('test_camera_clamps');           test_camera_clamps()
@@ -1054,4 +1118,7 @@ if __name__ == '__main__':
     print('test_nordic_saga_timeline');           test_nordic_saga_timeline()
     print('test_nordic_camera_path_clearance');   test_nordic_camera_path_clearance()
     print('test_nordic_scene_geometry');          test_nordic_scene_geometry()
+    print('test_kid_a_templates_valid');          test_kid_a_templates_valid()
+    print('test_kid_a_worldmap_exits_connected'); test_kid_a_worldmap_exits_connected()
+    print('test_kid_a_energy_and_fragments');     test_kid_a_energy_and_fragments()
     print('ALL_LOGIC_TESTS_PASSED')
