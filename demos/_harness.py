@@ -377,7 +377,11 @@ class DemoApp:
             except Exception as e:                     # 不打断演示
                 print(f'[shot] failed ({path}): {e}')
             self._shot_i += 1
-        if (self._shots and self._shot_i >= len(self._shots)
+        # 仅 --shot 模式在抓完全部帧后自动关闭；其余模式（smoke/正常/bench）
+        # 只抓帧不停演示——历史 bug：这里漏了模式判断，会让声明了 SHOTS 的
+        # 长跑演示在抓完最后一帧时被提前关掉。
+        if (self.args.shot and self._shots
+                and self._shot_i >= len(self._shots)
                 and not self._closing):
             self._closing = True
             pyglet.clock.schedule_once(lambda dt: self.close(), 0.2)

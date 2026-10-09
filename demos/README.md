@@ -53,6 +53,7 @@ python scripts\verify_demos.py --only boids,water  只验指定 demo
 | `engine_showcase.py` | 24s | **引擎综合巡礼**：PBR/IBL、Bloom、SSAO、实例化、视锥剔除、拾取、物理、性能面板、场景序列化 | `engine_showcase_01/02.png` |
 | `material_lab.py` | 30s | **新建模 × 新素材**：车削/管扫/环面结 + 程序化 PBR 纹理（拉丝/大理石/电路板等 5 套） | `material_lab_01/02.png` |
 | `nordic_saga.py` | 60s | **《诺德之境》**：上古卷轴风格程序化动画（雪原遗迹/巨龙/龙语古墙 + 程序化配乐） | `nordic_01..06.png` |
+| `scene_walker.py` | 交互 | **可漫步场景（交互化）**：S1 场景 JSON → 第一人称物理漫步（固定步长抗卡帧）+ 马尔可夫演出变体 + 拾取/E 互动 + SFX/自适应 BGM + 场景热重载 | `scene_walker_01.png` |
 
 ### 演示专属开关（`--flag`，逗号可并列）
 
@@ -65,6 +66,7 @@ python scripts\verify_demos.py --only boids,water  只验指定 demo
 | `all` / `seed2`（voxel_terrain） | 起始画全部面（对照剔除）/ 起始换一个种子 |
 | `reseed` / `reseed-sync`（terrain_flyover） | 1 秒后触发一次**渐进**重建 / **同步**重建（A/B 对照用） |
 | `nostatics`（engine_showcase） | 关掉静态柱林（看视锥剔除的差异） |
+| `walk` / `interact` / `hotreload`（scene_walker） | 起始进入漫游 / 无人值守自检互动 / 自检热重载（临时副本） |
 
 常用按键（各 demo 底部有完整帮助行）：`SPACE` 暂停、`ESC` 退出是统一的；
 **方块世界** `N`/`P` 切幕、`←`/`→` 快退快进 5s、`C` 切电影/自由相机、`R` 重播；

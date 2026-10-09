@@ -34,3 +34,5 @@ cordis-main.zip
 # 实验区音频产物（脚本可复现，不入库）
 experiments/bloodmusic_ost/*.wav
 experiments/scene_walker/sfx/*.wav
+# 交互音效生成物（scripts/gen_sfx.py 产出）
+assets/sfx/*.wav

@@ -18,10 +18,11 @@ silent)，本机实测走 XAudio2；无声卡/驱动失败时 pyglet 自动落�
 驱动——播放调用全部有效但不发声，因此上层无需特判。
 """
 import math
+import os
 import struct
 import wave
 
-__all__ = ['Track', 'render_wav', 'TimelineAudio', 'audio_available']
+__all__ = ['Track', 'render_wav', 'TimelineAudio', 'SfxPlayer', 'audio_available']
 
 
 # ----------------------------------------------------------------- 合成器 --
@@ -222,3 +223,45 @@ class TimelineAudio:
                 self.player.delete()
             except Exception:
                 pass
+
+
+class SfxPlayer:
+    """即发音效播放器：预载 WAV，事件触发播放（可重叠；失败静默）。
+
+    与 :class:`TimelineAudio` 的分工：TimelineAudio 管「与时间轴同步的长音轨」，
+    SfxPlayer 管「交互事件驱动的短音效」。
+
+    - 无声卡/缺文件/未生成 SFX 时全部调用为 no-op（不中断交互）；
+    - ``WORLD3D_SFX=0`` 可显式禁用；
+    - 音效 WAV 由 ``scripts/gen_sfx.py`` 生成到 ``assets/sfx/``（生成物，不入库）。
+    """
+
+    def __init__(self, sfx_dir, names=('jump', 'pickup', 'power_up', 'land'),
+                 enabled=True, gain=1.0):
+        self._sources = {}
+        self._gain = float(gain)
+        self.enabled = bool(enabled) and os.environ.get('WORLD3D_SFX', '1') != '0'
+        if not self.enabled:
+            print('[sfx] disabled by env', flush=True)
+            return
+        try:
+            import pyglet.media as pm
+            for name in names:
+                p = os.path.join(sfx_dir, f'{name}.wav')
+                if os.path.exists(p):
+                    self._sources[name] = pm.load(p, streaming=False)
+            print(f'[sfx] ready: {sorted(self._sources)}', flush=True)
+        except Exception as e:
+            print(f'[sfx] disabled: {type(e).__name__}: {e}', flush=True)
+            self.enabled = False
+
+    def play(self, name, gain=1.0):
+        if not self.enabled or name not in self._sources:
+            return
+        try:
+            p = self._sources[name].play()
+            if p is not None:
+                p.volume = max(0.0, min(1.0, self._gain * gain))
+            print(f'[sfx] play {name}', flush=True)
+        except Exception as e:
+            print(f'[sfx] play failed ({name}): {e}', flush=True)
