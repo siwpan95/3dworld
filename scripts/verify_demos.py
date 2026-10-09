@@ -152,8 +152,12 @@ def main():
                 # 均值 / p1（1% 慢帧下界）/ 最慢帧——均值会被快帧拉高，后两个才反映卡顿
                 bench = f'{float(m.group(1)):6.1f}/{float(m.group(3)):6.1f}/{float(m.group(4)):7.2f}'
         # --- 阶段 3：截图 ---
+        # 没声明 SHOTS 的 demo（如 scene_viewer：靠 --file 指定的 JSON 驱动、
+        # 没有固定剧照时刻）跳过本阶段——硬跑 --shot 只会拿到
+        # "xxx: --shot requires SHOTS" 的 rc=1，把整轮批量验收判红。
         ok_shot, n_shot = True, 0
-        if not args.smoke_only and (not args.bench or args.with_shots):
+        has_shot_stage = bool(shots)
+        if has_shot_stage and not args.smoke_only and (not args.bench or args.with_shots):
             start = time.time()
             proc2, secs2 = run_demo(name, path, ['--shot'],
                                     timeout=args.timeout)
@@ -175,8 +179,9 @@ def main():
                     elif os.path.getsize(p) < MIN_PNG_BYTES:
                         ok_shot = False
                         failures.append(f'{name}: shot {rel} too small (likely blank)')
+        shot_col = ('ok' if ok_shot else 'FAIL') if has_shot_stage else 'n/a'
         rows.append((name, len(shots), 'ok' if ok_smoke else 'FAIL',
-                     'ok' if ok_shot else 'FAIL', bench, note))
+                     shot_col, bench, note))
 
     bench_hdr = '  mean/p1/worst_ms' if args.bench else ''
     print(f'{"demo":<22}{"shots":>6}  {"smoke":<6}{"shot":<6}{bench_hdr}  time')
