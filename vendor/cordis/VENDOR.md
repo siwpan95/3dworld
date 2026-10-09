@@ -13,8 +13,10 @@
   - 分支 `main`，下载日期 **2026-10-09**
   - ✅ **精确 commit 已钉死**：`a3d0c171571c6bbb465d04c06eab2de53d270814`（短 `a3d0c17`，
     "test(paper): render the Cordis paper as an executable test suite"，2026-08-14）。
-    `main` 仅 3 个 commit，Download ZIP 之 tip 即本 commit；且解压 zip 含 `tests/paper/`
-    （该 commit 的新增目录），指纹吻合。
+    **直接证据（离线可复核）**：GitHub 归档 zip 的 comment 字段即 commit SHA——
+    `unzip -z cordis-py-main.zip`（或 python `zipfile.ZipFile(...).comment`）输出
+    `a3d0c171571c6bbb465d04c06eab2de53d270814`。另有联网核对（WebFetch 读 commits 页，
+    main 仅 3 个 commit，Download ZIP 之 tip 即本 commit）与内容佐证（zip 含 `tests/paper/`）。
   - 🔒 溯源契约见 **`vendor/cordis.lock`**（含 zip SHA-256 `b216a2b8…2a31616` 与复核命令）。
     TLS 放开后可用 `git clone` + `git rev-parse HEAD` 复核仍等于 `a3d0c17`。
 - **同一仓库另有 `cordis-main.zip`（Sep 30）**：那是 `cordiverse/cordis` 原版（TypeScript/JS）的 zip，
