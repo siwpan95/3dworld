@@ -33,11 +33,13 @@ FixedStepper（1/60 固定步长驱动物理；卡帧不穿透——见 fixed_ti
 - 轨道模式：`--smoke 3` → `EXIT_OK` ✓
 - 漫游模式：`--smoke 4 --flag walk` → **`[walk] landed at (9.50, 0.90, 0.00)`**
   （从空中下落到站地——**物理 + 固定步长工作正常**）+ `EXIT_OK` ✓
+- **v2 演出变体**：`--smoke 8 --flag walk` → `[mc] ember -> glow / dim / dim / glow`
+  （zhuangtaiji `MarkovChain` 每 1.6s 演化发光模式；不可用时回退正弦呼吸）+ `EXIT_OK` ✓
 
-## 已知边界（v1）
+## 已知边界（v2）
 
 - 场景碰撞为 AABB 近似（圆柱柱子=方盒；台阶 0.5m 高需跳上，无自动踏步）；
 - 未接场景热重载 / 拾取（engine_showcase 已有，可按需移植）；
-- 发光呼吸为时间驱动的最小活性；**马尔可夫编排（zhuangtaiji 试点）可替换之**——
-  即下一步「演出随机变体进交互场景」的接入点；
+- **演出变体已接入**：zhuangtaiji 马尔可夫链驱动发光元素（`ZHUANGTAIJI_PATH`
+  可用时自动启用）——「随机变体进交互场景」的接入点已落地；
 - SFX/自适应音乐（bloodmusic）为下一层接入点。

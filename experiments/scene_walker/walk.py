@@ -128,6 +128,27 @@ class WalkerApp(DemoApp):
                 if sum(e) > 0.05:
                     self._glow[n.name] = tuple(e)
 
+        # 演出变体（可选）：zhuangtaiji 马尔可夫链驱动发光模式；
+        # 不可用/未配置时回退为时间正弦呼吸（见 _breathe）。
+        self._mc, self._mc_t, self._mc_gain = None, 0.0, {}
+        try:
+            z = os.environ.get('ZHUANGTAIJI_PATH', r'G:\repos\zhuangtaiji')
+            if os.path.isdir(z):
+                if z not in sys.path:
+                    sys.path.insert(0, z)
+                from core.markov_chain import MarkovChain
+                self._mc = MarkovChain(
+                    ['dim', 'glow', 'spark', 'flare'],
+                    {'dim': {'dim': 0.55, 'glow': 0.40, 'spark': 0.05, 'flare': 0.0},
+                     'glow': {'dim': 0.35, 'glow': 0.40, 'spark': 0.20, 'flare': 0.05},
+                     'spark': {'dim': 0.20, 'glow': 0.35, 'spark': 0.30, 'flare': 0.15},
+                     'flare': {'dim': 0.45, 'glow': 0.30, 'spark': 0.20, 'flare': 0.05}},
+                    initial='dim')
+                self._mc_gain = {'dim': 0.55, 'glow': 0.9,
+                                 'spark': 1.35, 'flare': 1.9}
+        except Exception:
+            self._mc = None
+
         if 'walk' in self.args.flags:              # --flag walk：直接进入漫游
             self.walk = True
             self._sync_eye()
@@ -203,7 +224,19 @@ class WalkerApp(DemoApp):
         self.scene.update(dt)
 
     def _breathe(self, t):
-        """发光元素呼吸：演出活性的最小体现（基线不累积）。"""
+        """发光元素活性：马尔可夫模式（演出变体）或正弦呼吸（回退）。"""
+        if self._mc is not None:
+            if t - self._mc_t >= 1.6:              # 每 1.6s 演化一步（随机变体）
+                self._mc_t = t
+                self._mc.step()
+                print(f'[mc] ember -> {self._mc.current}', flush=True)
+            gain = self._mc_gain.get(self._mc.current, 1.0)
+            for name, base in self._glow.items():
+                n = self.scene.root.find(name)
+                d = n.drawable if n is not None else None
+                if d is not None and getattr(d, 'material', None) is not None:
+                    d.material.emissive = tuple(c * gain for c in base)
+            return
         for i, (name, base) in enumerate(self._glow.items()):
             n = self.scene.root.find(name)
             d = n.drawable if n is not None else None
@@ -226,8 +259,9 @@ class WalkerApp(DemoApp):
         base = super().status_text()
         if self.walk:
             p = self.body.position
+            mc = self._mc.current if self._mc is not None else 'breath'
             return (f'{base}   [WALK] pos=({p[0]:5.1f},{p[1]:4.1f},{p[2]:5.1f}) '
-                    f'ground={int(self.body.on_ground)}')
+                    f'ground={int(self.body.on_ground)} ember={mc}')
         return f'{base}   [ORBIT]   V 进入漫游'
 
 
