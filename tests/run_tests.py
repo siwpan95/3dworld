@@ -1081,6 +1081,75 @@ def test_kid_a_energy_and_fragments():
           f'types={f.unique_types()}')
 
 
+def test_kid_a_doors_connected():
+    """门洞互通 + 出生点可离开区块（防"通而不达"与"出生点牢笼"）。
+
+    这一条是反哺 arcade 原版时新增的第三类缺陷检测：energy_core /
+    portal_gate 的门洞与大厅之间隔着两行墙（四门通而不达、整区块隔离）、
+    generator_room 西侧门廊被发电机块封死（西门死路）。原版已同步修复。
+    """
+    import collections
+    import random
+    from logic import kid_a as K
+    inner = {'N': (1, 10), 'S': (19, 10), 'W': (10, 1), 'E': (10, 19)}
+
+    def reach(grid, start):
+        walk = {(r, c) for r in range(K.CHUNK) for c in range(K.CHUNK)
+                if grid[r][c] != '#'}
+        if start not in walk:
+            return set()
+        seen = {start}
+        q = collections.deque([start])
+        while q:
+            r, c = q.popleft()
+            for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nxt = (r + dr, c + dc)
+                if nxt in walk and nxt not in seen:
+                    seen.add(nxt)
+                    q.append(nxt)
+        return seen
+
+    rng = random.Random(2026)
+    for key, pool in K._ALL_TEMPLATES.items():
+        for fn in pool:
+            grid = fn(rng)
+            for d in key:
+                comp = reach(grid, inner[d])
+                assert comp, f'{fn.__name__} {d} 门内侧就是墙'
+                for d2 in key:
+                    if d2 != d:
+                        assert inner[d2] in comp, \
+                            f'{fn.__name__}：{d} 门进来走不到 {d2} 门'
+    # 出生点可离开区块（跨区块可达 >= 500 格且确实出块）
+    for seed in (1, 7, 42):
+        wm = K.WorldMap(seed=seed)
+        for dcy in (-1, 0, 1):
+            for dcx in (-1, 0, 1):
+                wm.ensure_neighbors(dcx, dcy)
+        all_walk = set()
+        for (cx, cy), grid in wm.chunks.items():
+            for ly in range(K.CHUNK):
+                for lx in range(K.CHUNK):
+                    if grid[ly][lx] != '#':
+                        all_walk.add((cx * K.CHUNK + lx, cy * K.CHUNK + ly))
+        s = wm.find_safe_spawn(0, 0)
+        s = (int(s[0]), int(s[1]))
+        seen = {s}
+        q = collections.deque([s])
+        while q:
+            x, z = q.popleft()
+            for dx, dz in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nxt = (x + dx, z + dz)
+                if nxt in all_walk and nxt not in seen:
+                    seen.add(nxt)
+                    q.append(nxt)
+        assert len(seen) >= 500, (seed, len(seen))
+        cc = (s[0] // K.CHUNK, s[1] // K.CHUNK)
+        assert any((p[0] // K.CHUNK, p[1] // K.CHUNK) != cc for p in seen), \
+            f'seed={seed} 出生点走不出区块'
+    print('  ok: kid_a 全模版各门互通 + 出生点可离开区块（3 种子）')
+
+
 if __name__ == '__main__':
     print('test_camera_initial_pose');     test_camera_initial_pose()
     print('test_camera_clamps');           test_camera_clamps()
@@ -1121,4 +1190,5 @@ if __name__ == '__main__':
     print('test_kid_a_templates_valid');          test_kid_a_templates_valid()
     print('test_kid_a_worldmap_exits_connected'); test_kid_a_worldmap_exits_connected()
     print('test_kid_a_energy_and_fragments');     test_kid_a_energy_and_fragments()
+    print('test_kid_a_doors_connected');          test_kid_a_doors_connected()
     print('ALL_LOGIC_TESTS_PASSED')
