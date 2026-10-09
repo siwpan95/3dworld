@@ -20,7 +20,10 @@ from __future__ import annotations
 
 import os
 
-import numpy as np
+try:                       # numpy 属"可选依赖链"（bloodmusic 一侧）；缺失时本模块整体降级
+    import numpy as np
+except Exception:          # pragma: no cover
+    np = None
 
 SR = 44100
 BLOCK = 512
@@ -37,9 +40,12 @@ class AdaptiveBgm:
         self._stream = None
         self._last_state = None
         self._extra = {}           # 附加 game_state 字段（v3.3：COMBAT/VICTORY）
-        self.enabled = bool(enabled) and os.environ.get('WORLD3D_BGM', '1') != '0'
+        self.enabled = (bool(enabled)
+                        and os.environ.get('WORLD3D_BGM', '1') != '0'
+                        and np is not None)
         if not self.enabled:
-            print('[bgm] disabled by env', flush=True)
+            reason = 'numpy missing' if np is None else 'by env'
+            print(f'[bgm] disabled ({reason})', flush=True)
             return
         try:
             from bloodmusic.interactive import RealtimeMusicEngine

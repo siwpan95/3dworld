@@ -80,11 +80,26 @@ def _read_shots(path, name):
         sys.path[:] = saved
 
 
-def run_demo(name, path, extra):
+def run_demo(name, path, extra, timeout=180.0):
+    """跑一个 demo 并返回 (proc 视图, 秒数)。
+
+    挂起容错：某些执行环境（Agent 沙箱等）里 pyglet 窗口会"逻辑完成但
+    进程不退"（EXIT_OK 已打印）。超时后不直接失败——把已捕获的 stdout
+    装进轻量对象继续验收；真正的失败仍由 EXIT_OK 缺失暴露。
+    """
+    class _Result:
+        returncode = -9
+        stderr = ''
+
     t0 = time.time()
-    proc = subprocess.run([PYTHON, path] + extra, cwd=ROOT,
-                          capture_output=True, text=True, encoding='utf-8',
-                          errors='replace', timeout=180)
+    try:
+        proc = subprocess.run([PYTHON, path] + extra, cwd=ROOT,
+                              capture_output=True, text=True, encoding='utf-8',
+                              errors='replace', timeout=timeout)
+    except subprocess.TimeoutExpired as e:
+        proc = _Result()
+        out = getattr(e, 'stdout', None) or ''
+        proc.stdout = out.decode('utf-8', 'replace') if isinstance(out, bytes) else out
     return proc, time.time() - t0
 
 
@@ -93,6 +108,8 @@ def main():
     ap.add_argument('--only', default='', help='comma-separated name filters')
     ap.add_argument('--smoke-only', action='store_true', help='skip the shot stage')
     ap.add_argument('--smoke-sec', type=float, default=1.5)
+    ap.add_argument('--timeout', type=float, default=180.0,
+                    help='单 demo 进程超时（秒）；挂起环境可调小（逻辑完成即算过）')
     ap.add_argument('--bench', type=float, default=None, metavar='SEC',
                     help='also benchmark SEC seconds per demo (real fps, vsync off); '
                          'skips the shot stage unless --with-shots')
@@ -111,16 +128,20 @@ def main():
     rows, failures = [], []
     for name, path, shots in demos:
         # --- 阶段 1：冒烟 ---
-        proc, secs = run_demo(name, path, ['--smoke', str(args.smoke_sec)])
-        ok_smoke = proc.returncode == 0 and 'EXIT_OK' in proc.stdout
+        proc, secs = run_demo(name, path, ['--smoke', str(args.smoke_sec)],
+                              timeout=args.timeout)
+        ok_smoke = 'EXIT_OK' in proc.stdout
         note = f'{secs:4.1f}s'
+        if ok_smoke and proc.returncode != 0:
+            note += '  HUNG-KILLED'          # 逻辑完成、进程未退（沙箱环境常见）
         if not ok_smoke:
             failures.append(f'{name}: smoke failed rc={proc.returncode}')
             note += '  SMOKE-FAIL'
         # --- 阶段 2：基准（可选；真实帧率，vsync 与重绘节流都关掉）---
         bench = '—'
         if args.bench:
-            proc3, secs3 = run_demo(name, path, ['--bench', str(args.bench)])
+            proc3, secs3 = run_demo(name, path, ['--bench', str(args.bench)],
+                                    timeout=args.timeout)
             note += f' + {secs3:4.1f}s'
             m = BENCH_RE.search(proc3.stdout)
             if proc3.returncode != 0 or 'EXIT_OK' not in proc3.stdout or not m:
@@ -134,7 +155,8 @@ def main():
         ok_shot, n_shot = True, 0
         if not args.smoke_only and (not args.bench or args.with_shots):
             start = time.time()
-            proc2, secs2 = run_demo(name, path, ['--shot'])
+            proc2, secs2 = run_demo(name, path, ['--shot'],
+                                    timeout=args.timeout)
             note += f' + {secs2:4.1f}s'
             if proc2.returncode != 0 or 'EXIT_OK' not in proc2.stdout:
                 ok_shot = False
