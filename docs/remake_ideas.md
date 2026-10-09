@@ -166,7 +166,15 @@ DeepSeek Harness 的运行时内核。
 
 **待做（P0）**
 - Cordis 试点二 / 试点三 + 转正（vendor + 锁 commit）；
-- 抽取首批共同核服务（render/terrain/input/hud/audio/timeline/particles）。
+- 把 `core/contracts.py` 的 12 个契约**逐个 wrap 成 Cordis 服务**
+  （优先 `WRAPPABLE_CORES`：render/terrain/input/hud/pathing/audio/timeline/particles/sdf）。
+
+**P0 进展（已落地）**
+- `core/contracts.py`：12 个共同核的**服务接口契约**（`typing.Protocol`，脱离 cordis 与 GL
+  上下文也能 `import`），附 `CORES` 注册表 + `status_table()` + 可选 `verify()`。
+  它是后续 Cordis 接线（试点二/三）的单一事实来源——每个核「对外提供什么服务」只在此声明一次。
+- 沙箱现状：github.com TLS 被代理拦截、本机无 Python cordis，故试点二/三与「vendor 转正」
+  仍**阻塞**；接口契约这一层不依赖 cordis，已先行落地（Q2 推荐项）。
 
 **下一步建议**：先与全哥对齐第 2 节「共同核清单」是否齐备、抽取顺序是否认可，
 再启动 P0；P0 完成后从 P1-①（神之手）或 P1-②（魔兽风塔防切片，贴合点名）开第一个内核。
