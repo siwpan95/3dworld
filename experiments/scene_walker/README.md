@@ -39,6 +39,10 @@ FixedStepper（1/60 固定步长驱动物理；卡帧不穿透——见 fixed_ti
   `[selftest] auto interact` + **`[interact] wake orb_a -> ember glow`**
   （E 键唤醒最近发光元素：脉冲高亮 + 马尔可夫档位回升；点击走 Picker 射线拾取）
   + `EXIT_OK` ✓
+- **v3.1 SFX 音效**：`--smoke 6 --flag walk --flag interact` →
+  **`[sfx] ready: ['jump','land','pickup','power_up']`** + `[sfx] play land` /
+  `[sfx] play power_up`（跳跃/落地/拾取/互动四个反馈音；bloodmusic 预设渲染）
+  + `EXIT_OK` ✓
 
 ## 已知边界（v2）
 
@@ -47,4 +51,7 @@ FixedStepper（1/60 固定步长驱动物理；卡帧不穿透——见 fixed_ti
   场景热重载未接（engine_showcase 已有，可按需移植）；
 - **演出变体已接入**：zhuangtaiji 马尔可夫链驱动发光元素（`ZHUANGTAIJI_PATH`
   可用时自动启用）——「随机变体进交互场景」的接入点已落地；
-- SFX/自适应音乐（bloodmusic）为下一层接入点。
+- **SFX 已接入（v3.1）**：bloodmusic 预设渲染（`gen_sfx.py` → `sfx/*.wav`：
+  jump / gold_pickup / power_up / block_hit 四个语义映射），跳跃/落地/拾取/互动
+  四反馈音；无音频设备时**静默降级**（`WORLD3D_SFX=0` 可显式禁用）；
+- 自适应音乐（bloodmusic interactive）为下一层候选。

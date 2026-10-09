@@ -54,6 +54,43 @@ def _extract_file(argv):
     return path, args
 
 
+class SfxPlayer:
+    """轻量音效播放：pyglet.media 预载 WAV；失败/缺设备时静默降级。
+
+    - 无音频设备（服务器/沙箱）或缺 wav 文件 → disabled（不中断交互）；
+    - 可用 WORLD3D_SFX=0 显式禁用。
+    """
+
+    def __init__(self, sfx_dir, enabled=True, gain=1.0):
+        self._sources = {}
+        self._gain = gain
+        self.enabled = bool(enabled) and os.environ.get('WORLD3D_SFX', '1') != '0'
+        if not self.enabled:
+            print('[sfx] disabled by env', flush=True)
+            return
+        try:
+            import pyglet.media as pm
+            for name in ('jump', 'pickup', 'power_up', 'land'):
+                p = os.path.join(sfx_dir, f'{name}.wav')
+                if os.path.exists(p):
+                    self._sources[name] = pm.load(p, streaming=False)
+            print(f'[sfx] ready: {sorted(self._sources)}', flush=True)
+        except Exception as e:
+            print(f'[sfx] disabled: {type(e).__name__}: {e}', flush=True)
+            self.enabled = False
+
+    def play(self, name, gain=1.0):
+        if not self.enabled or name not in self._sources:
+            return
+        try:
+            p = self._sources[name].play()
+            if p is not None:
+                p.volume = max(0.0, min(1.0, self._gain * gain))
+            print(f'[sfx] play {name}', flush=True)
+        except Exception as e:
+            print(f'[sfx] play failed ({name}): {e}', flush=True)
+
+
 class WalkerApp(DemoApp):
     TITLE = 'scene walker · 可漫步场景（实验 v3）'
     HELP = ('V 轨道/漫游  WASD 走  SPACE 跳  SHIFT 加速  E 互动  '
@@ -74,6 +111,7 @@ class WalkerApp(DemoApp):
         self.walk = False
         self.yaw, self.pitch = 180.0, -6.0
         self._landed_reported = False
+        self._was_ground = False               # 落地边沿（音效反馈用）
         self.selected = None
         self._pulse = {}                       # name -> 高亮截止时刻
         self._msg = ''
@@ -127,6 +165,10 @@ class WalkerApp(DemoApp):
             self._drag_dispatch, self._drag_orbit_input[1])
         self.window.push_handlers(on_key_release=self._on_key_release,
                                   on_mouse_press=self.on_mouse_press)
+
+        # 交互音效（v3.1）：预载 SFX；无设备/缺文件时静默降级
+        self.sfx = SfxPlayer(os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), 'sfx'))
 
         # 发光元素基线（呼吸动画不累积乘）
         self._glow = {}
@@ -195,6 +237,7 @@ class WalkerApp(DemoApp):
             if self.body.on_ground:
                 v = self.body.velocity
                 self.body.velocity = (v[0], self.JUMP_V, v[2])
+                self.sfx.play('jump')
             return
         super()._on_key_press(symbol, modifiers)
 
@@ -221,6 +264,7 @@ class WalkerApp(DemoApp):
             return
         self.selected = hit.drawable
         self._msg = f'拾取 {hit.drawable.name} 距离 {hit.distance:.1f}m'
+        self.sfx.play('pickup')
 
     # ---------------------------------------------------------- 近身互动 --
     def _nearest_glow(self):
@@ -252,6 +296,7 @@ class WalkerApp(DemoApp):
         name, dist = tgt
         self._pulse[name] = self.time + 1.2
         self._msg = f'唤醒 {name}（距离 {dist:.1f}m）'
+        self.sfx.play('power_up')
         if self._mc is not None:
             for _ in range(3):                 # 简单策略：最多 3 步离开 dim
                 if self._mc.current != 'dim':
@@ -292,6 +337,9 @@ class WalkerApp(DemoApp):
                 vel[0] = vel[2] = 0.0
             self.body.velocity = tuple(vel)
             self.stepper.advance(dt)                        # 固定步长驱动物理
+            if self.body.on_ground and not self._was_ground:
+                self.sfx.play('land', 0.6)                  # 落地反馈音
+            self._was_ground = self.body.on_ground
             self._sync_eye()
             if not self._landed_reported and self.body.on_ground:
                 self._landed_reported = True
