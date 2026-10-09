@@ -1,16 +1,31 @@
 # -*- coding: utf-8 -*-
-"""塔防切片「戍卫之路 / Roadwarden」—— P1-② 首个游戏内核（直连引擎阶段 A）。
+"""塔防切片「戍卫之路 / Roadwarden」—— P1-② 首个游戏内核（Cordis 委托阶段 C）。
 
 机制致敬 Warcraft / Dune II 的「经济→兵力→战斗」循环；原创美术 / 命名 / 世界观，
 不碰任何原 IP 名称与素材（合规见 docs/remake_ideas.md §7 / §9）。
 
-阶段 A（本文件）：直连 engine + core/contracts.py 的契约形状（**不经由 Cordis 运行时**），
-先交付一个可运行、可录制的塔防切片，证明玩法与引擎复用。
-阶段 B（后续）：按 cordis v4.0.0 fiber 属性式 API 重写 experiments/cordis/scene_pipeline.py，
-再把本内核的系统抽成 Cordis 插件（provide 各核 + effect 回收 GL 资源）驱动，验证「共同核+内核」范式。
+阶段 A（demos/tower_defense.py 初版）：直连 engine，自管全部游戏状态与逻辑。
+阶段 B（experiments/cordis/tower_defense_kernel.py）：把玩法拆成「共同核（Service）
++ 内核（TowerDefenseKernel）」两层，用 cordis v4.0.0 fiber 属性式 API 接线，
+并验证 GL 资源随内核 fiber dispose 可逆回滚（headless 模拟通关 + 回滚断言）。
+
+阶段 C（本文件）：demo 不再自管玩法，而是**委托 Cordis 内核**——
+    setup()   经 asyncio 一次性挂载 cordis Context（Render/Economy/Entity/Rules
+              共同核 + TowerDefenseKernel 内核），内核在 __cordis_init__ 自动布防
+              并取好 GL 资源句柄；
+    update()  只做两件事：把 dt 交给内核驱动模拟，并把内核发出的语义事件（build/
+              shoot/hit/kill/won/lose）转成音效；
+    render()  只读内核/实体注册表的状态来画（塔/敌/弹均为内核登记的实体）；
+    on_key/N、左键建塔 直接委托内核的 early_wave() / build()。
+
+渲染层（GL 程序、立方体/球网格、地面、相机、HUD、音效、拾取）仍由本 demo 负责——
+这是「共同核 + 内核」范式在切片里的落地：逻辑在 Cordis，表现由宿主持有。真实
+全 Cordis 化时，RenderService 会接管 GL 上下文；此处为保持离线可录制，宿主保留
+pyglet 直接绘制（内核的 RenderService 仅做 headless 记账与回滚语义）。
 
 复用：demos/_harness.DemoApp/run、logic.camera.OrbitCamera、engine.picking、
-engine.audio（SfxPlayer/Track）、core/contracts.py（仅作形状参考，不 import）。
+engine.audio（SfxPlayer/Track），以及 experiments/cordis/tower_defense_kernel
+（共同核 + 塔防内核，12 核契约见 core/contracts.py）。
 
 玩法：地图 20×20 格，敌人沿车道从入口走向基地；玩家在空地建箭/炮/冰三种塔拦截；
 击杀得金、活过 5 波即胜、基地 HP 归零即败。开局自动布防 4 座塔，便于无操作录制自演示。
@@ -18,6 +33,7 @@ engine.audio（SfxPlayer/Track）、core/contracts.py（仅作形状参考，不
 操作：右键拖拽转视角、滚轮缩放、左键点空地建塔、1/2/3 选塔、N 提前开波、SPACE 暂停、ESC 退出。
 """
 import array
+import asyncio
 import math
 import os
 import sys
@@ -37,6 +53,14 @@ from engine.audio import Track, render_wav, SfxPlayer
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
+
+# 把塔防内核所在目录加入路径（experiments/cordis 不是包，按路径 import）
+CORDIS_KDIR = os.path.join(ROOT, 'experiments', 'cordis')
+if CORDIS_KDIR not in sys.path:
+    sys.path.insert(0, CORDIS_KDIR)
+from tower_defense_kernel import (  # noqa: E402
+    Context, TowerDefenseKernel, RenderService, EconomyService, EntityService, RulesService,
+)
 
 # ============================================================= 地图与平衡 ==
 GRID = 20                       # 格数 / 边
@@ -59,7 +83,7 @@ PREP_FIRST = 3.0                # 第一波前的备战时间
 PREP_BETWEEN = 6.0             # 波间备战时间
 BASE_HP0 = 20
 
-# 塔（from-scratch EntityCore 的雏形；cost<=START_GOLD 以便自动布防）
+# 塔（展示用：渲染查 TOWER_TYPES[type] 取高度/颜色；逻辑全在内核）
 TOWER_TYPES = {
     '1': dict(name='箭塔', cost=50,  range=9.0, damage=8.0,  rate=2.0, splash=0.0, slow=0.0,
               color=(0.30, 0.85, 0.95), height=1.4),
@@ -69,14 +93,14 @@ TOWER_TYPES = {
               color=(0.55, 0.80, 1.00), height=1.5),
 }
 
-# 敌人（from-scratch EntityCore 的雏形）
+# 敌人（展示用：渲染查 ENEMY_TYPES[type] 取半径/颜色）
 ENEMY_TYPES = {
     'swarm':   dict(hp=28,  speed=5.0, reward=7,  radius=0.5, leak=1, color=(0.95, 0.80, 0.30)),
     'grunt':   dict(hp=60,  speed=3.0, reward=12, radius=0.7, leak=2, color=(0.85, 0.35, 0.30)),
     'bruiser': dict(hp=180, speed=2.0, reward=30, radius=1.0, leak=3, color=(0.55, 0.30, 0.55)),
 }
 
-# 波次：每波 = 若干 (类型, 数量, 间隔秒)，串行展开
+# 波次（仅展示 HUD 用：波数 = len(WAVES)）
 WAVES = [
     [('swarm', 8, 0.8)],
     [('grunt', 6, 1.0)],
@@ -85,7 +109,7 @@ WAVES = [
     [('swarm', 14, 0.4), ('grunt', 8, 0.9), ('bruiser', 4, 1.5)],
 ]
 
-# 开局自动布防（键=(i,j) 格，值=塔类型键）——挑选离车道约 2 格的空地
+# 开局自动布防（键=(i,j) 格，值=塔类型键）——在内核 __cordis_init__ 里免费建造
 AUTO_TOWERS = [((5, 2), '1'), ((15, 2), '1'), ((10, 2), '2'), ((16, 4), '3')]
 
 
@@ -219,7 +243,7 @@ void main() {
 
 # ============================================================= DemoApp ==
 class TowerDefenseDemo(DemoApp):
-    TITLE = '戍卫之路 / Roadwarden（塔防切片 · P1-②）'
+    TITLE = '戍卫之路 / Roadwarden（塔防切片 · P1-② · Cordis 委托）'
     HELP = '右键拖拽 转视角   滚轮 缩放   左键 建塔   1/2/3 选塔   N 提前开波   SPACE 暂停'
     DURATION = None                 # 不循环：时间累计，便于录制完整一波流程
     HUD = True
@@ -242,27 +266,18 @@ class TowerDefenseDemo(DemoApp):
         self.sphere = self.program.vertex_list(len(spos) // 3, GL_TRIANGLES,
                                                 position=('f', spos), shade=('f', sshade))
 
-        # 网格 + 车道 + 基地分类
+        # 网格 + 车道 + 基地分类（仅用于地面绘制与「可否建塔」判定）
         self._build_cells()
         self._build_ground()
 
-        # 游戏状态（from-scratch：entity / economy / rules）
-        self.gold = START_GOLD
-        self.base_hp = BASE_HP0
-        self.enemies = []           # dict: dist, hp, max_hp, type, slow_t
-        self.towers = {}            # (i,j) -> dict: wx,wz,type,cooldown
-        self.projectiles = []       # dict: pos(Vec3), target(eid), speed, dmg, splash, slow, color
-        self._eid = 0
-        self.state = 'prep'
-        self.wave_index = 0
-        self.prep_until = PREP_FIRST
-        self.wave_start = 0.0
-        self.spawn_q = self._build_wave(0)
+        # ---------- 挂载 Cordis 内核（阶段 C：玩法委托给内核）----------
+        self.ctx, self.kernel = self._boot_kernel()
+        # 内核已在 __cordis_init__ 自动布防 AUTO_TOWERS（免费）并取好 GL 句柄，
+        # 这里不再自管 gold/base_hp/enemies/towers/projectiles/wave 状态。
 
         # 交互
         self.selected = '1'
         self._press = None          # (x, y, button) 用于区分点击/拖拽
-        self._last_shoot_sfx = -1.0
         self.window.push_handlers(
             on_mouse_drag=self._on_drag,
             on_mouse_scroll=self._on_scroll,
@@ -270,12 +285,8 @@ class TowerDefenseDemo(DemoApp):
             on_mouse_release=self._on_release,
         )
 
-        # 音效（自包含、best-effort；沙箱无驱动则静默）
+        # 音效（自包含、best-effort；沙箱无驱动则静默）——由内核事件驱动
         self._init_audio()
-
-        # 开局自动布防（让无操作录制也能看到交战）
-        for (cell, tk) in AUTO_TOWERS:
-            self._try_build(cell[0], cell[1], tk, free=True)
 
         # 胜负叠层
         from engine.fonts import resolve_cjk_font
@@ -284,6 +295,25 @@ class TowerDefenseDemo(DemoApp):
         self.overlay = pyglet.text.Label('', font_size=54, color=(255, 230, 120, 255),
                                          anchor_x='center', anchor_y='center',
                                          x=self.window.width // 2, y=self.window.height // 2, **kw)
+
+    # -------------------------------------------------- Cordis 挂载 --
+    def _boot_kernel(self):
+        """同步挂载 cordis Context（共同核 + 塔防内核）。
+
+        ``ctx.plugin`` 是异步的，但「挂载」是一次性的引导动作；用 ``asyncio.run``
+        跑一个临时事件循环把整张依赖图解析完即可。解析完成后，内核实例与 Context
+        都是普通 Python 对象，后续 ``update(dt)`` 同步驱动，无需事件循环常驻。
+        """
+        return asyncio.run(self._mount_kernel())
+
+    async def _mount_kernel(self):
+        ctx = Context()
+        await ctx.plugin(RenderService)
+        await ctx.plugin(EconomyService, {'gold': START_GOLD})
+        await ctx.plugin(EntityService)
+        await ctx.plugin(RulesService, {'total_waves': len(WAVES)})
+        await ctx.plugin(TowerDefenseKernel)
+        return ctx, ctx.tower_defense
 
     # -------------------------------------------------- 网格 / 地面 --
     def _build_cells(self):
@@ -359,37 +389,6 @@ class TowerDefenseDemo(DemoApp):
             except Exception:
                 pass
 
-    # -------------------------------------------------- 波次调度 --
-    def _build_wave(self, idx):
-        """把第 idx 波展开成 (offset, type) 序列。"""
-        q = []
-        off = 0.0
-        for grp in WAVES[idx]:
-            typ, count, gap = grp
-            for _ in range(count):
-                q.append((off, typ))
-                off += gap
-        return q
-
-    # -------------------------------------------------- 建塔 --
-    def _try_build(self, i, j, tk, free=False):
-        if not (0 <= i < GRID and 0 <= j < GRID):
-            return False
-        if self.cell_type[i][j] != 'build':
-            return False
-        if (i, j) in self.towers:
-            return False
-        spec = TOWER_TYPES[tk]
-        if not free:
-            if self.gold < spec['cost']:
-                return False
-            self.gold -= spec['cost']
-        wx, wz = cell_center(i, j)
-        self.towers[(i, j)] = dict(wx=wx, wz=wz, type=tk, cooldown=0.0)
-        if not free:
-            self._sfx('build')
-        return True
-
     # -------------------------------------------------- 输入 --
     def _on_drag(self, x, y, dx, dy, buttons, modifiers):
         if buttons & mouse.RIGHT:
@@ -416,8 +415,9 @@ class TowerDefenseDemo(DemoApp):
         gx, gz = g
         i = int((gx + HALF) / CELL)
         j = int((gz + HALF) / CELL)
-        if not self._try_build(i, j, self.selected):
-            pass  # 非法落点（车道/已占/钱不够）静默忽略
+        # 车道/基地/越界不可建（其余合法性——已占、钱不够——由内核判定）
+        if 0 <= i < GRID and 0 <= j < GRID and self.cell_type[i][j] == 'build':
+            self.kernel.build(i, j, self.selected)   # 经济扣费在内核
 
     def _screen_to_ground(self, x, y):
         aspect = self.window.width / max(1, self.window.height)
@@ -443,146 +443,19 @@ class TowerDefenseDemo(DemoApp):
         elif symbol == key._3:
             self.selected = '3'
         elif symbol == key.N:
-            if self.state == 'prep':
-                self.prep_until = self.time        # 立即开波
-                self.gold += 15                    # 提前开波奖励
+            self.kernel.early_wave()        # 立即开波 + 提前开波奖励（内核判定 state==prep）
 
-    # -------------------------------------------------- 逐帧 --
+    # -------------------------------------------------- 逐帧（委托内核）--
     def update(self, dt):
-        if self.paused or self.state in ('won', 'lost'):
+        if self.paused:
             return
-        self._update_waves(dt)
-        self._update_enemies(dt)
-        self._update_towers(dt)
-        self._update_projectiles(dt)
+        # 驱动模拟：内核自管所有游戏状态与逻辑
+        self.kernel.update(dt)
+        # 把内核发出的语义事件转成音效
+        for name in self.kernel.drain_events():
+            self._sfx(name)
 
-    def _update_waves(self, dt):
-        # 备战 -> 开波
-        if self.state == 'prep' and self.time >= self.prep_until:
-            self.state = 'wave'
-            self.wave_start = self.time
-        # 出怪
-        if self.state == 'wave':
-            while self.spawn_q and self.time >= self.wave_start + self.spawn_q[0][0]:
-                _, typ = self.spawn_q.pop(0)
-                self._spawn(typ)
-        # 本波清空 -> 下一波或胜利
-        if self.state == 'wave' and not self.spawn_q and not self.enemies:
-            self.wave_index += 1
-            if self.wave_index >= len(WAVES):
-                self._set_state('won')
-            else:
-                self.state = 'prep'
-                self.prep_until = self.time + PREP_BETWEEN
-                self.gold += 25                      # 清波奖励
-                self.spawn_q = self._build_wave(self.wave_index)
-
-    def _spawn(self, typ):
-        spec = ENEMY_TYPES[typ]
-        self.enemies.append(dict(eid=self._eid, dist=0.0, hp=spec['hp'],
-                                 max_hp=spec['hp'], type=typ, slow_t=0.0))
-        self._eid += 1
-
-    def _update_enemies(self, dt):
-        L = lane_length()
-        alive = []
-        for e in self.enemies:
-            spec = ENEMY_TYPES[e['type']]
-            spd = spec['speed'] * (0.45 if e['slow_t'] > 0 else 1.0)
-            if e['slow_t'] > 0:
-                e['slow_t'] -= dt
-            e['dist'] += spd * dt
-            if e['dist'] >= L:
-                self.base_hp -= spec['leak']
-                if self.base_hp <= 0:
-                    self.base_hp = 0
-                    self._set_state('lost')
-                continue
-            alive.append(e)
-        self.enemies = alive
-
-    def _update_towers(self, dt):
-        L = lane_length()
-        for tw in self.towers.values():
-            spec = TOWER_TYPES[tw['type']]
-            tw['cooldown'] -= dt
-            if tw['cooldown'] > 0:
-                continue
-            # 选范围内「最接近基地」的敌人（优先级最高）
-            best, best_d = None, -1.0
-            for e in self.enemies:
-                x, z = lane_point(e['dist'])
-                if math.hypot(x - tw['wx'], z - tw['wz']) <= spec['range']:
-                    if e['dist'] > best_d:
-                        best, best_d = e, e['dist']
-            if best is None:
-                continue
-            tw['cooldown'] = 1.0 / spec['rate']
-            tx, tz = lane_point(best['dist'])
-            self.projectiles.append(dict(
-                pos=Vec3(tw['wx'], spec['height'] * 0.8, tw['wz']),
-                target=best['eid'], speed=26.0,
-                dmg=spec['damage'], splash=spec['splash'], slow=spec['slow'],
-                color=(1.0, 0.95, 0.5)))
-            # 射击音效节流
-            if self.time - self._last_shoot_sfx > 0.12:
-                self._sfx('shoot')
-                self._last_shoot_sfx = self.time
-
-    def _update_projectiles(self, dt):
-        alive = []
-        for p in self.projectiles:
-            # 找到目标当前位置
-            tgt = next((e for e in self.enemies if e['eid'] == p['target']), None)
-            if tgt is None:
-                continue                        # 目标已死，子弹消失
-            tx, tz = lane_point(tgt['dist'])
-            ty = ENEMY_TYPES[tgt['type']]['radius']
-            to = Vec3(tx, ty, tz)
-            d = to - p['pos']
-            dist = math.sqrt(d.x * d.x + d.y * d.y + d.z * d.z)
-            step = p['speed'] * dt
-            if dist <= step + 0.4:
-                self._impact(p, tx, tz)
-                continue
-            p['pos'] = p['pos'] + d * (step / dist)
-            alive.append(p)
-        self.projectiles = alive
-
-    def _impact(self, p, x, z):
-        if p['splash'] > 0:
-            for e in self.enemies:
-                ex, ez = lane_point(e['dist'])
-                if math.hypot(ex - x, ez - z) <= p['splash']:
-                    self._damage(e, p['dmg'])
-            if p['slow'] > 0:
-                for e in self.enemies:
-                    ex, ez = lane_point(e['dist'])
-                    if math.hypot(ex - x, ez - z) <= p['splash']:
-                        e['slow_t'] = max(e['slow_t'], 1.5)
-        else:
-            tgt = next((e for e in self.enemies if e['eid'] == p['target']), None)
-            if tgt is not None:
-                self._damage(tgt, p['dmg'])
-                if p['slow'] > 0:
-                    tgt['slow_t'] = max(tgt['slow_t'], 1.5)
-        self._sfx('hit')
-
-    def _damage(self, e, dmg):
-        e['hp'] -= dmg
-        if e['hp'] <= 0 and 'dead' not in e:
-            e['dead'] = True
-            self.gold += ENEMY_TYPES[e['type']]['reward']
-            self._sfx('kill')
-            self.enemies = [x for x in self.enemies if x is not e]
-
-    def _set_state(self, st):
-        if self.state == st:
-            return
-        self.state = st
-        self._sfx('won' if st == 'won' else 'lose')
-
-    # -------------------------------------------------- 渲染 --
+    # -------------------------------------------------- 渲染（读内核状态）--
     def render(self):
         cam = self.camera
         self.window.view = cam.view_matrix()
@@ -593,36 +466,46 @@ class TowerDefenseDemo(DemoApp):
         prog['u_eye'] = eye_t
         prog['u_fog'] = SKY
 
+        k = self.kernel
+        r = k.ctx.rules
+
         # 地面
         prog['u_model'] = _mat_translate(0, 0, 0)
         prog['u_tint'] = (1.0, 1.0, 1.0)
         self.ground.draw(GL_TRIANGLES)
 
-        # 塔
-        for tw in self.towers.values():
+        # 塔（实体来自内核实体注册表）
+        for tw in k.towers.values():
             spec = TOWER_TYPES[tw['type']]
             h = spec['height']
             prog['u_model'] = _mat_translate(tw['wx'], h / 2, tw['wz']) @ _mat_scale(1.1, h, 1.1)
             prog['u_tint'] = spec['color']
             self.cube.draw(GL_TRIANGLES)
 
-        # 敌人
-        for e in self.enemies:
+        # 敌人（内核逐帧按 lane_point(dist) 更新「语义位置」，渲染再算世界坐标）
+        for eid in k.enemies:
+            e = k.ctx.entity.get(eid)
+            if e is None:
+                continue
             spec = ENEMY_TYPES[e['type']]
             x, z = lane_point(e['dist'])
-            r = spec['radius']
-            prog['u_model'] = _mat_translate(x, r, z) @ _mat_scale(r * 1.6, r * 1.6, r * 1.6)
+            rad = spec['radius']
+            prog['u_model'] = _mat_translate(x, rad, z) @ _mat_scale(rad * 1.6, rad * 1.6, rad * 1.6)
             prog['u_tint'] = spec['color']
             self.sphere.draw(GL_TRIANGLES)
             # 血条（细长立方体，按血量缩放）
             frac = max(0.0, e['hp'] / e['max_hp'])
-            prog['u_model'] = _mat_translate(x, r * 2.2, z) @ _mat_scale(1.4 * frac + 0.01, 0.12, 0.12)
+            prog['u_model'] = _mat_translate(x, rad * 2.2, z) @ _mat_scale(1.4 * frac + 0.01, 0.12, 0.12)
             prog['u_tint'] = (0.2 + 0.8 * frac, 0.9 * frac, 0.15)
             self.cube.draw(GL_TRIANGLES)
 
-        # 子弹
-        for p in self.projectiles:
-            prog['u_model'] = _mat_translate(p['pos'].x, p['pos'].y, p['pos'].z) @ _mat_scale(0.25, 0.25, 0.25)
+        # 子弹（内核实体，pos 为 (x,y,z) 元组）
+        for peid in k.projectiles:
+            p = k.ctx.entity.get(peid)
+            if p is None:
+                continue
+            px, py, pz = p['pos']
+            prog['u_model'] = _mat_translate(px, py, pz) @ _mat_scale(0.25, 0.25, 0.25)
             prog['u_tint'] = p['color']
             self.cube.draw(GL_TRIANGLES)
 
@@ -633,12 +516,13 @@ class TowerDefenseDemo(DemoApp):
         self.cube.draw(GL_TRIANGLES)
 
         # 胜负 / 暂停叠层
-        if self.state in ('won', 'lost') or self.paused:
+        state = r.state()
+        if state in ('won', 'lost') or self.paused:
             w, h = self.window.width, self.window.height
             glDisable(GL_DEPTH_TEST)
             self.window.view = Mat4()
             self.window.projection = Mat4.orthogonal_projection(0, w, 0, h, -1, 1)
-            txt = {'won': '胜 利 !', 'lost': '失 败', 'prep': ''}.get(self.state, '')
+            txt = {'won': '胜 利 !', 'lost': '失 败', 'prep': ''}.get(state, '')
             if self.paused and not txt:
                 txt = '暂 停'
             self.overlay.text = txt
@@ -650,13 +534,16 @@ class TowerDefenseDemo(DemoApp):
     # -------------------------------------------------- HUD --
     def status_text(self):
         sel = TOWER_TYPES[self.selected]['name']
-        st = {'prep': '备战', 'wave': '交战', 'won': '胜利', 'lost': '失败'}.get(self.state, self.state)
+        k = self.kernel
+        r = k.ctx.rules
+        st = {'prep': '备战', 'wave': '交战', 'won': '胜利', 'lost': '失败'}.get(r.state(), r.state())
+        gold = k.ctx.economy.balance('gold')
         extra = ''
-        if self.state == 'prep':
-            extra = f'  下一波 {max(0.0, self.prep_until - self.time):.0f}s'
-        return (f'金{self.gold}  波{self.wave_index + 1}/{len(WAVES)} {st}{extra}  '
-                f'基地HP{self.base_hp}  选中:{sel}  | 1箭塔 2炮塔 3冰塔 N开波  SPACE暂停  '
-                f't={self.time:.0f}s {self.fps:.0f}fps' + ('  [PAUSED]' if self.paused else ''))
+        if r.state() == 'prep':
+            extra = f'  下一波 {max(0.0, k.prep_until - k.time):.0f}s'
+        return (f'金{gold:.0f}  波{r.wave_index + 1}/{len(WAVES)} {st}{extra}  '
+                f'基地HP{r.base_hp}  选中:{sel}  | 1箭塔 2炮塔 3冰塔 N开波  SPACE暂停  '
+                f't={k.time:.0f}s {self.fps:.0f}fps' + ('  [PAUSED]' if self.paused else ''))
 
 
 if __name__ == '__main__':

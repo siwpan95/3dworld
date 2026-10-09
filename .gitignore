@@ -28,8 +28,10 @@ docs/dbg_*.png
 docs/nordic_verify_*.png
 docs/_texcheck/
 
-# 本地研究材料（不入库）
+# 本地研究材料 / 从 github 下载的第三方源码（不入库，作 provenance）
+cordis-py-main.zip
 cordis-main.zip
+*-main.zip
 
 # 实验区音频产物（脚本可复现，不入库）
 experiments/bloodmusic_ost/*.wav

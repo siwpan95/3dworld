@@ -392,6 +392,9 @@ class RulesService(Service):
                 self._state = 'prep'
         elif t == 'enemy_killed':
             pass
+        elif t == 'settlements_cleared':
+            # 神之手：全部敌方聚落被淹没/掩埋 -> 胜
+            self._state, self.won = 'won', True
 
     def reset(self):
         self.wave_index = 0
@@ -422,6 +425,7 @@ class TowerDefenseKernel(Service):
         self._eid = 0
         self._last_shoot_sfx = -10.0
         self._gl_handles = []             # 内核持有的 GL 资源句柄（回滚断言用）
+        self.events = []                  # 内核对外发出的语义事件（供 demo 播放音效；headless 下为空闲）
 
     # -------------------------------------------------- GL 资源（可逆回滚）
     def _acquire_gl(self):
@@ -506,7 +510,31 @@ class TowerDefenseKernel(Service):
         eid = self.ctx.entity.spawn('tower', (wx, spec['height'], wz),
                                     type=tk, wx=wx, wz=wz, cooldown=0.0)
         self.towers[(i, j)] = self.ctx.entity.get(eid)
+        if not free:
+            self._emit('build')
         return True
+
+    # -------------------------------------------------- 内核对外 API（供 demo 委托）
+    def build(self, i, j, tk, free=False):
+        """demo 的建塔入口：委托给内核（经济扣费 / 免费）。成功返回 True。"""
+        return self._try_build(i, j, tk, free=free)
+
+    def early_wave(self):
+        """N 键：立即开波 + 提前开波奖励。"""
+        if self.ctx.rules.state() == 'prep':
+            self.prep_until = self.time
+            self.ctx.economy.add('gold', 15)
+
+    # -------------------------------------------------- 事件通道（供 demo 音效）
+    def _emit(self, name):
+        """发出一个语义事件（'build'/'shoot'/'hit'/'kill'/'won'/'lose'）。"""
+        self.events.append(name)
+
+    def drain_events(self):
+        """demo 每帧取走并清空本帧事件，用于触发对应音效。"""
+        evs = self.events
+        self.events = []
+        return evs
 
     # -------------------------------------------------- 波次
     def _build_wave(self, idx):
@@ -526,13 +554,21 @@ class TowerDefenseKernel(Service):
 
     # -------------------------------------------------- 逐帧
     def update(self, dt):
-        if self.ctx.rules.state() in ('won', 'lost'):
+        rs = self.ctx.rules.state()
+        if rs in ('won', 'lost'):
             return
         self.time += dt
+        prev = rs
         self._update_waves(dt)
         self._update_enemies(dt)
         self._update_towers(dt)
         self._update_projectiles(dt)
+        now = self.ctx.rules.state()
+        if now != prev:
+            if now == 'won':
+                self._emit('won')
+            elif now == 'lost':
+                self._emit('lose')
 
     def _update_waves(self, dt):
         r = self.ctx.rules
@@ -597,6 +633,9 @@ class TowerDefenseKernel(Service):
                 splash=spec['splash'], slow=spec['slow'],
                 color=(1.0, 0.95, 0.5))
             self.projectiles.append(peid)
+            if self.time - self._last_shoot_sfx > 0.12:   # 射击音效节流
+                self._emit('shoot')
+                self._last_shoot_sfx = self.time
 
     def _update_projectiles(self, dt):
         alive = []
@@ -623,6 +662,7 @@ class TowerDefenseKernel(Service):
         self.projectiles = alive
 
     def _impact(self, p, x, z):
+        self._emit('hit')
         if p['splash'] > 0:
             for eid in list(self.enemies):
                 e = self.ctx.entity.get(eid)
@@ -652,6 +692,7 @@ class TowerDefenseKernel(Service):
         e['hp'] -= dmg
         if e['hp'] <= 0:
             e['dead'] = True
+            self._emit('kill')
             self.ctx.economy.add('gold', ENEMY_TYPES[e['type']]['reward'])
             self.ctx.entity.remove(e['eid'])
             if e['eid'] in self.enemies:
