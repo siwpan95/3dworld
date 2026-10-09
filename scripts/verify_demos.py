@@ -5,13 +5,20 @@
 
     python scripts/verify_demos.py              全部 demo：冒烟 + 截图
     python scripts/verify_demos.py --smoke-only  只跑冒烟（快，约 2s/个）
-    python scripts/verify_demos.py --only tunnel,boids   只验指定 demo（前缀匹配）
+    python scripts/verify_demos.py --only tunnel,boids   只验指定 demo
+
+``--only`` 的匹配规则（三级降级，同级撞多个就报错）：
+**完整名精确命中 → 唯一前缀 → 唯一子串**。这样 ``--only scene_viewer``
+只跑 scene_viewer（精确名永不被歧义连坐），``--only tunnel`` 仍能命中
+demoscene_tunnel，而 ``--only scene`` 这种确实有歧义的写法会明确报错，
+不会悄悄退化成"把 scene_viewer 和 scene_walker 都跑一遍"。
 
 验收口径（每项都必须过，缺一项就红）：
 
 1. ``--smoke 1.5`` 进程退出码为 0，且 stdout 含 ``EXIT_OK``；
 2. ``--shot`` 退出码为 0，且它声明的每一张 PNG **都在本次运行中被重写**
    （mtime 晚于本次启动时间——只看"文件存在"会把上一轮的旧图当成功）；
+   未声明 ``SHOTS`` 的 demo（如 scene_viewer）本阶段跳过，记为 ``n/a``；
 3. 截图非空（> 2KB：纯色空图通常也有几百字节，明显异常）。
 
 **为什么不用 pytest/子进程池并发**：每个 demo 都要开真实 GL 窗口，
@@ -33,21 +40,29 @@ if not os.path.exists(PYTHON):                       # 非 Windows / 系统 pyth
 
 SKIP = {'_harness.py'}
 MIN_PNG_BYTES = 2048
+_DISCOVERED = None                       # discover() 的缓存（见其 docstring）
 # 从 --bench 的输出里取"均值 / p1 / 最慢帧(ms)"
 BENCH_RE = re.compile(r'fps mean=([\d.]+) median=([\d.]+) p1=([\d.]+) '
                       r'worst_frame_ms=([\d.]+)')
 
 
 def discover():
-    """返回 [(名字, 脚本路径, [(时刻, 输出路径), ...]), ...]（按名字排序）。"""
-    out = []
-    for fn in sorted(os.listdir(DEMOS_DIR)):
-        if not fn.endswith('.py') or fn in SKIP:
-            continue
-        path = os.path.join(DEMOS_DIR, fn)
-        shots = _read_shots(path, fn[:-3])
-        out.append((fn[:-3], path, shots))
-    return out
+    """返回 [(名字, 脚本路径, [(时刻, 输出路径), ...]), ...]（按名字排序）。
+
+    只算一次并缓存：``_read_shots`` 要真的 import 每个 demo 模块（见其
+    docstring），重复调用会把"导入开销 + 导入告警"翻倍。
+    """
+    global _DISCOVERED
+    if _DISCOVERED is None:
+        out = []
+        for fn in sorted(os.listdir(DEMOS_DIR)):
+            if not fn.endswith('.py') or fn in SKIP:
+                continue
+            path = os.path.join(DEMOS_DIR, fn)
+            shots = _read_shots(path, fn[:-3])
+            out.append((fn[:-3], path, shots))
+        _DISCOVERED = out
+    return list(_DISCOVERED)
 
 
 def _read_shots(path, name):
@@ -105,7 +120,10 @@ def run_demo(name, path, extra, timeout=180.0):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--only', default='', help='comma-separated name filters')
+    ap.add_argument('--only', default='',
+                    help='comma-separated demo names; exact name wins, '
+                         'otherwise a unique prefix/substring (e.g. tunnel); '
+                         'ambiguous key is an error')
     ap.add_argument('--smoke-only', action='store_true', help='skip the shot stage')
     ap.add_argument('--smoke-sec', type=float, default=1.5)
     ap.add_argument('--timeout', type=float, default=180.0,
@@ -120,7 +138,31 @@ def main():
     demos = discover()
     if args.only:
         keys = [k.strip() for k in args.only.split(',') if k.strip()]
-        demos = [d for d in demos if any(k in d[0] for k in keys)]
+        names = [d[0] for d in demos]
+
+        def resolve(k):
+            """按 精确 → 唯一前缀 → 唯一子串 逐级降级；同级撞多个就报错。
+
+            三级是为了同时兼顾两件事：① ``--only tunnel`` 这类老写法有效
+            （tunnel 是 demoscene_tunnel 的子串）；② 精确名**永不**被歧义
+            连坐——``--only scene_viewer`` 只跑 scene_viewer，哪怕
+            scene_walker 也以 "scene" 开头。
+            """
+            if k in names:
+                return [k]
+            for pool, what in ((lambda n: n.startswith(k), 'prefix'),
+                               (lambda n: k in n, 'substring')):
+                hits = [n for n in names if pool(n)]
+                if len(hits) == 1:
+                    return hits
+                if len(hits) > 1:
+                    raise SystemExit(f'--only {k!r} is ambiguous ({what}): '
+                                     + ', '.join(hits)
+                                     + '  → 用完整名（--only ' + hits[0] + '）')
+            raise SystemExit(f'--only {k!r}: no demo matched')
+
+        wanted = {n for k in keys for n in resolve(k)}
+        demos = [d for d in demos if d[0] in wanted]
     if not demos:
         raise SystemExit('no demo matched')
 

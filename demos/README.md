@@ -1,4 +1,4 @@
-# demos — 单文件 3D 示例集
+# demos — 单文件 3D 示例与工具集
 
 每个 demo 都是**独立可跑的单文件脚本**，共用 `_harness.py` 里的 `DemoApp`
 骨架（窗口 / DPI / 命令行 / HUD / 截图 / 暂停），不改变主工程
@@ -55,6 +55,18 @@ python scripts\verify_demos.py --only boids,water  只验指定 demo
 | `nordic_saga.py` | 60s | **《诺德之境》**：上古卷轴风格程序化动画（雪原遗迹/巨龙/龙语古墙 + 程序化配乐） | `nordic_01..06.png` |
 | `scene_walker.py` | 交互 | **可漫步场景（交互化）**：S1 场景 JSON → 第一人称物理漫步（固定步长抗卡帧）+ 马尔可夫演出变体 + 拾取/E 互动 + **限时挑战（T 键）与跨幕转场结算卡**（音乐张力阶梯 COMBAT_LOW→HIGH）+ SFX/自适应 BGM + 场景热重载 | `scene_walker_01.png` |
 | `blockworld.py` | 交互 | **方块世界 · 可交互版**（voxel_terrain × minecraft_style 结合）：第一人称漫步/跳跃 + **DDA 准星拾取 + 左键挖/右键放 + hotbar(1-6)** + **区块化网格重建**（16 列/块，边界邻块同步；实测编辑 ≈11ms）+ 程序化像素图集与昼夜 | `blockworld_01.png` |
+| `scene_viewer.py` | 工具 | **场景查看器（非定时演出）**：加载 `--file` 指定的场景 JSON 并实时渲染，改文件即热重载（坏 JSON 会被拒绝、保留旧场景）——「LLM 场景生成工作流」的"看"这一端；**未声明 `SHOTS`，批量验收跳过截图阶段** | — |
+
+> 上表 16 项与 `demos/*.py`（不含 `_harness.py`）一一对应，也是
+> `scripts/verify_demos.py` 逐项冒烟的对象；唯一不参与截图阶段的是
+> `scene_viewer.py`——它由 `--file` 驱动、没有固定剧照时刻。
+
+`scene_viewer.py` 用法定制（其余 demo 用上面的统一命令行）：
+
+```bat
+python demos\scene_viewer.py --file docs\llm_scene_demo.json
+python demos\scene_viewer.py --file docs\llm_scene_demo.json --smoke 3
+```
 
 ### 演示专属开关（`--flag`，逗号可并列）
 
