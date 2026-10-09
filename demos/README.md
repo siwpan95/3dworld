@@ -57,8 +57,9 @@ python scripts\verify_demos.py --only boids,water  只验指定 demo
 | `blockworld.py` | 交互 | **方块世界 · 可交互版**（voxel_terrain × minecraft_style 结合）：第一人称漫步/跳跃 + **DDA 准星拾取 + 左键挖/右键放 + hotbar(1-6)** + **区块化网格重建**（16 列/块，边界邻块同步；实测编辑 ≈11ms）+ 程序化像素图集与昼夜 | `blockworld_01.png` |
 | `kid_a_walker_3d.py` | 交互 | **KID-A WALKER 3D**（arcade 伪 3D 重制为真 3D）：41 个房间模版 → 区块无限走廊 + **能量/碎片/传送门/暗室** + 区域驱动调色与程序化配乐（ZoneSynth 风格）+ 发光踢脚线走廊美学 | `kid_a_3d_01..03.png` |
 | `scene_viewer.py` | 工具 | **场景查看器（非定时演出）**：加载 `--file` 指定的场景 JSON 并实时渲染，改文件即热重载（坏 JSON 会被拒绝、保留旧场景）——「LLM 场景生成工作流」的"看"这一端；**未声明 `SHOTS`，批量验收跳过截图阶段** | — |
+| `mountain.py` | 观察式 | **《山》**（致敬 David OReilly 的 Mountain）：复用 terrain_flyover 噪声管线生成**悬浮孤峰**（顶/底两面在边界闭合）+ 片元级动态光照昼夜交替 + 云/雨/雪气象轮替 + 坠落物体与生长植物 + 哲学独白叠层 + **人格测验答案嵌进生成参数**（N 键）+ 键盘钢琴（A~K 即时合成五声音阶）+ 流星撞击崩解重生（C 键） | `mountain_day/dusk.png` |
 
-> 上表 17 项与 `demos/*.py`（不含 `_harness.py`）一一对应，也是
+> 上表 18 项与 `demos/*.py`（不含 `_harness.py`）一一对应，也是
 > `scripts/verify_demos.py` 逐项冒烟的对象；唯一不参与截图阶段的是
 > `scene_viewer.py`——它由 `--file` 驱动、没有固定剧照时刻。
 
@@ -90,7 +91,9 @@ python demos\scene_viewer.py --file docs\llm_scene_demo.json --smoke 3
 此外 **粒子** `[`/`]` 调尺寸、`,`/`.` 调数量；**体素** `R` 换种子（渐进重建）、
 `H` 切剔除对照（首次会懒建"全部面"网格）、`F` 线框；**阴影** `P` 切 PCF、
 `B` 切 bias、`S` 开关阴影；**太阳系** `1..8` 聚焦行星（自动取相位视角）、
-`V` 相位锁定、`0` 全景；**地形** `R` 换种子（渐进重建）。
+`V` 相位锁定、`0` 全景；**地形** `R` 换种子（渐进重建）；
+**山** `N` 人格测验（答案嵌进生成参数）、`R` 随机新山、`C` 召唤流星、
+`M` 静音、`A S D F G H J K` 弹钢琴。
 
 ## 渐进重建（换种子不冻画面）
 
