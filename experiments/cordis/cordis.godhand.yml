@@ -8,7 +8,11 @@
 #       config: [ ... 这里所有 entry ... ]
 # 的 entry 下，Cordis 会递归展开子树（子插件经 group.update 挂载）。
 #
-# 运行：python experiments/cordis/config_boot.py godhand
+# 本文件同时是 demos/godhand.py 的**实际挂载声明**：demo 的 _mount_kernel 经
+# tree_boot.mount_tree(config_path('cordis.godhand.yml'), want=WANT_GODHAND) 加载本文件——
+# 「demo 怎么挂的 = headless 验证怎么挂的」，接线只有这一份。
+#
+# 运行（headless 验证）：python experiments/cordis/config_boot.py godhand
 - name: experiments.cordis.services.render
   id: render
 - name: experiments.cordis.services.economy

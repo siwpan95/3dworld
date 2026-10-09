@@ -56,8 +56,9 @@ except ImportError:
 
 from cordis import Context, Service  # noqa: E402
 
-# 复用已确立的共同核（不依赖 GL，可安全 import）
-from tower_defense_kernel import (  # noqa: E402
+# 复用已确立的共同核（不依赖 GL，可安全 import）；走「包路径」导入，
+# 保证全仓只有一份 tower_defense_kernel（顶层名会造出第二份模块副本）。
+from experiments.cordis.tower_defense_kernel import (  # noqa: E402
     RenderService, EconomyService, EntityService, RulesService,
 )
 # 12 核契约（仅作类型参考，不强制）

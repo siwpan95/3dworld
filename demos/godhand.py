@@ -8,9 +8,10 @@
 阶段 B（experiments/cordis/godhand_kernel.py）：把玩法拆成「共同核（Render/Economy/
          Entity/Rules/Terrain）+ 内核（GodHandKernel）」，用 cordis v4.0.0 fiber 属性式
          API 接线，并验证 GL 资源随内核 fiber dispose 可逆回滚（headless 模拟淹没通关 + 回滚断言）。
-阶段 C（本文件）：demo 不再自管玩法，而是**委托 Cordis 内核**——
-    setup()   经 asyncio 一次性挂载 cordis Context（共同核 + GodHandKernel 内核），
-              内核在 __cordis_init__ 注入神力、放置聚落、取好 GL 句柄；
+阶段 C（本文件）：demo 不再自管玩法，而是**委托 Cordis 内核**——挂载则由
+    **cordis.godhand.yml 配置树**声明（试点三：setup() 经 asyncio 一次性引导配置树，
+    tree_boot.mount_tree 负责挂载与就绪等待），共同核 + GodHandKernel 内核全由 yaml
+    声明；内核在 __cordis_init__ 注入神力、放置聚落、取好 GL 句柄；
     update()  把 dt 交给内核驱动；demo 侧自动驾驶（依次挖海淹没每个聚落）使录制自演示；
               左键涂抹 = 抬山 / 挖海（神手之力），N 键无（内核无此动作）；
     render()  只读内核 / 实体注册表 / 地形共同核的状态来画（地形高度场、水面、聚落、神手光标）；
@@ -50,15 +51,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-# 把内核所在目录加入路径（experiments/cordis 不是包，按路径 import）
-CORDIS_KDIR = os.path.join(ROOT, 'experiments', 'cordis')
-if CORDIS_KDIR not in sys.path:
-    sys.path.insert(0, CORDIS_KDIR)
-from godhand_kernel import (  # noqa: E402
-    Context, GodHandKernel,
-    RenderService, EconomyService, EntityService, RulesService, TerrainService,
-    SETTLEMENT_POS, SEA, HALF_T, GRID_T, CELL_T, SETTLEMENT_HP, POWER_COST, START_MANA,
-)
+# 试点三：挂载由 cordis.godhand.yml 配置树声明（tree_boot 共享引导）；
+# 绘制所需几何常量从内核「包路径」取（单一模块身份，不再走顶层名双副本）
+from experiments.cordis.tree_boot import WANT_GODHAND, config_path, mount_tree  # noqa: E402
+from experiments.cordis.godhand_kernel import HALF_T, SEA  # noqa: E402
 
 SKY = (0.60, 0.72, 0.86)
 
@@ -182,17 +178,13 @@ class GodHandDemo(DemoApp):
 
     # -------------------------------------------------- Cordis 挂载 --
     def _boot_kernel(self):
-        """同步挂载 cordis Context（共同核 + 神之手内核）。"""
+        """同步引导 cordis 配置树（共同核 + 神之手内核）。"""
         return asyncio.run(self._mount_kernel())
 
     async def _mount_kernel(self):
-        ctx = Context()
-        await ctx.plugin(RenderService)
-        await ctx.plugin(EconomyService, {'mana': 0})
-        await ctx.plugin(EntityService)
-        await ctx.plugin(TerrainService)
-        await ctx.plugin(RulesService)
-        await ctx.plugin(GodHandKernel)
+        # 试点三落点：本次挂哪些插件、各带什么配置，全由 cordis.godhand.yml 声明；
+        # tree_boot 按 Cordis 原生 Loader 装载并等待就绪（服务可达 + GL 句柄已取得）。
+        ctx = await mount_tree(config_path('cordis.godhand.yml'), want=WANT_GODHAND)
         return ctx, ctx.godhand
 
     # -------------------------------------------------- 网格 / 水面 --

@@ -9,10 +9,10 @@
 + 内核（TowerDefenseKernel）」两层，用 cordis v4.0.0 fiber 属性式 API 接线，
 并验证 GL 资源随内核 fiber dispose 可逆回滚（headless 模拟通关 + 回滚断言）。
 
-阶段 C（本文件）：demo 不再自管玩法，而是**委托 Cordis 内核**——
-    setup()   经 asyncio 一次性挂载 cordis Context（Render/Economy/Entity/Rules
-              共同核 + TowerDefenseKernel 内核），内核在 __cordis_init__ 自动布防
-              并取好 GL 资源句柄；
+阶段 C（本文件）：demo 不再自管玩法，而是**委托 Cordis 内核**——挂载则由
+    **cordis.td.yml 配置树**声明（试点三：setup() 经 asyncio 一次性引导配置树，
+    tree_boot.mount_tree 负责挂载与就绪等待），共同核 + TowerDefenseKernel 内核
+    全由 yaml 声明；内核在 __cordis_init__ 自动布防并取好 GL 资源句柄；
     update()  只做两件事：把 dt 交给内核驱动模拟，并把内核发出的语义事件（build/
               shoot/hit/kill/won/lose）转成音效；
     render()  只读内核/实体注册表的状态来画（塔/敌/弹均为内核登记的实体）；
@@ -54,13 +54,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-# 把塔防内核所在目录加入路径（experiments/cordis 不是包，按路径 import）
-CORDIS_KDIR = os.path.join(ROOT, 'experiments', 'cordis')
-if CORDIS_KDIR not in sys.path:
-    sys.path.insert(0, CORDIS_KDIR)
-from tower_defense_kernel import (  # noqa: E402
-    Context, TowerDefenseKernel, RenderService, EconomyService, EntityService, RulesService,
-)
+# 试点三：挂载由 cordis.td.yml 配置树声明（tree_boot 共享引导——
+# config_boot.py 的 headless 验证走同一函数与同一 WANT 列表）
+from experiments.cordis.tree_boot import WANT_TD, config_path, mount_tree  # noqa: E402
 
 # ============================================================= 地图与平衡 ==
 GRID = 20                       # 格数 / 边
@@ -78,10 +74,9 @@ LANE = [
     ( HALF - 3.0,  HALF - 5.0),
 ]
 BASE = LANE[-1]
-START_GOLD = 300
-PREP_FIRST = 3.0                # 第一波前的备战时间
-PREP_BETWEEN = 6.0             # 波间备战时间
-BASE_HP0 = 20
+# 平衡常量统一由内核 / 配置树定义，demo 不再复制（避免两处漂移）：
+#   开局金 300、波数 5 -> experiments/cordis/cordis.td.yml
+#   备战时长 / 基地 HP -> experiments/cordis/tower_defense_kernel.py
 
 # 塔（展示用：渲染查 TOWER_TYPES[type] 取高度/颜色；逻辑全在内核）
 TOWER_TYPES = {
@@ -100,14 +95,8 @@ ENEMY_TYPES = {
     'bruiser': dict(hp=180, speed=2.0, reward=30, radius=1.0, leak=3, color=(0.55, 0.30, 0.55)),
 }
 
-# 波次（仅展示 HUD 用：波数 = len(WAVES)）
-WAVES = [
-    [('swarm', 8, 0.8)],
-    [('grunt', 6, 1.0)],
-    [('swarm', 10, 0.5), ('grunt', 4, 1.2)],
-    [('grunt', 10, 0.8), ('bruiser', 2, 2.0)],
-    [('swarm', 14, 0.4), ('grunt', 8, 0.9), ('bruiser', 4, 1.5)],
-]
+# 波次构成见 experiments/cordis/tower_defense_kernel.py（WAVES）；
+# HUD 波数直接读 ctx.rules.total_waves（yaml: 5），demo 不再复制一份。
 
 # 开局自动布防（键=(i,j) 格，值=塔类型键）——在内核 __cordis_init__ 里免费建造
 AUTO_TOWERS = [((5, 2), '1'), ((15, 2), '1'), ((10, 2), '2'), ((16, 4), '3')]
@@ -298,21 +287,18 @@ class TowerDefenseDemo(DemoApp):
 
     # -------------------------------------------------- Cordis 挂载 --
     def _boot_kernel(self):
-        """同步挂载 cordis Context（共同核 + 塔防内核）。
+        """同步引导 cordis 配置树（共同核 + 塔防内核）。
 
-        ``ctx.plugin`` 是异步的，但「挂载」是一次性的引导动作；用 ``asyncio.run``
+        ``mount_tree`` 是异步的，但「挂载」是一次性的引导动作；用 ``asyncio.run``
         跑一个临时事件循环把整张依赖图解析完即可。解析完成后，内核实例与 Context
         都是普通 Python 对象，后续 ``update(dt)`` 同步驱动，无需事件循环常驻。
         """
         return asyncio.run(self._mount_kernel())
 
     async def _mount_kernel(self):
-        ctx = Context()
-        await ctx.plugin(RenderService)
-        await ctx.plugin(EconomyService, {'gold': START_GOLD})
-        await ctx.plugin(EntityService)
-        await ctx.plugin(RulesService, {'total_waves': len(WAVES)})
-        await ctx.plugin(TowerDefenseKernel)
+        # 试点三落点：本次挂哪些插件、各带什么配置，全由 cordis.td.yml 声明；
+        # tree_boot 按 Cordis 原生 Loader 装载并等待就绪（服务可达 + GL 句柄已取得）。
+        ctx = await mount_tree(config_path('cordis.td.yml'), want=WANT_TD)
         return ctx, ctx.tower_defense
 
     # -------------------------------------------------- 网格 / 地面 --
@@ -541,7 +527,7 @@ class TowerDefenseDemo(DemoApp):
         extra = ''
         if r.state() == 'prep':
             extra = f'  下一波 {max(0.0, k.prep_until - k.time):.0f}s'
-        return (f'金{gold:.0f}  波{r.wave_index + 1}/{len(WAVES)} {st}{extra}  '
+        return (f'金{gold:.0f}  波{r.wave_index + 1}/{r.total_waves} {st}{extra}  '
                 f'基地HP{r.base_hp}  选中:{sel}  | 1箭塔 2炮塔 3冰塔 N开波  SPACE暂停  '
                 f't={k.time:.0f}s {self.fps:.0f}fps' + ('  [PAUSED]' if self.paused else ''))
 

@@ -1,6 +1,6 @@
 # experiments/cordis —— 场景管线的 Cordis 化试点（试点一）
 
-> 状态：**试点**（独立目录，不扰主流程；不引入主依赖）。
+> 状态：**试点一/二/三已完成**，且配置树已落地 demo 真实挂载路径（见文末「进展」）。
 > 依据：《3dworld × Cordis 评估与试点报告》（2026-10-08）。
 
 ## 这是什么
@@ -15,7 +15,8 @@
 | `loader` | `inject: scene_check`；装载场景 JSON、注册 `scene` 服务（可逆 effect） |
 | `reporter` | `inject: scene`；输出统计——依赖消失时**自动停用**（coeffect） |
 
-本目录**不 vendor 第三方代码**；cordis 需另行安装（见下）。
+cordis 本体已 vendor 到仓库 `vendor/cordis/`（MIT；提交锁见 `vendor/cordis.lock`，
+记账见 `vendor/cordis/VENDOR.md`）；本目录只放试点代码，换环境时再按下方「安装 cordis」兜底。
 
 ## 安装 cordis（Python 移植，MIT）
 
@@ -67,9 +68,14 @@ pip install pyyaml watchdog
 3. **coeffect 响应**：依赖的 `scene` 服务消失 → `reporter` 自动停用；
 4. **与主仓零耦合**：仅使用 `engine.scene_build` 的公开函数。
 
-## 后续线索
+## 进展（原「后续线索」，均已收口）
 
-- **试点二**：单 demo 插件化（`scene_viewer` 的 setup/render/teardown 三件套，
-  验证卸载时 GL 资源回滚）
-- **试点三**：loader 配置树（`cordis.yml` 式声明「本次跑哪些插件」）
-- **转正路径**：vendor cordis 并锁定 commit（MIT；记账：来源 + 许可 + 借用范围）
+- **试点二 · 已完成**：塔防内核 Cordis 化（`tower_defense_kernel.py`）——共同核 `provide`
+  为服务、内核 `inject` 依赖自动排序；GL 资源经 `ctx.effect` 绑定内核 fiber，
+  `dispose` 断言回滚（`TDKERNEL_OK`）。
+- **试点三 · 已完成并落地到 demo**：`cordis.td.yml` / `cordis.godhand.yml` 声明「本次挂
+  哪些插件」；`tree_boot.mount_tree` 是唯一挂载入口——`demos/tower_defense.py`、
+  `demos/godhand.py` 的 `_mount_kernel` 与 `config_boot.py` 的 headless 验证走**同一函数、
+  同一 `WANT_*` 列表**（`TDKERNEL_OK` / `GODHAND_OK` + 配置传递断言）。
+- **转正 · 已完成**：`vendor/cordis`（MIT，`VENDOR.md` 记账）+ `vendor/cordis.lock`
+  锁定上游 commit `a3d0c171571c6bbb465d04c06eab2de53d270814`（zip SHA-256 同录）。

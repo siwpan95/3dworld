@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """试点三引导器：从 cordis.yml 配置树加载「共同核 + 内核」并 headless 验证。
 
-cordis v4.0.0 自带 EntryTree / EntryGroup / Loader 配置树机制：把 cordis.yml
-解析出的「插件声明列表」喂给 ``loader.root.update(...)``，Cordis 即按依赖图自动
-排序并挂载每个 Service；内核只声明 ``inject`` 取所需核心，零编排。
+本脚本与 demos/*.py 共用 ``tree_boot.mount_tree`` 的同一条挂载路径——
+「demo 怎么挂的 = 验证怎么挂的」，不存在两套接线。在此之上，本脚本额外做三件事：
 
-这证明「本次挂哪些插件」可以完全由一份 yaml 声明，而无需在 Python 里逐个
-``ctx.plugin(...)``——试点三的收口点。
+1. 全速跑完一局（TD：撑过 5 波 / 神之手：淹没全部聚落），验证内核仍可胜；
+2. 断言 yaml 的 ``config`` 真正到达服务（TD：gold=300 / total_waves=5；神之手：mana 基数 0）；
+3. ``dispose`` 内核 fiber，断言 GL 资源随内核可逆回滚（live → 0）。
 
 运行（无需显示器 / 不依赖 GL 窗口）::
 
@@ -22,58 +22,21 @@ import os
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, ROOT)
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # experiments/cordis
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
 
-try:
-    import cordis  # noqa: F401
-except ImportError:
-    _src = os.environ.get('CORDIS_SRC')
-    if _src and os.path.isdir(_src):
-        sys.path.insert(0, _src)
-    try:
-        import cordis  # noqa: F401
-    except ImportError:
-        sys.exit('[cordis] 未找到 cordis 包。设置 CORDIS_SRC 或安装。')
+from experiments.cordis.tree_boot import (  # noqa: E402
+    WANT_GODHAND, WANT_TD, config_path, mount_tree,
+)
+from experiments.cordis.godhand_kernel import START_MANA  # noqa: E402
+from experiments.cordis.tower_defense_kernel import (  # noqa: E402
+    START_GOLD, WAVES as TD_WAVES,
+)
 
-import yaml  # noqa: E402
-from cordis import Context, Loader  # noqa: E402
-
-
-CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIGS = {
-    'td': 'cordis.td.yml',
-    'godhand': 'cordis.godhand.yml',
+    'td': ('cordis.td.yml', WANT_TD),
+    'godhand': ('cordis.godhand.yml', WANT_GODHAND),
 }
-
-
-async def load_tree(ctx, path):
-    """用 Cordis 原生 Loader 把 cordis.yml 配置树挂载为服务图。"""
-    await ctx.plugin(Loader)                       # 提供 "loader" 服务（Entry 机制依赖）
-    loader = ctx.loader                            # Loader 实例（暴露为 ctx.loader）
-    # 让 Loader 的子插件（isolate 等）完成初始化并注册 loader/entry-init 处理器，
-    # 否则首条 entry 建好时 _isolate 尚未就绪 -> KeyError。
-    for _ in range(16):
-        await asyncio.sleep(0)
-    with open(path, 'r', encoding='utf-8') as f:
-        data = yaml.safe_load(f)
-    await loader.root.update(data)                 # 配置驱动：声明即挂载
-    return loader
-
-
-async def await_ready(ctx, loader, want, timeout=8.0):
-    """等待配置树加载完成（服务可达 + GL 资源已就绪）。"""
-    dt = 1.0 / 60.0
-    elapsed = 0.0
-    while elapsed < timeout:
-        await loader.await_()
-        await asyncio.sleep(0)
-        if all(getattr(ctx, name, None) is not None for name in want):
-            if getattr(ctx, 'render', None) is not None and ctx.render.live_count() > 0:
-                return True
-        elapsed += dt
-    missing = [n for n in want if getattr(ctx, n, None) is None]
-    raise RuntimeError(f"配置树未在 {timeout}s 内就绪；缺失服务: {missing}")
 
 
 async def _rollback(ctx, kernel, render, label):
@@ -87,11 +50,15 @@ async def _rollback(ctx, kernel, render, label):
     print(f"== {label}_OK ==")
 
 
-async def run_td(ctx, loader):
-    await await_ready(ctx, loader,
-                      ['tower_defense', 'render', 'rules', 'economy', 'entity'])
+async def run_td(ctx):
     kernel = ctx.tower_defense
     render = ctx.render
+    # config 传递核验：yaml 声明值须到达服务，且与内核默认一致（防配置树与玩法漂移）
+    gold0 = ctx.economy.balance('gold')
+    waves = ctx.rules.total_waves
+    print(f"[config] gold={gold0:.0f} total_waves={waves}")
+    assert gold0 == START_GOLD, f"yaml gold 与内核默认不一致: {gold0} != {START_GOLD}"
+    assert waves == len(TD_WAVES), f"yaml total_waves 与内核默认不一致: {waves} != {len(TD_WAVES)}"
     assert render.live_count() > 0, "GL 资源未取得"
 
     dt = 1.0 / 60.0
@@ -107,12 +74,14 @@ async def run_td(ctx, loader):
     await _rollback(ctx, kernel, render, 'TDKERNEL')
 
 
-async def run_godhand(ctx, loader):
-    await await_ready(ctx, loader,
-                      ['godhand', 'render', 'terrain', 'rules', 'economy', 'entity'])
+async def run_godhand(ctx):
     kernel = ctx.godhand
     render = ctx.render
     terrain = ctx.terrain
+    # config 传递核验：yaml mana=0 + 内核开局授予 START_MANA 即为当前存量
+    mana0 = ctx.economy.balance('mana')
+    print(f"[config] mana={mana0:.0f} (= yaml 0 + 内核开局授予 {START_MANA})")
+    assert mana0 == START_MANA, f"yaml mana 基数未生效（期望 {START_MANA}，实际 {mana0}）"
     assert render.live_count() > 0, "GL 资源未取得"
 
     dt = 1.0 / 60.0
@@ -135,13 +104,12 @@ async def run_godhand(ctx, loader):
 
 
 async def run_one(kind):
-    ctx = Context()
-    path = os.path.join(CONFIG_DIR, CONFIGS[kind])
-    loader = await load_tree(ctx, path)
+    name, want = CONFIGS[kind]
+    ctx = await mount_tree(config_path(name), want=want)
     if kind == 'td':
-        await run_td(ctx, loader)
+        await run_td(ctx)
     else:
-        await run_godhand(ctx, loader)
+        await run_godhand(ctx)
 
 
 def main(argv=None):
