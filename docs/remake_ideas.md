@@ -176,7 +176,7 @@ DeepSeek Harness 的运行时内核。
 - P1-① 神之手：`godhand_kernel.py` + `demos/godhand.py` 交互 demo（`godhand_40s` 录制入口就位；本沙箱 pyglet 原生 GL 受限，实录待本机补跑）。
 - P1-② 塔防切片：commit `f0ad2c2`（直连）→ `4642aa1`（委托内核）。
 
-**下一步**：P1-③ 候选——**射线 FPS（Wolfenstein/Doom 风）**，直接复用 `raymarch_sdf` + `kkrieger_demo` 已验证的 FPS 能力（见 §6）。按五阶段协作先「先问」（≤4 问、每问带推荐项），计划经全哥放行后执行；亦可由全哥指定其它内核。
+**下一步**：P1-③ 射线 FPS 已「先问」收口（全哥四问已答：SDF 光线步进 / **程序化随机迷宫** / hitscan 单武器 / 完整状态机 AI），设计 note 见 §10——**待全哥 review 放行后执行**。
 
 ---
 
@@ -242,3 +242,79 @@ DeepSeek Harness 的运行时内核。
 - `engine.audio.SfxPlayer.play` / `sfx(name)` 的确切签名。
 - `DemoApp` 基类**未转发 `on_mouse_press`**（只转发 drag/scroll/key）→ 在 `setup()` 内 `self.window.push_handlers(on_mouse_press=self.on_mouse_press)` 自行挂接，不动 `_harness`。
 - 控制台 `print` 仅 ASCII；CJK 只进 HUD（`resolve_cjk_font` 已处理）。
+
+---
+
+## 10. P1-③ 射线 FPS 切片 · 设计 note（待 review 放行后执行）
+
+> 状态：**规划**（先问 4 问已完成，全哥已答；待全哥 review 放行后执行）
+> 机制致敬：`Wolfenstein 3D`(1992) / `Doom`(1993) 的「走廊迷宫 + 第一人称射击」循环；
+> **不碰任何原 IP 名称、美术、音效、关卡**（合规见 §7）。技术骨架复用本项目
+> `raymarch_sdf`（SDF 全屏管线）、`blockworld`（DDA 射线思路）、`engine.FlyCamera`（第一人称相机）。
+> 借用范围：仅本仓自研模块；零第三方代码、零外部素材。
+
+### 10.1 工作标题（原创，规避受保护词）
+- 中文：**「迷堡枪影」**；英文 codename：**Rayhold**（ray = 光线步进渲染的致敬；hold = 要塞）。
+- 备选：「幽堡迷径 / Gloamway」「迷堡突围 / Keepbreak」——终名以全哥定为准，不影响架构（内核服务名用机制词 `fps`/`maze`，与产品名解耦）。
+- 命名核验（2026-10-09，7 轮检索）：已排除撞名候选 GloomKeep（C64 同人 roguelike）、RayCastle（2020 jam 游戏）、Mazecast（C 语言 raycasting 迷宫）、Ashkeep（Steam 上 FPS）、GrimKeep（《格林堡》2026）、Mazegun（itch/Fortnite 地图）；**Rayhold 在检索范围内无精确占用**。不含 `craft` / `warcraft` / `starcraft` 等受保护词。
+
+### 10.2 先问结论（全哥已答，2026-10-09）
+| # | 问题 | 结论 |
+|---|------|------|
+| 1 | 渲染路线 | **SDF 光线步进**：全屏片元着色器，复用 raymarch_sdf 的软阴影 / AO / 雾 / ACES 管线 |
+| 2 | 地图规模 | **程序化随机迷宫**：种子可复现（`--flag seedN` / `R` 换局），保证录制与 headless 验收锁定 |
+| 3 | 武器手感 | **hitscan 单武器**：射线枪即时命中 = 网格 DDA 求墙距 + 敌人圆柱求交取最近 |
+| 4 | 敌人 AI | **状态机完整版**：巡逻 → 视线发现 → 追击 → 攻击；含受击 / 死亡反馈 |
+
+### 10.3 切片范围（bounded slice）
+- **地图**：递归回溯（recursive backtracker）生成"完美迷宫"；15×15 单元（世界 45×45、格距 3.0、墙高 2.8），对角布置起点/出口；约 12% 死胡同编织（braid）成环路减少憋闷；种子可复现（默认固定种子）。
+- **视野渲染**：全屏片元 SDF 光线步进。墙体 = 迷宫格（2D 网格 SDF，**单一数据源**上 GPU）；地板/天花板程序化材质；雾 + 简版阴影。**敌人 = SDF 图元**（胶囊/球组合），经 uniform 数组传入（≤16：位置/朝向/受击闪烁/死亡进度），融进同一 SDF 场景。
+- **武器**：射线枪——左键射击（0.25s 冷却）；命中判定：视线网格 DDA 求 `t_wall`，再对敌人圆柱求交取 `t < t_wall` 的最近者；命中反馈（白闪 + 击退 + 火花 + 音效）；弹药 60 发，场内弹药箱 +24。
+- **敌人（2 种，状态机）**：
+  - **游荡者**（近战）：随机航点巡逻 → 视线发现（12m 锥形 + 0.6s 警觉）→ 追击 → 接触攻击（8 HP、1.2s 冷却）。
+  - **哨卫**（远程）：发现后保持 8~12m 距离，投掷**可躲的慢速光弹**（12 HP）。
+  - 通用状态：PATROL / ALERT / CHASE / ATTACK / HURT（0.35s 硬直 + 击退）/ DEAD（0.8s 淡出）。
+  - 追击移动：网格 BFS 最短路（在 `fps_kernel` 内私有实现；通用化留待 `pathing` 服务抽离时迁 `logic/pathfind.py`，与 §9.5 的注记一致）。
+- **玩家**：HP 100；受击红闪 + 抖动 + 音效；HP≤0 = 失败；**抵达出口 = 胜利**。
+- **拾取**：弹药箱 / 医疗包（SDF 图元 + 浮动旋转，靠近自动拾取）。
+- **HUD**：HP / 弹药 / 击杀 / 计时 / 种子 / 出口距离；准星 + 命中标记。
+- **控制**：WASD 移动、鼠标拖动视角（FlyCamera）、左键射击、`R` 换种子重开、SPACE 暂停、ESC 退出；`--flag auto` **自动驾驶**（BFS 直奔出口 + 遇敌自动射击）——与 kid_a 的 `go`、塔防的自动布防同思路，供录制与 headless 验收共用。
+- **音效**：射击/命中/击杀/受击/拾取/胜负，`engine.audio` 合成，零外部素材。
+
+### 10.4 复用 vs 自建（对照 core/contracts.py）
+| 核 | 来源 | 备注 |
+|----|------|------|
+| render | 复用 `tower_defense_kernel.RenderService` | GL 资源记账 + 回滚语义；demo 侧仍由宿主 pyglet 直接绘制（惯例） |
+| economy | 复用 | 弹药库存（`resource='ammo'`，初始 60） |
+| entity | 复用 | 敌人/拾取登记（kind = stalker / sentry / ammo / medkit） |
+| rules | 复用 | 玩家 HP + 胜负状态机（新增事件：`player_hit` / `player_dead` / `reached_exit`） |
+| **maze**（新服务） | **from-scratch** | 迷宫生成/查询（grid、is_wall、find_path、seed、出口）；纯逻辑 headless 可测；后续可升格为正式共同核 |
+| **fps**（新内核） | **from-scratch** | 玩家/武器/敌人 AI/拾取/胜负编排；`inject=[render, entity, rules, economy, maze]` |
+
+### 10.5 落地架构（Phase D 范式，无两套接线）
+- `experiments/cordis/fps_kernel.py`：`MazeService` + `FpsKernel`（含 headless 验证入口）
+- `experiments/cordis/services/{fps_kernel,maze}.py`：`default=` 适配层（配置树经 importlib 解析）
+- `experiments/cordis/cordis.fps.yml`：声明本次挂载（render / economy / entity / rules / maze / fps）
+- `tree_boot.py`：新增 `WANT_FPS`；`config_boot.py`：新增 `fps` 项（headless：auto-pilot 通关 + 弹药/击杀断言 + GL 回滚）
+- `demos/rayhold.py`：DemoApp 子类（SDF shader + FlyCamera + HUD + auto 驾驶）；`_mount_kernel` 经 `mount_tree(config_path('cordis.fps.yml'), want=WANT_FPS)`
+- `scripts/record_all.py`：新增 `rayhold_60s` 录制入口 + SHOTS 截图时刻（复用 720p 规格）
+
+### 10.6 验收标准
+- `python experiments/cordis/config_boot.py fps` → `FPSKERNEL_OK`（auto-pilot 抵达出口 `state=won`；GL live → 0）
+- `python demos/rayhold.py --smoke 3` 无报错；`--shot` 出图；`--flag auto` 无人值守通关
+- `scripts/record_all.py --only rayhold` 录制落盘
+- 零外部素材、MIT 干净；命名核验记录在案（§10.1）
+
+### 10.7 执行期待核实的 API（列清，避免拍脑袋）
+- **迷宫数据上 GPU 的通道**：首选 `pyglet.image.ImageData` 单通道纹理（GL_RED / GL_NEAREST + `texelFetch`）；备选 uniform 数组（225 格）——需核实 pyglet 数组 uniform 设置方式与 GLSL 数组遍历限制。
+- **敌人 uniform 数组**：`u_enemy[16]`（vec4 位置+状态 / 附加受击参数）在 pyglet ShaderProgram 的正确写法。
+- **指针锁定**（可选增强）：`window.set_exclusive_mouse(True)` 在 pyglet 2.1.16 的行为；录制/无头下必须禁用——默认关闭、`M` 键切换。
+- **FlyCamera**：`look(dx,dy)` / `move()` / `update(dt)` 已在位（engine/camera.py:148）；拖动视角走 `on_mouse_drag`（harness 已转发）。
+- **DDA 命中**：移植 `blockworld._raycast`（Amanatides & Woo）到 2D 网格 + 敌人圆柱求交。
+- **性能**：720p + MAX_STEPS 96 + 16 敌人图元在核显的帧率；掉帧时 `--size 960x540`（沿用 raymarch_sdf 的降级手段）。
+
+### 10.8 风险与对策
+- **数据一致性**（最大）：CPU 命中判定与 GPU 渲染必须共用**同一数据源**（MazeService.grid 上传 GPU；敌人数组由内核每帧统一导出，不各写一份）。
+- **性能**：敌人求交加重每步成本 → 敌人先用包围球粗剔除再精确形；必要时 SHADOW_STEPS 降 12。
+- **手感**：慢速光弹的"可躲性"要求弹体视觉半径与判定半径分调并用同一常量表。
+- **无头验证**：环境无 GL/driver 时 `RenderService` 仅记账（既有范式），逻辑与命中判定全部 headless 可测。
