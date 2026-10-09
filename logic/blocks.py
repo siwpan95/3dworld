@@ -510,12 +510,15 @@ def _is_solid(b, transparent_ok=False):
 
 
 def mesh_world(blocks, atlas_index, width=WORLD_W, want_water=False,
-               pos=None, col=None, uv=None, y0=0, y1=None):
+               pos=None, col=None, uv=None, y0=0, y1=None,
+               x0=0, x1=None, z0=0, z1=None):
     """把方块世界网格化成三角形汤（**带面剔除**）。
 
     Args:
         want_water: False = 只出不透明面；True = 只出水面（分成两批，混合方式不同）
         y0/y1:      只处理 y ∈ [y0, y1) —— 支持渐进式重建（每帧啃几层，不冻画面）
+        x0/x1/z0/z1: 只处理对应列范围 —— **区块化局部重建**用（改一块只重扫
+                     所在区块；相邻剔除检查仍读全世界数据，不受范围截断影响）
 
     返回 (面数, 顶点数)；数组是**追加**到传入的 array('f') 上。
     """
@@ -525,15 +528,17 @@ def mesh_world(blocks, atlas_index, width=WORLD_W, want_water=False,
     uv = _array.array('f') if uv is None else uv
     y1 = MAX_H if y1 is None else y1
     n = width
+    x1 = n if x1 is None else x1
+    z1 = n if z1 is None else z1
     count = len(atlas_index)
     faces = 0
     ext_p, ext_c, ext_u = pos.extend, col.extend, uv.extend
 
     for y in range(y0, y1):
         ybase = y * n * n
-        for z in range(n):
+        for z in range(z0, z1):
             zbase = ybase + z * n
-            for x in range(n):
+            for x in range(x0, x1):
                 b = blocks[zbase + x]
                 if b == AIR:
                     continue

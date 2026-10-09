@@ -54,6 +54,7 @@ python scripts\verify_demos.py --only boids,water  只验指定 demo
 | `material_lab.py` | 30s | **新建模 × 新素材**：车削/管扫/环面结 + 程序化 PBR 纹理（拉丝/大理石/电路板等 5 套） | `material_lab_01/02.png` |
 | `nordic_saga.py` | 60s | **《诺德之境》**：上古卷轴风格程序化动画（雪原遗迹/巨龙/龙语古墙 + 程序化配乐） | `nordic_01..06.png` |
 | `scene_walker.py` | 交互 | **可漫步场景（交互化）**：S1 场景 JSON → 第一人称物理漫步（固定步长抗卡帧）+ 马尔可夫演出变体 + 拾取/E 互动 + **限时挑战（T 键）与跨幕转场结算卡**（音乐张力阶梯 COMBAT_LOW→HIGH）+ SFX/自适应 BGM + 场景热重载 | `scene_walker_01.png` |
+| `blockworld.py` | 交互 | **方块世界 · 可交互版**（voxel_terrain × minecraft_style 结合）：第一人称漫步/跳跃 + **DDA 准星拾取 + 左键挖/右键放 + hotbar(1-6)** + **区块化网格重建**（16 列/块，边界邻块同步；实测编辑 ≈11ms）+ 程序化像素图集与昼夜 | `blockworld_01.png` |
 
 ### 演示专属开关（`--flag`，逗号可并列）
 
@@ -68,6 +69,7 @@ python scripts\verify_demos.py --only boids,water  只验指定 demo
 | `nostatics`（engine_showcase） | 关掉静态柱林（看视锥剔除的差异） |
 | `walk` / `interact` / `hotreload`（scene_walker） | 起始进入漫游 / 无人值守自检互动 / 自检热重载（临时副本） |
 | `timed` / `victory`（scene_walker） | 自检：短时限挑战 / 自动三连唤醒（验证结算卡与音乐叙事） |
+| `digdemo` / `topdown`（blockworld） | 自检：自动挖→放闭环（验证 DDA + 区块重建）/ 高空俯瞰诊断视角 |
 
 常用按键（各 demo 底部有完整帮助行）：`SPACE` 暂停、`ESC` 退出是统一的；
 **方块世界** `N`/`P` 切幕、`←`/`→` 快退快进 5s、`C` 切电影/自由相机、`R` 重播；
