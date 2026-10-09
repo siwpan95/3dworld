@@ -276,9 +276,12 @@ class WalkerApp(DemoApp):
             self._msg = '拾取：未命中'
             return
         self.selected = hit.drawable
-        self._msg = f'拾取 {hit.drawable.name} 距离 {hit.distance:.1f}m'
-        self.sfx.play('pickup')
-        self.bgm.arouse(3.0, 0.42)
+        if hit.drawable.name in self._glow:
+            self._awaken(hit.drawable.name, hit.distance)  # 点击 = 直接唤醒
+        else:
+            self._msg = f'拾取 {hit.drawable.name} 距离 {hit.distance:.1f}m'
+            self.sfx.play('pickup')
+            self.bgm.arouse(3.0, 0.42)     # 轻微警觉
 
     # ------------------------------------------------------------ 热重载 --
     def _on_scene_reloaded(self, loaded):
@@ -323,6 +326,10 @@ class WalkerApp(DemoApp):
             print('[interact] no target within reach', flush=True)
             return
         name, dist = tgt
+        self._awaken(name, dist)
+
+    def _awaken(self, name, dist):
+        """唤醒一个发光元素（E 近身 / 点击命中皆走此路径）。"""
         self._pulse[name] = self.time + 1.2
         self._msg = f'唤醒 {name}（距离 {dist:.1f}m）'
         self.sfx.play('power_up')
@@ -334,17 +341,20 @@ class WalkerApp(DemoApp):
                 if self._mc.current != 'dim':
                     break
                 self._mc.step()
-            print(f'[interact] wake {name} -> ember {self._mc.current}',
-                  flush=True)
+            print(f'[awaken] {name} -> ember {self._mc.current}', flush=True)
         else:
-            print(f'[interact] wake {name} (breath mode)', flush=True)
+            print(f'[awaken] {name} (breath mode)', flush=True)
 
     def _update_music_stage(self, n):
         """唤醒进度 -> 音乐叙事阶段：探索 → 警觉 → 紧张 → 胜利。"""
         if n >= 3:
+            for name in self._glow:                # 全场点亮 2 秒（祭坛苏醒）
+                self._pulse[name] = self.time + 2.0
             self.bgm.set_extra({'victory': True})
             self._victory_until = self.time + 6.0
-            print('[goals] all orbs awakened -> VICTORY', flush=True)
+            self._msg = '祭坛苏醒！'
+            print(f'[goals] all orbs awakened -> VICTORY '
+                  f'(pulse {len(self._glow)} nodes)', flush=True)
         elif n == 2:
             self.bgm.set_extra({'enemy_count': 3})     # 引擎阈值 -> COMBAT_LOW
             print('[goals] 2/3 awakened -> COMBAT_LOW', flush=True)
