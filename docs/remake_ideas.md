@@ -164,17 +164,75 @@ DeepSeek Harness 的运行时内核。
 - `recordings/mountain_100s.mp4`：100s 离线录制（H.264 720p30，11.5MB）已产出并验证；
 - `experiments/cordis` 试点一：场景管线 Cordis 化跑通（`PIPELINE_OK`），验证 inject/可逆副作用/coeffect。
 
-**待做（P0）**
-- Cordis 试点二 / 试点三 + 转正（vendor + 锁 commit）；
-- 把 `core/contracts.py` 的 12 个契约**逐个 wrap 成 Cordis 服务**
-  （优先 `WRAPPABLE_CORES`：render/terrain/input/hud/pathing/audio/timeline/particles/sdf）。
+**P0 状态（已闭环并推送远端，2026-10-09）**
+- `vendor(cordis)`：引入 `geohotstan/cordis-py` v4.0.0 源码（MIT），`.pth` 全局暴露 + `VENDOR.md` 记账；commit `4691df0`（来源 `cordis-py-main.zip`，源码 ZIP 留作本地 provenance，不入库）。
+- `core/contracts.py`：12 个共同核服务接口契约（`typing.Protocol`，脱离 cordis/GL 可 import），`CORES` 注册表 + `status_table()` + `verify()`；commit `f81ea97`。
+- 上述两提交 + `28c5514`(record_all) + `6fba39e`(本规划) 已 **push 远端并 `git ls-remote` 核对 IN_SYNC**（local HEAD `4691df0` == remote `refs/heads/master`）。
+- **仍待做（P0 收尾）**：Cordis 试点二/三——把 12 契约逐个 `provide` 成服务、且按 v4.0.0 **fiber 属性式 API** 重写 `scene_pipeline.py`（旧 method 式 `ctx.provide()` 已不兼容）。这步合并到首个内核的「阶段 B」一起做（见 §9.4），不单独阻塞玩法开发。
 
-**P0 进展（已落地）**
-- `core/contracts.py`：12 个共同核的**服务接口契约**（`typing.Protocol`，脱离 cordis 与 GL
-  上下文也能 `import`），附 `CORES` 注册表 + `status_table()` + 可选 `verify()`。
-  它是后续 Cordis 接线（试点二/三）的单一事实来源——每个核「对外提供什么服务」只在此声明一次。
-- 沙箱现状：github.com TLS 被代理拦截、本机无 Python cordis，故试点二/三与「vendor 转正」
-  仍**阻塞**；接口契约这一层不依赖 cordis，已先行落地（Q2 推荐项）。
+**下一步**：首个内核已选定 **P1-② 塔防切片「戍卫之路 / Roadwarden」**（全哥在 `① 神之手 / ② 塔防` 二择中择②）。设计 note 见 §9，待全哥 review 放行后进入执行。
 
-**下一步建议**：先与全哥对齐第 2 节「共同核清单」是否齐备、抽取顺序是否认可，
-再启动 P0；P0 完成后从 P1-①（神之手）或 P1-②（魔兽风塔防切片，贴合点名）开第一个内核。
+---
+
+## 9. P1-② 塔防切片 · 设计 note（首个内核）
+
+> 状态：规划（待全哥 review 放行后执行）
+> 机制致敬：Warcraft / Dune II 的「经济 → 兵力 → 战斗」循环；**不碰任何原 IP 名称与素材**（合规见 §7）。
+
+### 9.1 工作标题（原创，规避 `craft`）
+- 中文：**「戍卫之路」**；英文 codename：**Roadwarden**。
+- 命名合规：不含 `craft` / `warcraft` / `starcraft` 等受保护词（Stratagus 教训，§7）。
+
+### 9.2 切片范围（bounded slice）
+- **地图**：24×24 格（世界 48×48，格距 2），近平面地形（平或极缓起伏，用 `height_at` 低幅度）。
+- **车道**：固定折线路径（8~12 个 waypoint），从一侧边缘到基地；地面画成土路条带。
+- **塔（3 类，from-scratch EntityCore）**：
+  - 箭塔 Arrow：便宜、攻速快、低伤、单体。
+  - 炮塔 Cannon：贵、慢、溅射（AoE）。
+  - 冰塔 Frost：减速敌人。
+  - 仅可建在**非车道**格；点击格子 → 选 1/2/3 → 放置，扣金。
+- **敌人（2~3 类，from-scratch EntityCore）**：grunt（肉）/ swarm（快脆多）/ bruiser（高血）；沿车道 waypoint 前进；到达基地扣基地 HP。
+- **波次（from-scratch RulesCore）**：5 波，每波按时序 spawn 一批敌人；击杀给金；清波有奖励金。
+- **胜负**：撑过 5 波 = 胜利；基地 HP ≤ 0 = 失败。
+- **控制**：拖拽/滚轮 = 转视角/缩放（复用 `orbit_camera_input`）；鼠标点击 = 选格/建塔；SPACE 暂停；自动或按键开波。
+- **HUD（复用 HudCore）**：金币 / 波次 x/5 / 基地 HP / 选中塔 / 状态提示（CJK 经 `resolve_cjk_font` 正常显示；`print` 仅用 ASCII，遵循 `_harness` 约定）。
+
+### 9.3 复用 vs 自建（对照 core/contracts.py）
+| 核 | 来源 | 备注 |
+|----|------|------|
+| render | `engine.renderer` / `ShaderProgram` | 直连；顶点色 / 实例 |
+| terrain | `demos.terrain_flyover.height_at` | 地面高度（低幅） |
+| input | `logic.camera.OrbitCamera` + `orbit_camera_input` | 视角；建塔点击用 `engine.picking.ray_from_screen` + **解析射线-地面求交**（不依赖 `scene`/`drawables`） |
+| hud | `demos._harness.Hud` | `set_status` |
+| audio | `engine.audio.SfxPlayer` | 建塔/射击/击杀音效（合成） |
+| particles | `demos.particles_gpu`（可选） | 弹道/命中特效，二期 |
+| **entity** | **from-scratch** | `EnemySystem` + `TowerSystem`（后续包成 `entity` 服务） |
+| **economy** | **from-scratch** | 金币计数 + 花费校验（→ `economy` 服务） |
+| **rules** | **from-scratch** | 波次调度 + 胜负状态机（→ `rules` 服务） |
+| pathing | 车道 waypoint 跟随；**A\* 暂不做** | 见 §9.5 |
+
+> ⚠️ 修正：`logic.boids.Flock` 是**群集飞行**（有界立方内 flocking），**不是寻路**；塔防敌人走固定车道 waypoint，不需要 boids。网格 A\*（`find_path`）若日后做「迷宫塔防」再新建 `logic/pathfind.py`，不改造 boids。
+
+### 9.4 落地架构（两阶段）
+- **阶段 A（本内核先做）直连引擎切片**：`demos/tower_defense.py` 作为 `DemoApp` 子类，直接复用上面各核；系统类（`Grid`/`EnemySystem`/`TowerSystem`/`Economy`/`Rules`/`Waves`）先内联或放 `games/tower_defense/` 子包。**先交付可运行 + 可录制 demo**，证明玩法与引擎复用。
+- **阶段 B（pilot-2 跟进项）Cordis 服务化**：先按 cordis v4.0.0 **fiber 属性式 API** 重写 `experiments/cordis/scene_pipeline.py`，再把本内核的系统抽成 Cordis 插件（`provide` 各核服务 + `effect` 回收 GL 资源），用 Cordis 重新驱动 demo，验证「共同核 + 内核」范式与 GL 回滚。这才是 P0「Cordis 转正」的终验。
+
+> 为什么阶段 A 不直接上 Cordis：v4.0.0 的 API 与试点一不兼容，pilot-2 尚未做；先切片可最快拿到可玩结果，Cordis 化作为独立跟进项，互不阻塞。
+
+### 9.5 文件布局
+- `demos/tower_defense.py` —— 主交付（DemoApp 内核）；或 `games/tower_defense/{app,grid,systems,towers,enemies,render_helpers}.py`（更干净、便于 Cordis 化）。**推荐先单文件快速跑通，再视情况拆分。**
+- 复用：`demos/_harness.py`(`run`)、`logic/camera.py`、`engine.picking`、`engine.audio`、`core/contracts.py`(形状参考)。
+- `scripts/record_all.py`：新增 `tower_defense_60s` 录制入口（仿 `mountain_100s`）。
+
+### 9.6 验收标准
+- `python demos/tower_defense.py --smoke 3` 无报错，地图 + 第 1 波敌人出现。
+- 点击空地可建塔；塔对范围内敌人开火；敌人死亡金币增加。
+- 撑过 5 波 → 「胜利」叠层；基地 HP=0 → 「失败」叠层。
+- 经 `scripts/record_all.py` 录一段短 demo 落盘。
+- 零外部素材（几何 + 音频全合成），MIT 干净。
+
+### 9.7 执行期待核实的 API（列清，避免拍脑袋）
+- `OrbitCamera` 是否提供 `inverse_view_projection(aspect)`（picker 用）；否则用 `view_projection` 手动求逆。
+- `engine.audio.SfxPlayer.play` / `sfx(name)` 的确切签名。
+- `DemoApp` 基类**未转发 `on_mouse_press`**（只转发 drag/scroll/key）→ 在 `setup()` 内 `self.window.push_handlers(on_mouse_press=self.on_mouse_press)` 自行挂接，不动 `_harness`。
+- 控制台 `print` 仅 ASCII；CJK 只进 HUD（`resolve_cjk_font` 已处理）。
