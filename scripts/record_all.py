@@ -53,6 +53,7 @@ ENTRIES = [
     dict(name='shadow_map_30s',      mod='demos/shadow_map.py',    cls=None,          dur=30.0, size=DEMO_SIZE),
     dict(name='solar_system_60s',    mod='demos/solar_system.py',  cls=None,          dur=60.0, size=DEMO_SIZE),
     dict(name='terrain_flyover_48s', mod='demos/terrain_flyover.py', cls=None,        dur=48.0, size=DEMO_SIZE),
+    dict(name='mountain_100s',       mod='demos/mountain.py',       cls=None,          dur=100.0, size=DEMO_SIZE),
     dict(name='voxel_terrain_36s',   mod='demos/voxel_terrain.py', cls=None,          dur=36.0, size=DEMO_SIZE),
     dict(name='water_waves_40s',     mod='demos/water_waves.py',   cls=None,          dur=40.0, size=DEMO_SIZE),
     dict(name='engine_showcase_24s', mod='demos/engine_showcase.py', cls='ShowcaseApp', dur=24.0, size=DEMO_SIZE),
