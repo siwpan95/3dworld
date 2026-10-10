@@ -55,6 +55,7 @@ WANT_TD = ('tower_defense', 'render', 'rules', 'economy', 'entity')
 WANT_GODHAND = ('godhand', 'render', 'terrain', 'rules', 'economy', 'entity')
 WANT_FPS = ('fps', 'render', 'rules', 'economy', 'entity', 'maze')
 WANT_PUZZLE = ('puzzle', 'render', 'rules', 'entity', 'grid')
+WANT_STORM = ('storm', 'render', 'rules', 'economy', 'entity', 'particles', 'pathing')
 # 全共同核（P0-4 配置树统一）：cordis.cores.yml 声明挂载的全部核
 WANT_CORES = ('render', 'economy', 'entity', 'rules', 'terrain',
               'pathing', 'particles', 'sdf', 'audio', 'timeline')
@@ -131,6 +132,6 @@ async def mount_tree(path: str, want=(), timeout: float = 8.0,
 
 __all__ = [
     'CONFIG_DIR', 'WANT_TD', 'WANT_GODHAND', 'WANT_FPS', 'WANT_PUZZLE',
-    'WANT_CORES',
+    'WANT_STORM', 'WANT_CORES',
     'config_path', 'load_tree', 'await_ready', 'mount_tree',
 ]

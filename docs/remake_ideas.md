@@ -193,9 +193,15 @@ DeepSeek Harness 的运行时内核。
   10/10 生成种子回放全胜（`BOXWARD_OK`，GL 3→0）；与全哥 P0 共同核抽离线
   rebase 对齐后推送，最终 commit `0d22d04`（IN_SYNC=0 0）。
 
-**下一步**：P1-⑤「弹潮 / Swarmward」（弹幕固定屏射击）先问已收口（全哥四答：弹幕方向 /
-全向生存 / 程序化编波 / 双摇杆），设计 note 见 §12——**待全哥 review 放行后执行**；
-Rayhold 平衡与 Boxward 实机手感等本机实测数据复调。
+**P1-⑤ 弹潮 / Swarmward（2026-10-11）**
+- **P1-⑤ 已执行完毕**（设计 note `8c2f091` → 全哥放行「按 note 执行」→ 执行，§12.9）：
+  内核 `storm_kernel.py`（程序化编波 + 3 敌型 + 闪避 AI auto-pilot + **particles/
+  pathing 首个内核消费者**）、`cordis.storm.yml`、`demos/swarmward.py`（双摇杆 + 粒子层
+  + Aimlabs 手感件）、`core/particles_core.py` 加 `snapshot()`（共同核最小扩展）；
+  `config_boot all` **六项**全绿、10/10 种子 10 波全通关（`STORMKERNEL_OK`，GL 3→0）。
+
+**下一步**：Swarmward 实机手感（双摇杆/粒子观感）本机验证后复调；P1-⑥ 候选待全哥点菜
+（§12.3 遗留素材：boss 波与弹幕图案生成器 / Myst 漫游 / Elite 太空 / 节奏音击）。
 
 ---
 
@@ -573,6 +579,38 @@ Rayhold 平衡与 Boxward 实机手感等本机实测数据复调。
 - **auto-pilot 闪避在密集弹幕下不稳** → 威胁度阈值调参 + 10 种子回归把关；
 - **particles 观感**（CPU 侧简单步进）→ 实机先看，不够再谈 GPU 实例化（P2 素材）；
 - **命名**→ 执行前补一轮撞名核验（Swarmward 目前干净）。
+
+### 12.9 执行结果（2026-10-11，commit 见 §8）
+
+- **内核**：`storm_kernel.py`（约 470 行）——`StormKernel`（storm）：`wave_plan`
+  程序化编波（count/speed/weaver 占比随波号单调，单测把关）、敌型 3 状态机
+  （chaser 限转向率追击 / weaver 距离带+正弦横移+3 连发散射 / drone 编队环绕）、
+  三组圆碰撞（模块级 `_circle_hit` 纯函数）、连击窗口 + 连击倍率计分（economy 存 score）、
+  auto-pilot 闪避 AI（16 方向威胁度采样 + **方向连续性奖励** + 最近敌锁定）；
+  **pathing.formation 消费**：ring/grid 委托共同核，line/v 内核自算（`_layout_points`
+  支持注入 formation_fn，单测裸调用）。
+- **共同核最小扩展**：`core/particles_core.py` + `contracts.py` 加 **`snapshot()`**
+  只读快照（`[(x,y,z,life_frac)]`）——粒子核首个内核消费者的渲染端需要读状态，
+  不暴露 `_parts` 内部结构；`StormKernel.update` 每帧驱动 `particles.update` +
+  三事件 emit（击杀碎屑/命中火花/受击冲击，自定义 preset gravity=0 压到屏面）。
+- **demo**：`demos/swarmward.py`——正交固定屏（竞技场 letterbox 完整可见）、
+  双摇杆（WASD + 方向键/鼠标指向射击）、受击白闪（Aimlabs hitmarker 的 3D 等价物）、
+  粒子层预分配 512 槽 vlist 逐帧整块写入、量化结算叠层（波数/击杀/命中率/最长连击/得分）、
+  6 合成音效、失焦清键；`--flag auto/endless/seedN`；record 入口 `stormward_60s`。
+- **执行中踩到并记录第 6 条 Cordis 坑**：**staticmethod 二次现形**——`_bump_combo`
+  写成 `@staticmethod`，Traceable wrapper 给所有方法注入 self → 形参整体错位
+  （combo 收到 ShadowView，`combo + 1` 报 `TypeError`）。与 §10.9 第 5 坑同源，
+  但这次连 `int()` 都救不了（包装在方法边界），修法依旧：改实例方法。
+  附带教训：Traceable 下 int 属性算术前显式 `int()` 解包更稳。
+- **平衡迭代**：首跑 auto-pilot 第 7 波阵亡（3 命耗尽）→ 两轮调参：
+  敌压力微降（chaser 2.3→2.0、弹速 6.5→6.0、weaver 射程 12→10.5、波间 1.2→1.6s、
+  密度 cap 26→24）+ 闪避 AI 增强（8→16 方向、前瞻 0.35→0.5s、chaser 贴身惩罚加重、
+  **方向连续性奖励**抑制帧间抖动）→ **10/10 种子全通关**，命中率还从 ~50% 升到 55-66%
+  （抖动消除的连带收益）。全程 3 命未耗尽，实机紧张度留本机验证后复调。
+- **验收（§12.6 全过）**：`config_boot all` 六项全绿；`storm --seeds` 10 种子全通关
+  （62.6~71.4s，击杀 136~150，`STORMKERNEL_OK`，GL `3→0`）；单测 4 项
+  （编波单调/编队图案/圆碰撞/连击窗口）并入 run_tests 全绿。
+- 待办：实机录制/截图/手感（双摇杆+粒子观感）本机补跑（沙箱 GL 受限，惯例）。
 
 
 

@@ -58,6 +58,7 @@ ENTRIES = [
     dict(name='godhand_40s',         mod='demos/godhand.py',        cls=None,          dur=40.0, size=DEMO_SIZE),
     dict(name='rayhold_60s',         mod='demos/rayhold.py',        cls=None,          dur=60.0, size=DEMO_SIZE),
     dict(name='boxward_60s',         mod='demos/boxward.py',        cls=None,          dur=60.0, size=DEMO_SIZE),
+    dict(name='swarmward_60s',       mod='demos/swarmward.py',      cls=None,          dur=60.0, size=DEMO_SIZE),
     dict(name='voxel_terrain_36s',   mod='demos/voxel_terrain.py', cls=None,          dur=36.0, size=DEMO_SIZE),
     dict(name='water_waves_40s',     mod='demos/water_waves.py',   cls=None,          dur=40.0, size=DEMO_SIZE),
     dict(name='engine_showcase_24s', mod='demos/engine_showcase.py', cls='ShowcaseApp', dur=24.0, size=DEMO_SIZE),

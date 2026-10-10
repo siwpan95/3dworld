@@ -1,0 +1,45 @@
+# 试点三 · cordis.yml 配置树（弹幕固定屏射击「弹潮 / Swarmward」· P1-⑤）
+#
+# 声明「本次挂哪些插件」——共同核 + 内核全由配置驱动；Cordis 按 inject 依赖图自动
+# 排序挂载（StormKernel.inject = [render, rules, economy, entity, particles, pathing]）。
+# 扁平 entry 列表（嵌套 plugin-group 会让子服务对根 ctx 不可见，见 cordis.godhand.yml 注释）。
+#
+# 平衡参数集中在本文件：改命数/波数/种子不用动 Python。
+#   base_hp     —— 玩家命数（rules 复用为 lives；受击 player_hit dmg=1）
+#   total_waves —— 通关波数（wave_cleared 事件原样复用：第 10 波清空 → won）
+#   particles   —— 粒子上限与种子（内核 emit 爆炸/命中/受击，每帧驱动 update）
+#   pathing     —— formation 编队图案的共同核（ring/grid 委托，line/v 内核自算）
+#
+# 本文件同时是 demos/swarmward.py 的实际挂载声明（tree_boot.mount_tree 加载本文件）——
+# 「demo 怎么挂的 = headless 验证怎么挂的」，接线只有这一份。
+#
+# 运行（headless 验证）：python experiments/cordis/config_boot.py storm
+- name: experiments.cordis.services.render
+  id: render
+- name: experiments.cordis.services.economy
+  id: economy
+  config:
+    score: 0                  # 计分资源（连击倍率加成后累加）
+- name: experiments.cordis.services.entity
+  id: entity
+- name: experiments.cordis.services.rules
+  id: rules
+  config:
+    base_hp: 3                # 玩家命数（base_hp 复用为 lives）
+    total_waves: 10           # 通关波数
+- name: experiments.cordis.services.particles
+  id: particles
+  config:
+    max: 20000
+    seed: 7
+- name: experiments.cordis.services.pathing
+  id: pathing
+  config:
+    count: 8                  # boids 懒建参数（本内核只用 formation）
+    bounds: 12.0
+    seed: 7
+- name: experiments.cordis.services.storm
+  id: storm
+  config:
+    seed: 20261011
+    endless: false

@@ -15,6 +15,7 @@
     python experiments/cordis/config_boot.py all
     python experiments/cordis/config_boot.py fps --seeds 20261010,11,22   # 多种子回归
     python experiments/cordis/config_boot.py puzzle --seeds 20261010,11   # 解谜多种子
+    python experiments/cordis/config_boot.py storm --seeds 20261011,7     # 弹幕多种子
 """
 from __future__ import annotations
 
@@ -28,8 +29,8 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from experiments.cordis.tree_boot import (  # noqa: E402
-    WANT_CORES, WANT_FPS, WANT_GODHAND, WANT_PUZZLE, WANT_TD, config_path,
-    mount_tree,
+    WANT_CORES, WANT_FPS, WANT_GODHAND, WANT_PUZZLE, WANT_STORM, WANT_TD,
+    config_path, mount_tree,
 )
 from experiments.cordis.godhand_kernel import START_MANA  # noqa: E402
 from experiments.cordis.fps_kernel import START_AMMO  # noqa: E402
@@ -46,6 +47,7 @@ CONFIGS = {
     'fps': ('cordis.fps.yml', WANT_FPS),
     'cores': ('cordis.cores.yml', WANT_CORES),
     'puzzle': ('cordis.puzzle.yml', WANT_PUZZLE),
+    'storm': ('cordis.storm.yml', WANT_STORM),
 }
 
 
@@ -259,6 +261,52 @@ async def run_cores(ctx):
     print("== CORES_OK ==")
 
 
+async def run_storm(ctx, seeds=None):
+    """弹幕固定屏：auto-pilot（闪避 AI）跑满 10 波 → won（§12.6 验收 2）。"""
+    kernel = ctx.storm
+    rules = ctx.rules
+    render = ctx.render
+    particles = ctx.particles
+    seed_list = list(seeds) if seeds else [kernel.seed]
+    print(f"[config] waves={rules.total_waves} lives={rules.base_hp} "
+          f"seeds={len(seed_list)} particles_ready={particles is not None} "
+          f"pathing_ready={ctx.pathing is not None}")
+    assert rules.base_hp == 3, f"yml base_hp（命数）未到达 rules: {rules.base_hp}"
+    assert rules.total_waves == 10, f"yml total_waves 未到达 rules: {rules.total_waves}"
+    assert render.live_count() > 0, "GL 资源未取得"
+    # 两个"首个内核消费者"的显式核验（§12.4）
+    assert particles is not None and hasattr(particles, 'snapshot'), \
+        "particles 核未挂载或缺 snapshot()（首个内核消费者核验失败）"
+    assert ctx.pathing is not None, "pathing 核未挂载（编队进场核验失败）"
+
+    results = []
+    for k, sd in enumerate(seed_list):
+        if k > 0:
+            kernel.restart(int(sd))
+        dt = 1.0 / 60.0
+        t = 0.0
+        while rules.state() not in ('won', 'lost') and t < 240.0:
+            kernel.auto_step(dt)
+            kernel.update(dt)
+            ctx.entity.update(dt)
+            t += dt
+        st = rules.state()
+        assert st == 'won', (f"种子 {sd}：预期 auto-pilot 打满 {rules.total_waves} 波，"
+                             f"实际 {st}（wave={kernel.wave + 1} lives={rules.base_hp}）")
+        s = kernel.stats
+        peak_parts = particles.count()
+        print(f"RESULT seed={sd} state={st} wave={kernel.wave + 1} t={t:.1f} "
+              f"kills={s['kills']} shots={s['shots']} hits={s['hits']} "
+              f"acc={100.0 * s['hits'] / max(1, s['shots']):.0f}% "
+              f"max_combo={s['max_combo']} score={ctx.economy.balance('score'):.0f} "
+              f"live_particles={peak_parts}")
+        results.append((int(sd), t, s['kills']))
+    if len(results) > 1:
+        print(f"[seeds] {len(results)}/{len(results)} 通关  "
+              f"用时 {min(t for _, t, _ in results):.1f}~{max(t for _, t, _ in results):.1f}s")
+    await _rollback(ctx, kernel, render, 'STORMKERNEL')
+
+
 async def run_one(kind, seeds=None):
     name, want = CONFIGS[kind]
     # 纯共同核配置树（cores）无内核取 GL 句柄 -> 不要求 GL 就绪
@@ -270,6 +318,8 @@ async def run_one(kind, seeds=None):
         await run_godhand(ctx)
     elif kind == 'cores':
         await run_cores(ctx)
+    elif kind == 'storm':
+        await run_storm(ctx, seeds)
     elif kind == 'fps':
         await run_fps(ctx, seeds)
     else:
@@ -279,17 +329,17 @@ async def run_one(kind, seeds=None):
 def main(argv=None):
     ap = argparse.ArgumentParser(description="试点三 cordis.yml 配置树引导")
     ap.add_argument('kind', nargs='?', default='all',
-                    choices=['td', 'godhand', 'fps', 'puzzle', 'cores', 'all'],
+                    choices=['td', 'godhand', 'fps', 'puzzle', 'storm', 'cores', 'all'],
                     help='运行哪个配置树（默认 all；cores = 全共同核自检）')
     ap.add_argument('--seeds', default=None,
-                    help='fps/puzzle 专属：逗号分隔多种子回归（如 --seeds 20261010,11,22）'
+                    help='fps/puzzle/storm 专属：逗号分隔多种子回归（如 --seeds 20261010,11,22）'
                          '——每种子各跑一局，全部须通关')
     args = ap.parse_args(argv)
-    if args.seeds and args.kind not in ('fps', 'puzzle'):
-        ap.error('--seeds 仅支持 fps / puzzle')
+    if args.seeds and args.kind not in ('fps', 'puzzle', 'storm'):
+        ap.error('--seeds 仅支持 fps / puzzle / storm')
     seeds = ([int(s) for s in args.seeds.split(',') if s.strip()]
              if args.seeds else None)
-    kinds = (['td', 'godhand', 'fps', 'puzzle', 'cores']
+    kinds = (['td', 'godhand', 'fps', 'puzzle', 'storm', 'cores']
              if args.kind == 'all' else [args.kind])
     for k in kinds:
         print(f"\n########## 配置树：{k} ##########")

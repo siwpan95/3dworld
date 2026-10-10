@@ -90,6 +90,21 @@ class ParticlesService(Service):
     def count(self):
         return len(self._parts)
 
+    def snapshot(self):
+        """只读快照：``[(x, y, z, life_frac), ...]``（渲染层消费；不改状态）。
+
+        P1-⑤「弹潮 / Swarmward」引入：粒子核首个内核消费者需要把 CPU 侧粒子
+        状态画出来，而 ``_parts`` 是私有的——提供一份带生命比例的轻量快照，
+        让 demo 层按 ``life_frac`` 做淡出，不暴露内部结构。
+        """
+        out = []
+        for q in self._parts:
+            life = q['life']
+            frac = 1.0 - q['age'] / life if life > 1e-6 else 0.0
+            p = q['pos']
+            out.append((p[0], p[1], p[2], max(0.0, min(1.0, frac))))
+        return out
+
     def __cordis_init__(self):
         return None
 

@@ -1250,6 +1250,61 @@ def test_cam_move_dirs_mapping():
     print('  ok: 相机 90° 步进的方向映射（W/D 随档位正确旋转）')
 
 
+# ============================================== P1-⑤ 弹潮 / Swarmward ==
+def test_wave_plan_monotonic():
+    from experiments.cordis.storm_kernel import wave_plan
+    plans = [wave_plan(20261011, i) for i in range(10)]
+    for a, b in zip(plans, plans[1:]):
+        assert b['count'] >= a['count'], '敌数应随波号单调不减'
+        assert b['speed'] >= a['speed'], '速度倍率应随波号单调不减'
+        assert b['f_weaver'] >= a['f_weaver'], 'weaver（会射击）占比应单调不减'
+    assert plans[0]['count'] >= 6 and plans[-1]['count'] <= 24
+    print('  ok: 程序化编波难度单调（敌数/速度/weaver 占比随波号递增）')
+
+
+def test_formation_layout():
+    from core.pathing_core import PathingService
+    from experiments.cordis.storm_kernel import _layout_points
+    # line：5 点共线等距
+    pts = _layout_points('line', (0.0, 0.0), 5, 1.3)
+    assert len(pts) == 5
+    zs = {round(z, 6) for _x, z in pts}
+    assert len(zs) == 1, 'line 应共线'
+    xs = sorted(x for x, _z in pts)
+    assert abs((xs[1] - xs[0]) - 1.3) < 1e-9, 'line 应等距'
+    # v：关于轴对称
+    pts = _layout_points('v', (0.0, 0.0), 5, 1.3)
+    assert len(pts) == 5
+    xs = sorted(round(x, 6) for x, _z in pts)
+    assert xs[0] == -xs[-1], 'v 应左右对称'
+    # ring / grid：委托 pathing.formation（实现不用 self，裸调用显式传 None）
+    fn = lambda anchor, n_, sp_, pat_: PathingService.formation(None, anchor, n_, sp_, pat_)
+    pts = _layout_points('ring', (10.0, 20.0), 7, 1.3, formation_fn=fn)
+    assert len(pts) == 7
+    ds = [round(math.hypot(x - 10.0, z - 20.0), 6) for x, z in pts]
+    assert max(ds) - min(ds) < 1e-6, 'ring 应等半径'
+    pts = _layout_points('grid', (0.0, 0.0), 9, 1.0, formation_fn=fn)
+    assert len(pts) == 9
+    print('  ok: 编队图案（line 共线等距 / v 对称 / ring 等半径 / grid 计数）')
+
+
+def test_circle_hit():
+    from experiments.cordis.storm_kernel import _circle_hit
+    assert _circle_hit(0, 0, 0.5, 0.8, 0, 0.5) is True        # 距离 0.8 < r+r=1.0
+    assert _circle_hit(0, 0, 0.5, 2.0, 0, 0.5) is False       # 距离 2.0 > 1.0
+    assert _circle_hit(0, 0, 0.5, 1.0, 0, 0.5) is True        # 相切算命中
+    print('  ok: 圆碰撞判定（命中/未命中/相切）')
+
+
+def test_combo_window():
+    from experiments.cordis.storm_kernel import StormKernel, COMBO_WINDOW
+    bump = StormKernel._bump_combo                             # 裸方法调用
+    assert bump(None, 2, 1.0, 2.0) == 3                        # 窗口内累积（now-combo_t=1）
+    assert bump(None, 5, 0.0, 10.0) == 1                       # 超窗重计（now-combo_t=10）
+    assert bump(None, 0, 0.0, COMBO_WINDOW) == 1               # 恰在窗口边界（=window 算内）
+    print('  ok: 连击窗口（累积 / 超窗重计 / 边界）')
+
+
 def pk_level(art, name):
     from experiments.cordis.puzzle_kernel import parse_level
     return parse_level(art, name)
@@ -1302,4 +1357,8 @@ if __name__ == '__main__':
     print('test_solver_unsolvable');              test_solver_unsolvable()
     print('test_generate_solvable_by_construction'); test_generate_solvable_by_construction()
     print('test_cam_move_dirs_mapping');          test_cam_move_dirs_mapping()
+    print('test_wave_plan_monotonic');            test_wave_plan_monotonic()
+    print('test_formation_layout');               test_formation_layout()
+    print('test_circle_hit');                     test_circle_hit()
+    print('test_combo_window');                   test_combo_window()
     print('ALL_LOGIC_TESTS_PASSED')

@@ -400,6 +400,10 @@ class ParticlesCore(Protocol):
         """推进粒子模拟。"""
         ...
 
+    def snapshot(self) -> Any:
+        """只读快照 ``[(x, y, z, life_frac), ...]``（渲染层消费；P1-⑤ 弹潮引入）。"""
+        ...
+
     def draw(self) -> None:
         """绘制粒子。"""
         ...

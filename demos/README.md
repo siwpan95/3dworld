@@ -60,8 +60,8 @@ python scripts\verify_demos.py --only boids,water  只验指定 demo
 | `mountain.py` | 观察式 | **《山》**（致敬 David OReilly 的 Mountain）：复用 terrain_flyover 噪声管线生成**悬浮孤峰**（顶/底两面在边界闭合）+ 片元级动态光照昼夜交替 + 云/雨/雪气象轮替 + 坠落物体与生长植物 + 哲学独白叠层 + **人格测验答案嵌进生成参数**（N 键）+ 键盘钢琴（A~K 即时合成五声音阶）+ 流星撞击崩解重生（C 键） | `mountain_day/dusk.png` |
 | `rayhold.py` | 交互 | **《迷堡枪影 / Rayhold》**（P1-③ 射线 FPS，机制致敬 Wolfenstein 3D / Doom）：**程序化随机迷宫**（递归回溯 + 12% 编织，种子可复现）+ **全屏片元着色器 SDF 光线步进**（墙 / 地板 / 敌人 / 光弹 / **拾取悬浮球 / 出口金色呼吸光**在同一场景，迷宫距离场与命中判定同源）+ hitscan 射线枪 + 2 种敌人状态机（近战游荡者 / 远程哨卫投光弹）+ 弹药与医疗拾取 + aim trainer 式手感（**hitmarker 命中/击杀标记、−/= 灵敏度与 cm/360 估算、结算命中率小结、失焦清键与回焦重锁**）；玩法全在 `experiments/cordis/fps_kernel.py`，由 `cordis.fps.yml` 配置树挂载（平衡参数集中在 yml） | `rayhold_a/b.png` |
 | `boxward.py` | 交互 | **《归仓 / Boxward》**（P1-④ 方块解谜，机制致敬 Sokoban 1982）：**光栅贪心合批**（静态墙由 `greedy_mesh` 合并建网，补齐 `SdfVoxelCore.world_mesh` 留白）+ 正交 45° 四向旋转视角（WASD 随相机映射）+ **BFS 求解器 auto-play**（headless 验收 / 录制 / 生成器验证同源）+ **程序化关卡**（反向拉箱打乱，可解性由构造保证）+ **关卡编辑器**（M 键摆格 / X 试解 / E 导出 JSON，三端同 schema）+ undo 与推数 par；玩法全在 `experiments/cordis/puzzle_kernel.py`，由 `cordis.puzzle.yml` 配置树挂载 | `boxward_a/b.png` |
+| `swarmward.py` | 交互 | **《弹潮 / Swarmward》**（P1-⑤ 弹幕固定屏射击，机制致敬 Robotron 2084 1982）：**全向生存**（固定屏 24×15 正交）+ **双摇杆**（WASD 移动 + 方向键/鼠标射击）+ **程序化编波**（`wave_plan(seed, wave)` 难度单调 + `pathing.formation` 编队进场——pathing 核首个内核消费者）+ **particles 核首个内核消费者**（击杀碎屑/命中火花/受击冲击，`snapshot()` 渲染层淡出）+ 3 敌型状态机（直冲/游走射击/编队蜂群）+ 连击计分 + Aimlabs 手感件（受击白闪/量化结算）+ 10 波通关制与无尽 flag；玩法全在 `experiments/cordis/storm_kernel.py`，由 `cordis.storm.yml` 配置树挂载 | `swarmward_a/b.png` |
 
-> 上表 20 项与 `demos/*.py`（不含 `_harness.py`）一一对应，也是
 | `godhand.py` | 交互 | **《神之手 / GodHand》**（P1-①，机制致敬 Populous / From Dust）：鼠标「抬山 / 挖海」实时改写地形高度场，淹没或掩埋敌方聚落即胜；玩法在 `experiments/cordis/godhand_kernel.py`，由 `cordis.godhand.yml` 配置树挂载 | — |
 | `tower_defense.py` | 交互 | **《戍卫之路 / Roadwarden》**（P1-② 首个游戏内核，机制致敬 Warcraft / Dune II 的「经济→兵力→战斗」循环）：24×24 格 + 固定车道 + 3 类塔（箭/炮/冰）+ 3 类敌人 + 5 波 + 胜负判定；玩法在 `experiments/cordis/tower_defense_kernel.py`，由 `cordis.td.yml` 挂载 | — |
 | `skinned_creature.py` | 引擎 | **蒙皮骨骼动画（P2-3）**：加载**程序化生成**的带 skin 的 glTF「骨节蛇」（8 关节 / `assets/skinned_snake.gltf`），用蒙皮顶点着色器（`pbr_skin`）渲染并驱动骨骼链正弦摆动；A 切摆动 / SPACE 暂停 / R 复位；拖动旋转、滚轮缩放 | `skinned_01..03.png` |
@@ -94,6 +94,7 @@ python demos\scene_viewer.py --file docs\llm_scene_demo.json --smoke 3
 | `go`（kid_a_walker_3d） | 自检/录制：自动探索（航点导航 + 走廊居中 + 自动收集） |
 | `auto` / `seedN`（rayhold） | 自动驾驶（BFS 奔出口 + 遇敌自动射击，与 headless 验收同款）/ 开局换种子（如 `seed1234`） |
 | `auto` / `seedN` / `level=路径`（boxward） | 求解器回放连续闯关（与 headless 验收同款）/ 按种子加载生成关 / 加载 JSON 关卡 |
+| `auto` / `endless` / `seedN`（swarmward） | 闪避 AI 自动打满 10 波（与 headless 验收同款）/ 无尽模式（不清波判定）/ 按种子开局 |
 
 常用按键（各 demo 底部有完整帮助行）：`SPACE` 暂停、`ESC` 退出是统一的；
 **方块世界** `N`/`P` 切幕、`←`/`→` 快退快进 5s、`C` 切电影/自由相机、`R` 重播；
