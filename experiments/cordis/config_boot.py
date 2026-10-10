@@ -27,7 +27,7 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from experiments.cordis.tree_boot import (  # noqa: E402
-    WANT_FPS, WANT_GODHAND, WANT_TD, config_path, mount_tree,
+    WANT_CORES, WANT_FPS, WANT_GODHAND, WANT_TD, config_path, mount_tree,
 )
 from experiments.cordis.godhand_kernel import START_MANA  # noqa: E402
 from experiments.cordis.fps_kernel import START_AMMO  # noqa: E402
@@ -39,6 +39,7 @@ CONFIGS = {
     'td': ('cordis.td.yml', WANT_TD),
     'godhand': ('cordis.godhand.yml', WANT_GODHAND),
     'fps': ('cordis.fps.yml', WANT_FPS),
+    'cores': ('cordis.cores.yml', WANT_CORES),
 }
 
 
@@ -158,13 +159,57 @@ async def run_fps(ctx, seeds=None):
     await _rollback(ctx, kernel, render, 'FPSKERNEL')
 
 
+async def run_cores(ctx):
+    """全共同核自检（P0-4）：断言 10 个共同核均经配置树挂载且**可用**。
+
+    不只是"属性存在"——逐个调用关键方法验证**行为**（非仅 isinstance 检查）。
+    """
+    from core.contracts import CORES
+
+    missing = [n for n in WANT_CORES if getattr(ctx, n, None) is None]
+    assert not missing, f"共同核未挂载: {missing}"
+
+    ctx.economy.add('gold', 10.0)
+    assert ctx.economy.balance('gold') >= 10.0
+    assert ctx.economy.spend('gold', 5.0) is True, 'economy.spend 异常'
+
+    eid = ctx.entity.spawn('probe', (0.0, 0.0, 0.0))
+    assert ctx.entity.get(eid) is not None and ctx.entity.count('probe') == 1
+
+    assert ctx.rules.state() in ('prep', 'playing'), 'rules 初始状态异常'
+
+    assert ctx.terrain.height_at(0.0, 0.0) is not None
+
+    assert ctx.pathing.find_path((0, 0), (2, 2)) == [(0, 0), (2, 2)], 'pathing 直线寻路异常'
+    assert len(ctx.pathing.formation((0.0, 0.0, 0.0), 3, 1.0)) == 3, 'pathing 编队异常'
+
+    assert ctx.particles.emit('spark', 8, origin=(0.0, 0.0, 0.0)) == 8, 'particles.emit 异常'
+
+    assert ctx.sdf.voxel_get(0, 0, 0) == 0
+    ctx.sdf.voxel_set(0, 0, 0, 3)
+    assert ctx.sdf.block_at(0, 0, 0) == 3, 'sdf 体素写读不一致'
+
+    assert ctx.timeline.make_sampler(
+        [0.0, 1.0], [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]) is not None, 'timeline.make_sampler 异常'
+
+    assert isinstance(ctx.audio.available(), bool), 'audio.available 应返回 bool'
+
+    print(f"[cores] 全部 {len(WANT_CORES)} 核经配置树可达：{', '.join(WANT_CORES)}")
+    print(f"[cores] contracts 注册表 {len(CORES)} 契约；本配置树挂载 {len(WANT_CORES)} 个共同核")
+    print("== CORES_OK ==")
+
+
 async def run_one(kind, seeds=None):
     name, want = CONFIGS[kind]
-    ctx = await mount_tree(config_path(name), want=want)
+    # 纯共同核配置树（cores）无内核取 GL 句柄 -> 不要求 GL 就绪
+    ctx = await mount_tree(config_path(name), want=want,
+                           require_gl=(kind != 'cores'))
     if kind == 'td':
         await run_td(ctx)
     elif kind == 'godhand':
         await run_godhand(ctx)
+    elif kind == 'cores':
+        await run_cores(ctx)
     else:
         await run_fps(ctx, seeds)
 
@@ -172,8 +217,8 @@ async def run_one(kind, seeds=None):
 def main(argv=None):
     ap = argparse.ArgumentParser(description="试点三 cordis.yml 配置树引导")
     ap.add_argument('kind', nargs='?', default='all',
-                    choices=['td', 'godhand', 'fps', 'all'],
-                    help='运行哪个配置树（默认 all）')
+                    choices=['td', 'godhand', 'fps', 'cores', 'all'],
+                    help='运行哪个配置树（默认 all；cores = 全共同核自检）')
     ap.add_argument('--seeds', default=None,
                     help='fps 专属：逗号分隔多种子回归（如 --seeds 20261010,11,22）'
                          '——每种子 restart 各跑一局，全部须通关')
@@ -182,7 +227,7 @@ def main(argv=None):
         ap.error('--seeds 仅支持 fps')
     seeds = ([int(s) for s in args.seeds.split(',') if s.strip()]
              if args.seeds else None)
-    kinds = (['td', 'godhand', 'fps'] if args.kind == 'all' else [args.kind])
+    kinds = (['td', 'godhand', 'fps', 'cores'] if args.kind == 'all' else [args.kind])
     for k in kinds:
         print(f"\n########## 配置树：{k} ##########")
         asyncio.run(run_one(k, seeds))

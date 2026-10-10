@@ -1,0 +1,27 @@
+# 全共同核自检配置树（P0-4）
+#
+# 一份 yml 声明全部「共同核」服务（不含任何游戏内核）——用于 headless 验证：
+# 「12 核中的所有共同核都能经配置树挂载且可达」。这是 P0-4「配置树统一」的落点：
+# 各内核的 cordis.*.yml 只挂自己 inject 的核；本文件挂全量，作为共同核的冒烟面。
+#
+# 运行（headless 验证）：python experiments/cordis/config_boot.py cores
+- name: experiments.cordis.services.render
+  id: render
+- name: experiments.cordis.services.economy
+  id: economy
+- name: experiments.cordis.services.entity
+  id: entity
+- name: experiments.cordis.services.rules
+  id: rules
+- name: experiments.cordis.services.terrain
+  id: terrain
+- name: experiments.cordis.services.pathing
+  id: pathing
+- name: experiments.cordis.services.particles
+  id: particles
+- name: experiments.cordis.services.sdf
+  id: sdf
+- name: experiments.cordis.services.audio
+  id: audio
+- name: experiments.cordis.services.timeline
+  id: timeline

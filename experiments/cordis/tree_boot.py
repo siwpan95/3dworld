@@ -54,6 +54,9 @@ CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
 WANT_TD = ('tower_defense', 'render', 'rules', 'economy', 'entity')
 WANT_GODHAND = ('godhand', 'render', 'terrain', 'rules', 'economy', 'entity')
 WANT_FPS = ('fps', 'render', 'rules', 'economy', 'entity', 'maze')
+# 全共同核（P0-4 配置树统一）：cordis.cores.yml 声明挂载的全部核
+WANT_CORES = ('render', 'economy', 'entity', 'rules', 'terrain',
+              'pathing', 'particles', 'sdf', 'audio', 'timeline')
 
 
 def config_path(name: str) -> str:
@@ -81,43 +84,51 @@ async def load_tree(ctx, path: str):
     return loader
 
 
-async def await_ready(ctx, loader, want=(), timeout: float = 8.0) -> bool:
-    """等待配置树加载完成：``want`` 中服务全部可达；若挂载了 render，还要求
-    内核已取得 GL 句柄（``live_count() > 0``）——即「挂完且内核初始化完」。"""
+async def await_ready(ctx, loader, want=(), timeout: float = 8.0,
+                      require_gl: bool = True) -> bool:
+    """等待配置树加载完成：``want`` 中服务全部可达。
+
+    ``require_gl=True``（默认）额外要求「内核已取得 GL 句柄」（``live_count() > 0``）
+    —— 即「挂完且内核初始化完」，适用于**含游戏内核**的配置树（td/godhand/fps）。
+    **纯共同核**配置树（cores）没有内核去取 GL 句柄，应传 ``require_gl=False``。
+    """
     want = tuple(want)
     dt = 1.0 / 60.0
     elapsed = 0.0
+    check_gl = require_gl and ('render' in want)
     while elapsed < timeout:
         await loader.await_()
         await asyncio.sleep(0)
         if all(getattr(ctx, n, None) is not None for n in want):
-            render = getattr(ctx, 'render', None)
-            if render is None or 'render' not in want:
+            if not check_gl:
                 return True
-            if render.live_count() > 0:
+            render = getattr(ctx, 'render', None)
+            if render is None or render.live_count() > 0:
                 return True
         elapsed += dt
     missing = [n for n in want if getattr(ctx, n, None) is None]
     extra = ''
     render = getattr(ctx, 'render', None)
-    if render is not None and 'render' in want and render.live_count() == 0:
+    if check_gl and render is not None and render.live_count() == 0:
         extra = '（服务已就绪，但内核尚未取得 GL 句柄）'
     raise RuntimeError(f"配置树未在 {timeout}s 内就绪；缺失服务: {missing}{extra}")
 
 
-async def mount_tree(path: str, want=(), timeout: float = 8.0):
+async def mount_tree(path: str, want=(), timeout: float = 8.0,
+                     require_gl: bool = True):
     """一行式引导：新建 Context、按 cordis.yml 挂载、等到就绪，返回 ctx。
 
     demos 的 ``_mount_kernel`` 与 config_boot 的 headless 验证都调用本函数。
+    ``require_gl=False`` 用于**纯共同核**配置树（无内核取 GL 句柄）。
     """
     ctx = Context()
     loader = await load_tree(ctx, path)
     if want:
-        await await_ready(ctx, loader, want, timeout)
+        await await_ready(ctx, loader, want, timeout, require_gl)
     return ctx
 
 
 __all__ = [
-    'CONFIG_DIR', 'WANT_TD', 'WANT_GODHAND', 'WANT_FPS',
+    'CONFIG_DIR', 'WANT_TD', 'WANT_GODHAND', 'WANT_FPS', 'WANT_CORES',
     'config_path', 'load_tree', 'await_ready', 'mount_tree',
 ]
