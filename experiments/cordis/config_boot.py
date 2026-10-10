@@ -14,6 +14,7 @@
     python experiments/cordis/config_boot.py godhand
     python experiments/cordis/config_boot.py all
     python experiments/cordis/config_boot.py fps --seeds 20261010,11,22   # 多种子回归
+    python experiments/cordis/config_boot.py puzzle --seeds 20261010,11   # 解谜多种子
 """
 from __future__ import annotations
 
@@ -27,10 +28,14 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from experiments.cordis.tree_boot import (  # noqa: E402
-    WANT_CORES, WANT_FPS, WANT_GODHAND, WANT_TD, config_path, mount_tree,
+    WANT_CORES, WANT_FPS, WANT_GODHAND, WANT_PUZZLE, WANT_TD, config_path,
+    mount_tree,
 )
 from experiments.cordis.godhand_kernel import START_MANA  # noqa: E402
 from experiments.cordis.fps_kernel import START_AMMO  # noqa: E402
+from experiments.cordis.puzzle_kernel import (  # noqa: E402
+    DEMO_SEEDS, HANDMADE_LEVELS,
+)
 from experiments.cordis.tower_defense_kernel import (  # noqa: E402
     START_GOLD, WAVES as TD_WAVES,
 )
@@ -40,6 +45,7 @@ CONFIGS = {
     'godhand': ('cordis.godhand.yml', WANT_GODHAND),
     'fps': ('cordis.fps.yml', WANT_FPS),
     'cores': ('cordis.cores.yml', WANT_CORES),
+    'puzzle': ('cordis.puzzle.yml', WANT_PUZZLE),
 }
 
 
@@ -159,6 +165,60 @@ async def run_fps(ctx, seeds=None):
     await _rollback(ctx, kernel, render, 'FPSKERNEL')
 
 
+def _replay_to_win(ctx, kernel, max_t=120.0):
+    """用 auto-pilot（求解器回放）把当前关玩到胜，返回用时。"""
+    dt = 1.0 / 60.0
+    t = 0.0
+    rules = ctx.rules
+    while rules.state() != 'won' and t < max_t:
+        kernel.auto_step(dt)
+        ctx.entity.update(dt)
+        t += dt
+    return t
+
+
+async def run_puzzle(ctx, seeds=None):
+    """方块解谜：手工关 + 种子生成关全部「求解器回放到胜」（§11.6 验收 1/2）。"""
+    kernel = ctx.puzzle
+    grid = ctx.grid
+    render = ctx.render
+    rules = ctx.rules
+    seed_list = list(seeds) if seeds else list(DEMO_SEEDS)
+    print(f"[config] handmade={len(HANDMADE_LEVELS)} gen_seeds={len(seed_list)} "
+          f"cells={grid.n} boxes={grid.box_total}")
+    assert render.live_count() > 0, "GL 资源未取得"
+
+    # ---- 手工教学关：必须可解且回放到胜 ----
+    for k, lv in enumerate(HANDMADE_LEVELS):
+        kernel.load_level(lv)
+        sol = grid.solve()
+        assert sol is not None, f"手工关 {k}（{lv['meta']['name']}）不可解"
+        t = _replay_to_win(ctx, kernel)
+        assert rules.state() == 'won', f"手工关 {k} 回放未胜"
+        print(f"RESULT handmade[{k}] name={lv['meta']['name']} moves={len(sol.moves)} "
+              f"pushes={sol.pushes} t={t:.2f}")
+
+    # ---- 生成关：多种子（生成器已验证可解；这里独立复验 + 回放）----
+    results = []
+    for sd in seed_list:
+        kernel.load_generated(int(sd))
+        sol = grid.solve()
+        assert sol is not None, f"种子 {sd} 生成关不可解（生成器/求解器不一致！）"
+        assert sol.pushes >= kernel.ctx.grid.box_total, f"种子 {sd} 推数过少（平凡关）"
+        t = _replay_to_win(ctx, kernel)
+        assert rules.state() == 'won', f"种子 {sd} 回放未胜"
+        assert kernel.steps == len(sol.moves), \
+            f"种子 {sd} 步数 {kernel.steps} != 解长 {len(sol.moves)}（回放漂移）"
+        print(f"RESULT seed={sd} name={kernel.level_name} moves={len(sol.moves)} "
+              f"pushes={sol.pushes} t={t:.2f}")
+        results.append((int(sd), len(sol.moves), sol.pushes))
+    if len(results) > 1:
+        mv = [m for _, m, _ in results]
+        print(f"[seeds] {len(results)}/{len(results)} 通关  "
+              f"解长 {min(mv)}~{max(mv)} 步")
+    await _rollback(ctx, kernel, render, 'BOXWARD')
+
+
 async def run_cores(ctx):
     """全共同核自检（P0-4）：断言 10 个共同核均经配置树挂载且**可用**。
 
@@ -210,24 +270,27 @@ async def run_one(kind, seeds=None):
         await run_godhand(ctx)
     elif kind == 'cores':
         await run_cores(ctx)
-    else:
+    elif kind == 'fps':
         await run_fps(ctx, seeds)
+    else:
+        await run_puzzle(ctx, seeds)
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="试点三 cordis.yml 配置树引导")
     ap.add_argument('kind', nargs='?', default='all',
-                    choices=['td', 'godhand', 'fps', 'cores', 'all'],
+                    choices=['td', 'godhand', 'fps', 'puzzle', 'cores', 'all'],
                     help='运行哪个配置树（默认 all；cores = 全共同核自检）')
     ap.add_argument('--seeds', default=None,
-                    help='fps 专属：逗号分隔多种子回归（如 --seeds 20261010,11,22）'
-                         '——每种子 restart 各跑一局，全部须通关')
+                    help='fps/puzzle 专属：逗号分隔多种子回归（如 --seeds 20261010,11,22）'
+                         '——每种子各跑一局，全部须通关')
     args = ap.parse_args(argv)
-    if args.seeds and args.kind != 'fps':
-        ap.error('--seeds 仅支持 fps')
+    if args.seeds and args.kind not in ('fps', 'puzzle'):
+        ap.error('--seeds 仅支持 fps / puzzle')
     seeds = ([int(s) for s in args.seeds.split(',') if s.strip()]
              if args.seeds else None)
-    kinds = (['td', 'godhand', 'fps', 'cores'] if args.kind == 'all' else [args.kind])
+    kinds = (['td', 'godhand', 'fps', 'puzzle', 'cores']
+             if args.kind == 'all' else [args.kind])
     for k in kinds:
         print(f"\n########## 配置树：{k} ##########")
         asyncio.run(run_one(k, seeds))

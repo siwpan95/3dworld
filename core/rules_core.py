@@ -2,11 +2,12 @@
 """规则共同核 ``rules``（实现 ``core.contracts.RulesCore``）。
 
 自 ``experiments/cordis/tower_defense_kernel`` 上提的**跨内核共享实现**（P0-1 去重）：
-波次 / 胜负状态机。事件驱动（``on_event``），覆盖三类内核的胜负口径：
+波次 / 胜负状态机。事件驱动（``on_event``），覆盖四类内核的胜负口径：
 
 * 塔防：``leak``（漏怪扣基地血）/ ``wave_cleared``（过波）
 * 神之手：``settlements_cleared``（敌方聚落全清）
 * 射线 FPS：``player_hit`` / ``exit_reached``
+* 归仓（方块解谜）：``puzzle_solved``（全部箱子入仓）
 
 > 依赖：仅 ``cordis``（vendored）。默认值与原塔防常量一致，保证行为不变。
 """
@@ -64,6 +65,9 @@ class RulesService(Service):
                 self._state, self.lost = 'lost', True
         elif t == 'exit_reached':
             # 射线 FPS：抵达出口 -> 胜
+            self._state, self.won = 'won', True
+        elif t == 'puzzle_solved':
+            # 归仓（P1-④ 方块解谜）：全部箱子入仓 -> 胜
             self._state, self.won = 'won', True
 
     def reset(self):

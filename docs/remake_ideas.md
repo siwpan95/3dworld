@@ -185,9 +185,15 @@ DeepSeek Harness 的运行时内核。
   新增 `config_boot fps --seeds` 多种子回归入口（10/10 绿）。详见 §10.10。
   实机录制 / 截图 / 帧率实测仍待本机补跑（沙箱 GL 受限）。
 
-**下一步**：P1-④「先问」已收口（全哥四答：3D 方块解谜 / **带关卡编辑器** / 光栅贪心合批 /
-最小切片+程序化关卡），设计 note 见 §11「归仓 / Boxward」——**待全哥 review 放行后执行**；
-Rayhold 平衡的人工难度复调等本机实测数据。
+**P1-④ 归仓 / Boxward（2026-10-10）**
+- **P1-④「归仓 / Boxward」已执行完毕**（设计 note `0db37cc` → 全哥放行「按 note 执行」→ 执行，§11.9）：
+  内核 `puzzle_kernel.py`（GridService + PuzzleKernel + 反向拉箱生成器 + BFS 求解器 +
+  贪心网格化补齐 `world_mesh`）、`cordis.puzzle.yml`、`demos/boxward.py`（编辑器 + auto-play）、
+  `greedy_mesh.py`（共同核算法件）+ 6 项单测；`config_boot all` 四内核全绿、
+  10/10 生成种子回放全胜（`BOXWARD_OK`，GL 3→0）。
+
+**下一步**：Rayhold 平衡与 Boxward 实机手感等本机实测数据复调；P1-⑤ 候选待全哥点菜
+（roadmap §6 之外的延伸：机关/地形变体加进 Boxward、或开新内核）。
 
 ---
 
@@ -455,5 +461,35 @@ Rayhold 平衡的人工难度复调等本机实测数据。
 - **视角旋转的方向映射**（屏幕方向 ↔ 格方向）→ 4 状态映射纯函数 + 单测；
 - **GLSL 沙箱不可编译**→ 优先复用已验证的引擎着色器，新写则逐段复查（§10.10 惯例）；
 - **命名**→ 执行前补一轮撞名核验，解耦保改名自由。
+
+### 11.9 执行结果（2026-10-10，commit 见 §8）
+
+- **内核**：`puzzle_kernel.py`（约 560 行）——`GridService`（grid：JSON schema 单一事实来源 +
+  BFS 求解器 `(玩家,箱集)` 状态 + 角落死格剪枝 + 20 万状态上限 + **反向拉箱生成器** +
+  `world_mesh` 贪心网格化，SdfVoxelCore 留白补齐）+ `PuzzleKernel`（puzzle：step/undo/reset/
+  next_level/auto_play、步数与推数、事件 move/push/goal/blocked/undo/solved、编辑器摆格、
+  GL 句柄 `ctx.effect` 回滚）。3 个手工关以 ASCII 内嵌（直推 / 转向 / 双箱排队）。
+  `RulesService` 加 `puzzle_solved` 事件分支。
+- **执行中修的一个真 bug**：生成器第一版把"拉箱"写成了玩家与箱子**交换位置**
+  （非法动作）→ 打乱状态根本不可解，448 次尝试全灭。改为标准**反向拉箱**
+  （玩家在箱外侧走一步、箱跟进原格——每步拉恰好被一次反向推撤销，可解性由构造保证），
+  10/10 种子立即全过。
+- **demo**：`demos/boxward.py`——正交 45° 视角（`OrbitCamera` 复用，Q/E 90° 步进），
+  WASD 方向随相机映射（`cam_move_dirs` 纯函数 + 单测）；静态墙一次贪心建网（换关重建），
+  箱/玩家/目标动态小 cube；目标金色呼吸光、箱入仓变绿；编辑器（M 摆格 / X 试解 /
+  E 导出 `experiments/cordis/levels/*.json` / C 清内墙）；音效 6 合成；
+  `--flag auto / seedN / level=路径`；record 入口 `boxward_60s`。
+- **验收（§11.6 全过）**：
+  1. `config_boot all` 四内核全绿（td/godhand/fps/puzzle）；
+  2. `config_boot puzzle`：3 手工关（par 3/12/12 步）+ **10 种子生成关全部求解回放到胜**
+     （解长 15~31 步，推数 6~10），`steps == len(sol.moves)` 回放无漂移断言过，GL `3→0`
+     → `BOXWARD_OK`；
+  3. `greedy_mesh` 单测：3×3 墙块 21→5 quad、矩形合并/L 形/空墙；求解器最小解 + 死角判死；
+     生成器 3 种子构造性可解；`cam_move_dirs` 四档映射——**6 项单测全绿**
+     （并入 `tests/run_tests.py`，`ALL_LOGIC_TESTS_PASSED`）。
+- 教训入档：**单测期望值要独立重算**——相机映射测试首版把 rot=1 的 D 方向写反
+  （屏幕右应为 +x），实现正确、期望错误，测试失败反而抓的是测试自己的错。
+- 待办：实机录制/截图/帧率实测需本机补跑（沙箱 pyglet 原生 GL 受限，惯例）；
+  命名执行前核验已完成（Boxward 无精确占用）。
 
 

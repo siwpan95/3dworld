@@ -1,0 +1,35 @@
+# 试点三 · cordis.yml 配置树（方块解谜「归仓 / Boxward」· P1-④）
+#
+# 声明「本次挂哪些插件」——共同核 + 内核全由配置驱动；Cordis 按 inject 依赖图自动
+# 排序挂载（PuzzleKernel.inject = [render, entity, rules, grid]，零手工编排）。
+# 扁平 entry 列表（嵌套 plugin-group 会让子服务对根 ctx 不可见，见 cordis.godhand.yml 注释）。
+#
+# 平衡参数集中在本文件：改种子/边长/箱子数/起始关都不用动 Python。
+#   seed        —— 生成关种子（同种子 → 同关卡，录制与 headless 验收可锁定）
+#   cells       —— 生成关边长（含外墙圈）
+#   boxes       —— 生成关箱子数
+#   start_level —— 内核开局加载的手工关序号（0=直推 1=转向 2=双箱排队）
+#
+# 本文件同时是 demos/boxward.py 的实际挂载声明（tree_boot.mount_tree 加载本文件）——
+# 「demo 怎么挂的 = headless 验证怎么挂的」，接线只有这一份。
+#
+# 运行（headless 验证）：python experiments/cordis/config_boot.py puzzle
+- name: experiments.cordis.services.render
+  id: render
+- name: experiments.cordis.services.entity
+  id: entity
+- name: experiments.cordis.services.rules
+  id: rules
+  config:
+    base_hp: 100              # 本内核不用血量；字段保持契约默认
+- name: experiments.cordis.services.grid
+  id: grid
+  config:
+    seed: 20261010
+    cells: 13
+    boxes: 4
+- name: experiments.cordis.services.puzzle
+  id: puzzle
+  config:
+    seed: 20261010
+    start_level: 0

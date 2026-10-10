@@ -1150,6 +1150,111 @@ def test_kid_a_doors_connected():
     print('  ok: kid_a 全模版各门互通 + 出生点可离开区块（3 种子）')
 
 
+# ============================================================ P1-④ 归仓 / Boxward ==
+def _bare_grid(seed=1, n=13, boxes=4):
+    """绕开 cordis Service 构造（不需 ctx）的 GridService（solve/generate 均 ctx-free）。"""
+    from experiments.cordis import puzzle_kernel as pk
+    g = object.__new__(pk.GridService)
+    g.seed, g.n, g.box_total = seed, n, boxes
+    return g
+
+
+def test_greedy_merge_rects():
+    from experiments.cordis import greedy_mesh as gm
+    mask = [[True, True], [True, True]]
+    assert gm.merge_rects(mask, 2, 2) == [(0, 0, 2, 2)]
+    mask = [[True, True, False], [True, False, False]]
+    rects = gm.merge_rects(mask, 2, 3)
+    assert len(rects) == 2, rects
+    assert gm.merge_rects([[False] * 3 for _ in range(2)], 2, 3) == []
+    print('  ok: 贪心矩形 2x2 合一 / L 形拆二 / 空表零矩形')
+
+
+def test_greedy_mesh_layer_counts():
+    from experiments.cordis import greedy_mesh as gm
+    walls = {(i, j) for i in range(1, 4) for j in range(1, 4)}   # 7x7 场地中央 3x3 墙块
+    pos, shade = gm.layer_mesh(walls, 7, 7)
+    assert len(pos) % 18 == 0, '三角汤必须是整 quad（18 float）'
+    merged = gm.quad_count(pos)
+    naive = gm.naive_quad_count(walls, 7, 7)
+    assert merged == 5, f'3x3 墙块应合并为 5 个 quad（顶1+侧4），实际 {merged}'
+    assert merged < naive, f'合并后 {merged} 应小于逐块 {naive}'
+    # 空墙 → 零几何
+    pos0, _ = gm.layer_mesh(set(), 5, 5)
+    assert len(pos0) == 0
+    print(f'  ok: 贪心网格化 3x3 墙块 {naive}→{merged} quad；空墙零输出')
+
+
+def test_solver_minimal_solution():
+    g = _bare_grid()
+    lv = pk_level('''
+#######
+#P B G#
+#     #
+#     #
+#######
+''', '直推')
+    sol = g.solve(lv)
+    assert sol is not None
+    assert sol.pushes == 2 and len(sol.moves) == 3, sol
+    # 回放校验：按 moves 走完箱全在目标上
+    boxes = set(map(tuple, lv['boxes']))
+    pos = tuple(lv['player'])
+    for di, dj in sol.moves:
+        t = (pos[0] + di, pos[1] + dj)
+        if t in boxes:
+            boxes.discard(t)
+            boxes.add((t[0] + di, t[1] + dj))
+        pos = t
+    assert boxes == set(map(tuple, lv['goals'])), '回放未达成'
+    print('  ok: 求解器最小解（直推关 3 步 2 推）+ 回放达成')
+
+
+def test_solver_unsolvable():
+    g = _bare_grid()
+    lv = pk_level('''
+#####
+#B  #
+# G #
+#P  #
+#####
+''', '死角')
+    assert g.solve(lv) is None, '角落死箱应判不可解'
+    print('  ok: 求解器正确判死（角落箱不可推动）')
+
+
+def test_generate_solvable_by_construction():
+    g = _bare_grid(seed=20261010)
+    from experiments.cordis.puzzle_kernel import MIN_PUSHES
+    for seed in (20261010, 11, 22):
+        data = g.generate(seed)
+        sol = g.solve(data)
+        assert sol is not None, f'seed {seed} 生成关不可解'
+        assert sol.pushes >= MIN_PUSHES, f'seed {seed} 推数 {sol.pushes} 过少'
+        # 箱不入死格、箱目标数一致
+        assert len(data['boxes']) == len(data['goals'])
+    print('  ok: 反向拉箱生成器 3 种子全可解且不平凡')
+
+
+def test_cam_move_dirs_mapping():
+    from experiments.cordis.puzzle_kernel import cam_move_dirs
+    d0 = cam_move_dirs(0)                      # 相机在 +x 看 -x
+    assert d0['W'] == (0, -1) and d0['S'] == (0, 1)
+    assert d0['D'] == (-1, 0) and d0['A'] == (1, 0)
+    d1 = cam_move_dirs(1)                      # 相机转 90°（在 +z 看 -z）
+    assert d1['W'] == (-1, 0) and d1['S'] == (1, 0)
+    assert d1['D'] == (0, 1) and d1['A'] == (0, -1)   # 屏幕右 = +x
+    # 四档 W 方向互不相同（旋转映射无重合）
+    ws = {cam_move_dirs(r)['W'] for r in range(4)}
+    assert len(ws) == 4
+    print('  ok: 相机 90° 步进的方向映射（W/D 随档位正确旋转）')
+
+
+def pk_level(art, name):
+    from experiments.cordis.puzzle_kernel import parse_level
+    return parse_level(art, name)
+
+
 if __name__ == '__main__':
     print('test_camera_initial_pose');     test_camera_initial_pose()
     print('test_camera_clamps');           test_camera_clamps()
@@ -1191,4 +1296,10 @@ if __name__ == '__main__':
     print('test_kid_a_worldmap_exits_connected'); test_kid_a_worldmap_exits_connected()
     print('test_kid_a_energy_and_fragments');     test_kid_a_energy_and_fragments()
     print('test_kid_a_doors_connected');          test_kid_a_doors_connected()
+    print('test_greedy_merge_rects');             test_greedy_merge_rects()
+    print('test_greedy_mesh_layer_counts');       test_greedy_mesh_layer_counts()
+    print('test_solver_minimal_solution');        test_solver_minimal_solution()
+    print('test_solver_unsolvable');              test_solver_unsolvable()
+    print('test_generate_solvable_by_construction'); test_generate_solvable_by_construction()
+    print('test_cam_move_dirs_mapping');          test_cam_move_dirs_mapping()
     print('ALL_LOGIC_TESTS_PASSED')
