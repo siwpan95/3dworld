@@ -193,8 +193,9 @@ DeepSeek Harness 的运行时内核。
   10/10 生成种子回放全胜（`BOXWARD_OK`，GL 3→0）；与全哥 P0 共同核抽离线
   rebase 对齐后推送，最终 commit `0d22d04`（IN_SYNC=0 0）。
 
-**下一步**：Rayhold 平衡与 Boxward 实机手感等本机实测数据复调；P1-⑤ 候选待全哥点菜
-（roadmap §6 之外的延伸：机关/地形变体加进 Boxward、或开新内核）。
+**下一步**：P1-⑤「弹潮 / Swarmward」（弹幕固定屏射击）先问已收口（全哥四答：弹幕方向 /
+全向生存 / 程序化编波 / 双摇杆），设计 note 见 §12——**待全哥 review 放行后执行**；
+Rayhold 平衡与 Boxward 实机手感等本机实测数据复调。
 
 ---
 
@@ -497,5 +498,81 @@ DeepSeek Harness 的运行时内核。
   `core/rules_core.py` 的共享实现，`puzzle_solved` 分支随之落进共同核新家
   （tower_defense_kernel 只留 re-export）；`config_boot all` 扩为**五项回归**
   （td/godhand/fps/puzzle/cores）全绿。最终 commit `0d22d04`（rebase 前为 `21a63ce`）。
+
+---
+
+## 12. P1-⑤ 弹幕固定屏射击 · 设计 note（「弹潮 / Swarmward」）
+
+> 状态：规划（待全哥 review 放行后执行）
+> 机制致敬：**Robotron 2084**(1982, Williams) 的「固定屏全向生存 + 双摇杆」品类——
+> **不碰原 IP 名称与素材**（Robotron / Geometry Wars 等既有名一律避开，合规见 §7）。
+
+### 12.1 命名与撞名核验
+- **「弹潮 / Swarmward」**：swarm（敌潮/弹潮）+ -ward（家族第五作：Roadwarden / Rayhold /
+  Boxward / Swarmward）；中文取「弹幕如潮、守屏求生」。
+- 核验记录（2026-10-11，WebSearch）：①`"Swarmward" game` → **无精确占用**
+  （近似：Swarm 2011 平台游戏、SWARMED 2026 arena roguelite——均不同名）；
+  ②备选 Stormward → **有占用**（Minecraft mod 1.3K 下载活跃更新 + TTS 卡牌 Ghaiaz:
+  Stormward）→ 弃用。执行前再补一轮核验；产品名与代码名（storm）解耦。
+
+### 12.2 先问结论（全哥 2026-10-11 定）
+| 问题 | 结论 |
+| --- | --- |
+| P1-⑤ 方向 | **弹幕固定屏射击**（四选一胜出——particles/pathing 的**首个内核消费者**，范围最小，街机手感延续 Rayhold 的 Aimlabs 打磨经验） |
+| 玩法形态 | **全向生存**（固定屏全向刷敌，非横排清版/非规避弹幕 boss） |
+| 波次来源 | **程序化编波**（延续 Boxward 生成器理念；手工只做教学波） |
+| 操作布局 | **双摇杆**（WASD 移动 + 方向键/鼠标射击） |
+
+### 12.3 切片范围
+- **做**：固定屏全向生存（10 波通关制 + `--flag endless` 无尽）、敌型 3 种
+  （直冲 chaser / 游走射击 weaver / 编队蜂群 drone）、程序化编波（种子+波号 →
+  数量/混比/编队图案/速度曲线）、`pathing.formation` 编队进场、双摇杆、
+  连击窗口 + 计分（economy 存 score）、Aimlabs 手感件（hitmarker / 连击数字 /
+  **量化结算**：命中率/最长连击/波数/击杀/得分）、粒子反馈（爆炸/命中火花/尾焰，
+  particles 核）、auto-pilot 闪避 AI、6 合成音效、录制入口。
+- **不做**（下轮延伸素材）：boss 波与弹幕图案生成器（螺旋/花瓣——§12.2 形态问里
+  的规避弹幕素材）、升级/roguelite 构建、排行榜、手柄支持、多场景/主题。
+
+### 12.4 复用 vs 自建
+| 复用（含两个"首个内核消费者"） | 自建 |
+| --- | --- |
+| **particles**（emit/update，CPU 状态 headless 安全）——**首个内核消费者**：爆炸/命中/尾焰 | StormKernel（storm）：波次生成器 + 碰撞（三组圆测试 O(n²)，屏内实体量级可控） |
+| **pathing.formation**（ring/line 编队）——**首个内核消费者**：敌群进场图案（诚实评估：find_path 在固定屏无用，消费面=编队+游走） | 敌 AI 状态机（进场→阵位→散开攻击） |
+| rules **原样复用**：lives=3 复用 base_hp、`wave_cleared`（total_waves=10 → won）、`player_hit`（→lost）——零改动 | 连击窗口计时（3s 内连杀累积） |
+| economy 存 score 计分；entity 实体注册；render GL 记账 + `ctx.effect` 回滚 | auto-pilot 闪避 AI（威胁度采样转向 + 最近敌锁定） |
+| Aimlabs 手感件（§10.10 的 hitmarker/结算思路平移）；boxward 的正交相机/vertex_list 骨架 | 无 |
+
+### 12.5 落地架构
+- **固定屏世界** 24×15 世界单位，正交相机全屏（boxward 同款骨架）；粒子用 y=0 平面
+  （gravity=0），把粒子核的 3D 状态映射到屏面。
+- **波次生成** `wave_plan(seed, wave_i)` → dict(count, mix{chaser/weaver/drone},
+  formation{ring/line/v}, speed_mult)，难度单调递增；教学波硬编码 1-2 个。
+- **auto-pilot = 闪避 AI**：敌弹威胁度采样转向 + 最近敌锁定射击——headless 验收、
+  `--flag auto` 录制同源（§10/§11 理念延续）。
+- **10 波通关制**：headless 断言 won 干净利落；`--flag endless` 实机无尽模式。
+- 文件清单：`storm_kernel.py`、`services/storm.py`、`cordis.storm.yml`、
+  `tree_boot.WANT_STORM = ('storm','render','rules','economy','entity','particles','pathing')`、
+  `config_boot.py storm 分支（all 六项）`、`demos/swarmward.py`、`record_all.py stormward_60s`、
+  tests 增补、README 20→21、remake_ideas §12.9。
+
+### 12.6 验收标准
+1. `config_boot all` 六项全绿（td/godhand/fps/puzzle/cores/storm）；
+2. `config_boot storm --seeds …`：10 种子 × 10 波 auto-pilot 全通关（won）+ 结算统计打印
+   + GL 回滚 → `STORMKERNEL_OK`；
+3. 单测：波次难度单调性（波 i 各参数 ≥ 波 i-1）、编队图案几何（ring/line 位置与数量）、
+   碰撞判定（已知布局命中/未命中）、连击窗口计时；
+4. demo `py_compile` + smoke；实机录制/截图/手感验证本机补跑（惯例）。
+
+### 12.7 待核实 API
+- `pathing.formation` 的 pattern 取值范围（ring 已确认；line/arc 读源码后定，缺则自算不扩核）；
+- particles preset dict 直传（emit 支持自定义 speed/life/gravity ✓ 已读源码确认）——观感待实机；
+- 正交固定屏 × harness 截图管线（boxward 已验证同款，低风险）。
+
+### 12.8 风险
+- **高波次碰撞 CPU 压力**（50+ 敌 × 100+ 弹 O(n²)）→ 先实测，不达标上网格分桶；
+- **auto-pilot 闪避在密集弹幕下不稳** → 威胁度阈值调参 + 10 种子回归把关；
+- **particles 观感**（CPU 侧简单步进）→ 实机先看，不够再谈 GPU 实例化（P2 素材）；
+- **命名**→ 执行前补一轮撞名核验（Swarmward 目前干净）。
+
 
 
