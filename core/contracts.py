@@ -476,47 +476,48 @@ class SdfVoxelCore(Protocol):
 # 注册表：单一事实来源（供 Cordis 接线 / 文档生成直接消费）
 # ===========================================================================
 CORES: dict[str, dict[str, Any]] = {
-    'render':    dict(service='render',    contract=RenderCore,    module='engine.renderer',
+    'render':    dict(service='render',    contract=RenderCore,    module='core.render_core',
                       status='已具备',
-                      note='Renderer + shaders + EngineApp 已在位，可直接 wrap 成服务'),
-    'terrain':   dict(service='terrain',   contract=TerrainCore,   module='demos.terrain_flyover',
-                      status='部分已具备',
-                      note='height_at/color_at 已具备；edit_height/rebuild_mesh 抽离到核心待写'),
-    'entity':    dict(service='entity',    contract=EntityCore,    module='(待建)',
-                      status='待抽离',
-                      note='mountain 的 objects/plants 是雏形，需统一实体管理'),
+                      note='RenderService（core/render_core.py）：GL 资源原语 + 记账 + 可逆回滚'),
+    'terrain':   dict(service='terrain',   contract=TerrainCore,   module='core.terrain_core',
+                      status='已具备',
+                      note='TerrainService（core/terrain_core.py）：height_at/color_at/edit_height/rebuild_mesh/ground_height'),
+    'entity':    dict(service='entity',    contract=EntityCore,    module='core.entity_core',
+                      status='已具备',
+                      note='EntityService（core/entity_core.py）：通用实体注册表'),
     'input':     dict(service='input',     contract=InputCore,     module='engine.camera',
                       status='部分已具备',
                       note='OrbitCamera/FlyCamera + harness 事件已具备；动作映射层待写'),
     'hud':       dict(service='hud',       contract=HudCore,       module='engine.hud',
-                      status='已具备',
-                      note='Hud + mountain overlay 已具备'),
-    'pathing':   dict(service='pathing',   contract=PathingCore,   module='logic.boids',
                       status='部分已具备',
-                      note='Flock 群体行为已具备；网格 A* + 编队调度待写'),
-    'economy':   dict(service='economy',   contract=EconomyCore,   module='(待建)',
-                      status='待抽离',
-                      note='没有任何游戏经济系统，需从零建'),
-    'audio':     dict(service='audio',     contract=AudioCore,     module='engine.audio',
+                      note='Hud + mountain overlay 已具备；未抽成独立服务（P0-1 延后）'),
+    'pathing':   dict(service='pathing',   contract=PathingCore,   module='core.pathing_core',
                       status='已具备',
-                      note='Track/render_wav/TimelineAudio/SfxPlayer 已具备'),
-    'timeline':  dict(service='timeline',  contract=TimelineCore,  module='engine.timeline',
+                      note='PathingService（core/pathing_core.py）：网格 A* + 编队 + Flock 群体'),
+    'economy':   dict(service='economy',   contract=EconomyCore,   module='core.economy_core',
                       status='已具备',
-                      note='Sampler/Channel/Timeline/PlaybackController 已具备'),
-    'particles': dict(service='particles', contract=ParticlesCore, module='demos.particles_gpu',
-                      status='部分已具备',
-                      note='particles_gpu 已是完整 demo，封装成核心待写'),
-    'rules':     dict(service='rules',     contract=RulesCore,     module='(待建)',
-                      status='待抽离',
-                      note='胜负/波次状态机需从零建'),
-    'sdf':       dict(service='sdf',       contract=SdfVoxelCore,  module='demos.raymarch_sdf',
-                      status='部分已具备',
-                      note='raymarch_sdf/voxel_terrain/blockworld 已是 demo，封装成核心待写'),
+                      note='EconomyService（core/economy_core.py）：资源存量 + 花费校验'),
+    'audio':     dict(service='audio',     contract=AudioCore,     module='core.audio_core',
+                      status='已具备',
+                      note='AudioService（core/audio_core.py）：Track/render_wav/TimelineAudio/SfxPlayer'),
+    'timeline':  dict(service='timeline',  contract=TimelineCore,  module='core.timeline_core',
+                      status='已具备',
+                      note='TimelineService（core/timeline_core.py）：Sampler/Channel/Timeline/PlaybackController'),
+    'particles': dict(service='particles', contract=ParticlesCore, module='core.particles_core',
+                      status='已具备',
+                      note='ParticlesService（core/particles_core.py）：粒子状态 + 数值步进（headless 安全）'),
+    'rules':     dict(service='rules',     contract=RulesCore,     module='core.rules_core',
+                      status='已具备',
+                      note='RulesService（core/rules_core.py）：波次/胜负状态机（塔防/神之手/FPS 三口径）'),
+    'sdf':       dict(service='sdf',       contract=SdfVoxelCore,  module='core.sdf_core',
+                      status='已具备',
+                      note='SdfVoxelService（core/sdf_core.py）：体素读写 + 面剔除网格 + 程序记账'),
 }
 
-# 有现成代码、可抽离/封装成 Cordis 服务（P0 首批封装候选）：除「待抽离(无代码)」外都算
+# P0-1（2026-10-10）后：12 核均已有实现（core/*_core.py 或 engine/*），无「待抽离」项
+# 有现成实现、可 provide 成 Cordis 服务的核心：
 WRAPPABLE_CORES = [name for name, meta in CORES.items() if meta['status'] != '待抽离']
-# 需要从零新建的核心（真正工作量与风险所在）
+# 仍需从零新建的核心（P0-1 完成后应为空列表）
 FROM_SCRATCH_CORES = [name for name, meta in CORES.items() if meta['status'] == '待抽离']
 
 # 兼容别名：status_table() 与文档引用使用（语义同 WRAPPABLE/FROM_SCRATCH）
@@ -577,7 +578,18 @@ def verify(verbose: bool = True) -> dict[str, Any]:
             results[name] = 'ok'
             if verbose:
                 print(f'  [verify] {name}: OK (模块 {mod} 可 import)')
-        except Exception as e:  # 缺依赖 / 路径写错等
+        except ImportError as e:
+            # core.* 的实现继承 cordis.Service —— 未暴露 cordis 时记为 pending 而非 err
+            # （契约层本身仍不依赖 cordis；这里只是"实现层"的运行时依赖）
+            if 'cordis' in str(e):
+                results[name] = 'pending:cordis'
+                if verbose:
+                    print(f'  [verify] {name}: pending（需 cordis：设 CORDIS_SRC 或经 .pth 暴露）')
+            else:
+                results[name] = f'err:{e.__class__.__name__}'
+                if verbose:
+                    print(f'  [verify] {name}: ERR {e.__class__.__name__}: {e}')
+        except Exception as e:  # 路径写错等
             results[name] = f'err:{e.__class__.__name__}'
             if verbose:
                 print(f'  [verify] {name}: ERR {e.__class__.__name__}: {e}')

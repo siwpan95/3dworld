@@ -56,11 +56,11 @@ except ImportError:
 
 from cordis import Context, Service  # noqa: E402
 
-# 复用已确立的共同核（不依赖 GL，可安全 import）；走「包路径」导入，
-# 保证全仓只有一份 tower_defense_kernel（顶层名会造出第二份模块副本）。
-from experiments.cordis.tower_defense_kernel import (  # noqa: E402
-    RenderService, EconomyService, EntityService, RulesService,
-)
+# P0-1（2026-10-10）：共同核实现已上提至 core/，此处直接从 core 取（跨内核复用）。
+from core.render_core import RenderService      # noqa: E402
+from core.economy_core import EconomyService    # noqa: E402
+from core.entity_core import EntityService      # noqa: E402
+from core.rules_core import RulesService        # noqa: E402
 # 12 核契约（仅作类型参考，不强制）
 from core.contracts import TerrainCore  # noqa: E402  (F401 保留语义引用)
 
@@ -84,86 +84,9 @@ SETTLEMENT_POS = [
 
 
 # ===================================================================== 地形共同核
-class TerrainService(Service):
-    """可编辑高度场（实现 TerrainCore 契约：height_at / color_at / regenerate /
-    edit_height / rebuild_mesh / ground_height）。
-
-    headless 安全：纯数值网格，无 GL / 无随机依赖；``rebuild_mesh`` 仅生成顶点数组，
-    供 demo 渲染与 GL 记账使用。
-    """
-
-    def __init__(self, ctx, config):
-        super().__init__(ctx, "terrain")
-        cfg = config or {}
-        self.g = int(cfg.get('grid', GRID_T))
-        self.cell = float(cfg.get('cell', CELL_T))
-        self.half = self.g * self.cell / 2.0
-        self.sea = float(cfg.get('sea', SEA))
-        self.bury = float(cfg.get('bury', BURY))
-        # 确定性初始起伏（无随机依赖，便于离线复现）
-        self.h = [[0.0] * self.g for _ in range(self.g)]
-        self.regenerate(seed=0)
-
-    # -- TerrainCore 契约 --
-    def height_at(self, x: float, z: float, seed: int = None) -> float:
-        i = int((x + self.half) / self.cell)
-        j = int((z + self.half) / self.cell)
-        i = max(0, min(self.g - 1, i))
-        j = max(0, min(self.g - 1, j))
-        return self.h[i][j]
-
-    def color_at(self, h, slope=0.0, lambert=1.0, jitter=0.0):
-        if h < self.sea:
-            return (0.20, 0.45, 0.70)                 # 水下
-        if h > self.bury:
-            return (0.55, 0.50, 0.45)                 # 高山裸岩
-        t = (h - self.sea) / max(0.001, self.bury - self.sea)
-        return (0.20 + 0.25 * t, 0.45 + 0.25 * t, 0.16 + 0.10 * t)  # 草地梯度
-
-    def regenerate(self, seed: int = 0) -> None:
-        """用确定性相位重建整片地形（seed 改变起伏，但不引入随机）。"""
-        for i in range(self.g):
-            for j in range(self.g):
-                self.h[i][j] = 1.0 + 0.8 * math.sin(i * 0.6 + seed * 0.13) \
-                                     * math.cos(j * 0.5 - seed * 0.07)
-        # 边界略低，便于「挖海」形成环水
-        for i in range(self.g):
-            for j in range(self.g):
-                edge = min(i, j, self.g - 1 - i, self.g - 1 - j)
-                if edge == 0:
-                    self.h[i][j] -= 1.5
-
-    def edit_height(self, x: float, z: float, delta: float) -> None:
-        """神之手命门：在 (x, z) 处**增量修改**高度（抬山 + / 挖海 −）。"""
-        i = int((x + self.half) / self.cell)
-        j = int((z + self.half) / self.cell)
-        if 0 <= i < self.g and 0 <= j < self.g:
-            self.h[i][j] = max(-6.0, min(8.0, self.h[i][j] + delta))
-
-    def ground_height(self, x: float, z: float, from_y: float = 100.0) -> float:
-        return self.height_at(x, z)
-
-    def rebuild_mesh(self, *args, **kw):
-        """把当前高度场导出为地表网格（pos, shade），按高度上色。"""
-        pos, shade = [], []
-        g, cell, half = self.g, self.cell, self.half
-        for i in range(g - 1):
-            for j in range(g - 1):
-                x0 = -half + i * cell
-                z0 = -half + j * cell
-                x1, z1 = x0 + cell, z0 + cell
-                a = (x0, self.h[i][j], z0)
-                b = (x1, self.h[i + 1][j], z0)
-                c = (x1, self.h[i + 1][j + 1], z1)
-                d = (x0, self.h[i][j + 1], z1)
-                for p in (a, b, c, a, c, d):
-                    pos.extend(p)
-                    col = self.color_at(p[1])
-                    shade.extend(col)
-        return pos, shade
-
-    def __cordis_init__(self):
-        return None
+# P0-1（2026-10-10）：TerrainService 已上提至 core/terrain_core.py（跨内核复用）。
+# 此处 re-export 保持向后兼容。
+from core.terrain_core import TerrainService  # noqa: E402,F401
 
 
 def _water_quad():
