@@ -25,8 +25,22 @@ from __future__ import annotations
 import collections
 import json
 import math
+import os
 import random
+import sys
 from collections import namedtuple
+
+# ---- cordis 定位（与 td/godhand/fps 三个内核一致：vendored 源码可经 CORDIS_SRC 暴露）----
+_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+try:
+    import cordis  # noqa: F401
+except ImportError:
+    _src = os.environ.get('CORDIS_SRC')
+    if _src and os.path.isdir(_src):
+        sys.path.insert(0, _src)
+    import cordis  # noqa: F401
 
 from cordis import Service  # noqa: E402
 from experiments.cordis import greedy_mesh  # noqa: E402
