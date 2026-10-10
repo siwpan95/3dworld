@@ -12,17 +12,19 @@ hitscan 单武器 / 完整状态机 AI。
             内核在 `__cordis_init__` 生成迷宫、布敌与拾取、注入弹药、取得 GL 句柄；
 - update()  把输入（或 `--flag auto` 的自动驾驶）交给内核，并把内核事件转成音效；
 - render()  只读内核 / 迷宫状态：全屏片元着色器做 SDF 光线步进（墙 + 地板 + 敌人 +
-            光弹），准星 / 枪口闪光 / 受击红晕在同一 pass 里叠加。
+            光弹 + 拾取物悬浮球），出口格金色呼吸光；准星 / 枪口闪光 / 受击红晕
+            在同一 pass 里叠加。
 
 **CPU/GPU 同源**：命中判定（内核 DDA）与画面（着色器）用的是同一份迷宫数据——
 距离场由 `MazeService.distance_field()` 现算后以 uniform 数组传入，不另写一份。
 
 操作：WASD 移动   SHIFT 疾跑   鼠标拖动 转视角   左键（按住）射击
-      R 换一局（新种子）   M 切鼠标锁定   SPACE 暂停   ESC 退出
+      R 换一局（新种子）   M 切鼠标锁定   −/= 调灵敏度   SPACE 暂停   ESC 退出
 """
 import asyncio
 import math
 import os
+import random
 import sys
 import tempfile
 
@@ -67,12 +69,15 @@ uniform float u_wall_h;
 uniform float u_grid[225];    // 迷宫距离场（世界单位；索引 i*GRID_N+j）
 uniform vec4  u_enemy[16];    // xy = 位置, z = 类型+淡出编码, w = 受击白闪
 uniform vec4  u_bolt[8];      // xy = 位置, z = 1 有效
+uniform vec4  u_pick[8];      // xy = 位置, z = 类型(1=弹药 2=医疗), w = 浮动相位
+uniform vec2  u_exit;         // 出口格中心（世界坐标 xz）
 uniform float u_muzzle;       // 枪口闪光 0..1
 uniform float u_hurt;         // 受击红晕 0..1
+uniform vec2  u_hitmark;      // x = 命中标记强度 0..1, y = 1 击杀标记
 
 const int   GRID_N = 15;      // 必须与 cordis.fps.yml 的 cells 一致
-const int   MAX_STEPS = 96;
-const float T_MAX = 30.0;
+const int   MAX_STEPS = 88;
+const float T_MAX = 24.0;
 const float ENEMY_R = 0.62;   // 敌人造型半径（与内核命中判定同源）
 
 float grid_at(int i, int j) {
@@ -141,8 +146,8 @@ void main() {
     for (int i = 0; i < MAX_STEPS; i++) {
         vec3 p = u_eye + rd * t;
         float d = scene(p);
-        if (d < 0.0018 * t + 0.0008) { hit = true; break; }
-        t += d * 0.85;
+        if (d < 0.0024 * t + 0.0010) { hit = true; break; }
+        t += d * 0.90;
         if (t > T_MAX) break;
     }
     float t_wall = hit ? t : 1e9;
@@ -182,6 +187,21 @@ void main() {
             obj_glow = 1.0;
         }
     }
+    // ---- 拾取物（悬浮小球：弹药=琥珀、医疗=翠绿，上下浮动）----
+    for (int k = 0; k < 8; k++) {
+        vec4 pk = u_pick[k];
+        float py = 0.55 + 0.14 * sin(u_time * 2.6 + pk.w * 0.9);
+        float tt = (pk.z < 0.5) ? 1e9
+                 : sphere_t(u_eye, rd, vec3(pk.x, py, pk.y), 0.34);
+        if (tt < t_obj && tt < t_wall) {
+            t_obj = tt;
+            vec3 p = u_eye + rd * tt;
+            obj_n = normalize(p - vec3(pk.x, py, pk.y));
+            obj_col = (pk.z < 1.5) ? vec3(1.00, 0.72, 0.22)    // 弹药：琥珀
+                                   : vec3(0.40, 0.95, 0.55);   // 医疗：翠绿
+            obj_glow = 0.55;
+        }
+    }
 
     // ---- 着色 ----
     vec3 col;
@@ -194,6 +214,11 @@ void main() {
         vec3 n = calc_normal(p, t_wall);
         vec3 base = (n.y > 0.7) ? floor_color(p) : wall_color(p, n);
         col = base * (0.28 + 0.9 * max(dot(n, light_dir), 0.0));
+        // 出口格高亮：地板染金色呼吸光（找路的灯塔）
+        vec2 de = abs(p.xz - u_exit);
+        float in_exit = step(max(de.x, de.y), u_cell * 0.5) * step(0.7, n.y);
+        col = mix(col, vec3(1.00, 0.80, 0.30) * (0.55 + 0.30 * sin(u_time * 2.5)),
+                  in_exit * 0.6);
     } else {
         col = vec3(0.02, 0.022, 0.03);          // 兜底（射线打空）
     }
@@ -207,11 +232,24 @@ void main() {
              * smoothstep(0.30, 0.45, v_uv.x) * smoothstep(0.70, 0.55, v_uv.x);
     col += vec3(1.0, 0.82, 0.45) * mz * 0.55;
 
-    // 准星：屏幕中心小十字
+    // 准星：屏幕中心小十字（开火瞬间微扩，给"射击有反馈"）
     vec2 dc = abs(v_uv - vec2(0.5));
-    float cross = ((dc.x < 0.0016 && dc.y < 0.020)
-                || (dc.y < 0.0026 && dc.x < 0.020)) ? 1.0 : 0.0;
+    float arm = 0.020 + u_muzzle * 0.010;
+    float cross = ((dc.x < 0.0016 && dc.y < arm)
+                || (dc.y < 0.0026 && dc.x < arm)) ? 1.0 : 0.0;
     col = mix(col, vec3(0.95, 0.97, 1.0), cross * 0.75);
+
+    // 命中标记（aim trainer 式）：命中 = 白 X 一闪；击杀 = 琥珀大 X
+    if (u_hitmark.x > 0.003) {
+        vec2 hp = v_uv - vec2(0.5);
+        vec2 q = vec2(dot(hp, vec2(0.7071, 0.7071)), dot(hp, vec2(-0.7071, 0.7071)));
+        float a0 = 0.012 + 0.010 * u_hitmark.x;   // 内径随衰减外扩 → "弹开"观感
+        float a1 = a0 + 0.008 + 0.006 * u_hitmark.x;
+        float tick = ((abs(q.y) < 0.0016 && q.x > a0 && q.x < a1)
+                   || (abs(q.x) < 0.0016 && q.y > a0 && q.y < a1)) ? 1.0 : 0.0;
+        vec3 hc = (u_hitmark.y > 0.5) ? vec3(1.0, 0.78, 0.30) : vec3(1.0);
+        col = mix(col, hc, tick * u_hitmark.x * 0.95);
+    }
 
     // 受击红晕 + 暗角
     col = mix(col, vec3(0.65, 0.06, 0.06), u_hurt * 0.45);
@@ -224,7 +262,7 @@ void main() {
 class RayholdDemo(DemoApp):
     TITLE = '迷堡枪影 / Rayhold —— 射线 FPS（SDF 光线步进 · 程序化迷宫）'
     HELP = ('WASD 走   SHIFT 疾跑   鼠标拖动 转视角   左键（按住）射击   '
-            'R 换一局   M 鼠标锁定   SPACE 暂停   ESC 退出')
+            'R 换一局   M 鼠标锁定   −/= 灵敏度   SPACE 暂停   ESC 退出')
     DURATION = None          # 交互型：time 不取模，持续累加
     HUD = True
     SHOTS = ((7.0, 'docs/rayhold_a.png'),      # 迷宫中段：转角与敌人
@@ -244,17 +282,23 @@ class RayholdDemo(DemoApp):
         assert maze.n == GRID_N, \
             f'cordis.fps.yml 的 cells（{maze.n}）必须与着色器 GRID_N（{GRID_N}）一致'
         self._grid = self._grid_uniform()
+        self._exit_xy = maze.world_of(*maze.exit)   # 出口恒为 (n-2, n-2)，换种子不变
 
         # ---- 输入 ----
         self.keys = set()
         self._firing = False
         self._locked = False
+        self._refocus_lock = False
+        self._hitmark = 0.0                 # 命中标记强度（衰减）
+        self._hitkill = False               # 本次命中是否击杀（标记变色）
         self.window.push_handlers(
             on_mouse_press=self._on_press,
             on_mouse_release=self._on_release,
             on_mouse_motion=self._on_motion,
             on_key_press=self._on_key_press,
             on_key_release=self._on_key_release,
+            on_deactivate=self._on_deactivate,
+            on_activate=self._on_activate,
         )
 
         # ---- flags ----
@@ -275,6 +319,10 @@ class RayholdDemo(DemoApp):
                                          anchor_x='center', anchor_y='center',
                                          x=self.window.width // 2,
                                          y=self.window.height // 2, **kw)
+        self.sub_overlay = pyglet.text.Label('', font_size=20, color=(215, 220, 235, 255),
+                                             anchor_x='center', anchor_y='center',
+                                             x=self.window.width // 2,
+                                             y=self.window.height // 2, **kw)
 
     # -------------------------------------------------- Cordis 挂载 --
     def _boot_kernel(self):
@@ -315,6 +363,18 @@ class RayholdDemo(DemoApp):
             out[k * 4 + 2] = 1.0
         return tuple(out)
 
+    def _pick_uniform(self):
+        """拾取物 → 8×vec4：xy=位置，z=类型(1=弹药 2=医疗)，w=浮动相位；已拿走置 0。"""
+        out = [0.0] * (8 * 4)
+        for k, pk in enumerate(self.kernel.pickups[:8]):
+            if pk['taken']:
+                continue
+            out[k * 4 + 0] = float(pk['x'])
+            out[k * 4 + 1] = float(pk['z'])
+            out[k * 4 + 2] = 1.0 if pk['kind'] == 'ammo' else 2.0
+            out[k * 4 + 3] = float(k)
+        return tuple(out)
+
     # -------------------------------------------------- 输入 --
     def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
         self.kernel.look(-dx * self.LOOK_SPEED)
@@ -339,6 +399,28 @@ class RayholdDemo(DemoApp):
     def _on_key_release(self, symbol, modifiers):
         self.keys.discard(symbol)
 
+    def _on_deactivate(self):
+        # 窗口失焦（ALT-TAB 等）：清空按键/开火，防止回来后"角色自己一直走"；
+        # 若原本处于鼠标锁定，系统多半已释放独占——记下意图，回焦时重锁。
+        self.keys.clear()
+        self._firing = False
+        if self._locked:
+            self._refocus_lock = True
+            try:
+                self.window.set_exclusive_mouse(False)
+                self.window.set_mouse_visible(True)
+            except Exception:
+                pass
+
+    def _on_activate(self):
+        if self._refocus_lock:
+            self._refocus_lock = False
+            try:
+                self.window.set_exclusive_mouse(True)
+                self.window.set_mouse_visible(False)
+            except Exception:
+                pass
+
     def on_key(self, symbol, modifiers):
         if symbol == key.R:
             seed = (self.kernel.seed * 1103515245 + 12345) % (2 ** 31)
@@ -353,6 +435,13 @@ class RayholdDemo(DemoApp):
             except Exception as e:                  # 平台不支持就退回拖拽
                 print('[rayhold] exclusive mouse unavailable:', e, flush=True)
                 self._locked = False
+        elif symbol in (key.MINUS, key.EQUALS):
+            # Aimlabs 式标定参考：打印 rad/px 与 cm/360 估算（按 800 DPI 折算）
+            f = 0.9 if symbol == key.MINUS else 1.1
+            self.LOOK_SPEED = min(0.020, max(0.001, self.LOOK_SPEED * f))
+            px360 = 2.0 * math.pi / self.LOOK_SPEED
+            print(f'[rayhold] sens={self.LOOK_SPEED:.5f} rad/px   '
+                  f'cm/360(800dpi)≈{px360 / 800.0 * 2.54:.1f}', flush=True)
 
     def _input_move(self, dt):
         fwd = (1.0 if key.W in self.keys else 0.0) - (1.0 if key.S in self.keys else 0.0)
@@ -371,8 +460,16 @@ class RayholdDemo(DemoApp):
             if self._firing:
                 self.kernel.shoot()
         self.kernel.update(dt)
+        self._hitmark = max(0.0, self._hitmark - dt * 5.0)
         for ev in self.kernel.drain_events():
             self._sfx(ev)
+            if ev == 'hit':
+                self._hitmark, self._hitkill = 1.0, False
+            elif ev == 'kill':
+                self._hitmark, self._hitkill = 1.0, True
+            elif ev == 'shoot':
+                # 开火后坐：水平随机微偏（auto 模式每帧重设 yaw，不受影响）
+                self.kernel.look(random.uniform(-1.0, 1.0) * 0.0022)
 
     # -------------------------------------------------- 渲染 --
     def render(self):
@@ -392,13 +489,18 @@ class RayholdDemo(DemoApp):
         prog['u_grid'] = self._grid                # 数组 uniform：不带下标、一次赋整份
         prog['u_enemy'] = self._enemy_uniform()
         prog['u_bolt'] = self._bolt_uniform()
+        prog['u_pick'] = self._pick_uniform()
+        prog['u_exit'] = self._exit_xy
         prog['u_muzzle'] = float(k.muzzle)
         prog['u_hurt'] = float(k.hurt_flash)
+        prog['u_hitmark'] = (self._hitmark, 1.0 if self._hitkill else 0.0)
         self.quad.draw(GL_TRIANGLES)
         self._draw_overlay(w, h)
 
     def _draw_overlay(self, w, h):
-        st = self.kernel.ctx.rules.state()
+        k = self.kernel
+        r = k.ctx.rules
+        st = r.state()
         txt = {'won': '突 围 成 功', 'lost': '倒 在 迷 堡'}.get(st, '')
         if self.paused and not txt:
             txt = '暂 停'
@@ -410,6 +512,14 @@ class RayholdDemo(DemoApp):
         self.overlay.text = txt
         self.overlay.x, self.overlay.y = w // 2, h // 2
         self.overlay.draw()
+        if st in ('won', 'lost'):
+            # 量化小结（Aimlabs Results 思路）：命中率 / 用时 / 击杀 / 余血
+            acc = 100.0 * k.hits / k.shots if k.shots else 0.0
+            self.sub_overlay.text = (f'用时 {k.time:5.1f}s   击杀 {k.kills}   '
+                                     f'命中 {k.hits:.0f}/{k.shots:.0f}（{acc:.0f}%）   '
+                                     f'HP {r.base_hp:.0f}/{r.base_hp0:.0f}')
+            self.sub_overlay.x, self.sub_overlay.y = w // 2, h // 2 - 64
+            self.sub_overlay.draw()
         self._apply_projection(w, h)
 
     # -------------------------------------------------- 音效 --
@@ -460,6 +570,7 @@ class RayholdDemo(DemoApp):
                 f'出口 {dist:5.1f}m   种子 {k.seed}   {st}   '
                 f't={self.time:5.1f}s {self.fps:4.1f}fps'
                 f'{"  [AUTO]" if self.auto else ""}'
+                f'{"  [LOCKED]" if self._locked else ""}'
                 f'{"  [PAUSED]" if self.paused else ""}')
 
 

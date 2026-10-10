@@ -13,6 +13,7 @@
     python experiments/cordis/config_boot.py td
     python experiments/cordis/config_boot.py godhand
     python experiments/cordis/config_boot.py all
+    python experiments/cordis/config_boot.py fps --seeds 20261010,11,22   # 多种子回归
 """
 from __future__ import annotations
 
@@ -105,8 +106,25 @@ async def run_godhand(ctx):
     await _rollback(ctx, kernel, render, 'GODHAND')
 
 
-async def run_fps(ctx):
-    """射线 FPS：auto-pilot 走迷宫 + 遇敌射击 → 抵达出口为胜（与 demo --flag auto 同逻辑）。"""
+def _fps_game(ctx, kernel, max_t=180.0):
+    """用 auto-pilot 跑一局，返回 (state, t, kills, hp, ammo)。"""
+    dt = 1.0 / 60.0
+    t = 0.0
+    while ctx.rules.state() not in ('won', 'lost') and t < max_t:
+        kernel.auto_step(dt)
+        kernel.update(dt)
+        ctx.entity.update(dt)
+        t += dt
+    r = ctx.rules
+    return (r.state(), t, kernel.kills, r.base_hp, kernel.ammo())
+
+
+async def run_fps(ctx, seeds=None):
+    """射线 FPS：auto-pilot 走迷宫 + 遇敌射击 → 抵达出口为胜（与 demo --flag auto 同逻辑）。
+
+    ``seeds`` 给定时逐种子 ``restart`` 各跑一局（``--seeds`` 多种子回归——
+    平衡复调后用同一组种子前后对比，防止"调好一局调坏十局"）。
+    """
     kernel = ctx.fps
     render = ctx.render
     maze = ctx.maze
@@ -122,22 +140,25 @@ async def run_fps(ctx):
     assert maze.find_path(maze.start, maze.exit), "迷宫起点到出口不连通（生成有 bug）"
     assert maze.is_wall_cell(*maze.exit) is False, "出口落在墙里"
 
-    dt = 1.0 / 60.0
-    t = 0.0
-    while ctx.rules.state() not in ('won', 'lost') and t < 180.0:
-        kernel.auto_step(dt)
-        kernel.update(dt)
-        ctx.entity.update(dt)
-        t += dt
-    r = ctx.rules
-    print(f"RESULT state={r.state()} t={t:.1f} kills={kernel.kills} "
-          f"hp={r.base_hp} ammo={kernel.ammo():.0f} "
-          f"enemies_left={len(kernel.enemies)}")
-    assert r.state() == 'won', f"预期 auto-pilot 抵达出口，实际 {r.state()}"
+    results = []
+    for k, sd in enumerate(seeds if seeds else [maze.seed]):
+        if k > 0:
+            kernel.restart(int(sd))
+        state, t, kills, hp, ammo = _fps_game(ctx, kernel)
+        print(f"RESULT seed={sd} state={state} t={t:.1f} kills={kills} "
+              f"hp={hp:.0f} ammo={ammo:.0f} shots={kernel.shots} "
+              f"hits={kernel.hits} enemies_left={len(kernel.enemies)}")
+        assert state == 'won', f"种子 {sd}：预期 auto-pilot 抵达出口，实际 {state}"
+        results.append((int(sd), t, kills, hp))
+    if len(results) > 1:
+        ts = [t for _, t, *_ in results]
+        print(f"[seeds] {len(results)}/{len(results)} 通关  "
+              f"用时 {min(ts):.1f}~{max(ts):.1f}s  "
+              f"最差 HP={min(h for *_, h in results):.0f}")
     await _rollback(ctx, kernel, render, 'FPSKERNEL')
 
 
-async def run_one(kind):
+async def run_one(kind, seeds=None):
     name, want = CONFIGS[kind]
     ctx = await mount_tree(config_path(name), want=want)
     if kind == 'td':
@@ -145,7 +166,7 @@ async def run_one(kind):
     elif kind == 'godhand':
         await run_godhand(ctx)
     else:
-        await run_fps(ctx)
+        await run_fps(ctx, seeds)
 
 
 def main(argv=None):
@@ -153,11 +174,18 @@ def main(argv=None):
     ap.add_argument('kind', nargs='?', default='all',
                     choices=['td', 'godhand', 'fps', 'all'],
                     help='运行哪个配置树（默认 all）')
+    ap.add_argument('--seeds', default=None,
+                    help='fps 专属：逗号分隔多种子回归（如 --seeds 20261010,11,22）'
+                         '——每种子 restart 各跑一局，全部须通关')
     args = ap.parse_args(argv)
+    if args.seeds and args.kind != 'fps':
+        ap.error('--seeds 仅支持 fps')
+    seeds = ([int(s) for s in args.seeds.split(',') if s.strip()]
+             if args.seeds else None)
     kinds = (['td', 'godhand', 'fps'] if args.kind == 'all' else [args.kind])
     for k in kinds:
         print(f"\n########## 配置树：{k} ##########")
-        asyncio.run(run_one(k))
+        asyncio.run(run_one(k, seeds))
     return 0
 
 

@@ -39,12 +39,12 @@ DEFAULT_SEED = 20261010     # 默认种子（保证录制 / headless 验收可�
 PLAYER_R = 0.32             # 玩家碰撞半径
 MOVE_SPEED = 4.2
 SPRINT = 1.7
-START_AMMO = 60
+START_AMMO = 50             # 打磨轮：60→50（弹药略紧，实机不敢无脑泼弹）
 GUN_DMG = 26
 GUN_CD = 0.25
 GUN_RANGE = 26.0
 
-ENEMY_COUNT = 8
+ENEMY_COUNT = 10            # 打磨轮：8→10（更热闹；着色器槽位 16 足够）
 ENEMY_R = 0.5               # 命中判定半径（与着色器里的造型半径同源）
 SIGHT = 13.0                # 视线距离
 ALERT_T = 0.6               # 发现→追击的反应时间
@@ -52,17 +52,17 @@ LOSE_T = 3.0                # 追击中失去目标多久后回巡逻
 HURT_T = 0.35               # 受击硬直
 DEATH_T = 0.8               # 死亡淡出时长
 
-# 近战型「游荡者」
-STALKER = dict(hp=60, speed=3.0, dmg=8, atk_cd=1.2, reach=1.3)
-# 远程型「哨卫」
-SENTRY = dict(hp=45, speed=2.2, dmg=12, atk_cd=1.6, keep_lo=8.0, keep_hi=12.0)
+# 近战型「游荡者」（打磨轮：更快更痛、出手更密——10 种子基准里多数局 HP=100 偏松）
+STALKER = dict(hp=60, speed=3.2, dmg=10, atk_cd=1.05, reach=1.3)
+# 远程型「哨卫」（打磨轮：光弹伤害 12→14、冷却 1.6→1.4）
+SENTRY = dict(hp=45, speed=2.2, dmg=14, atk_cd=1.4, keep_lo=8.0, keep_hi=12.0)
 BOLT_SPEED = 9.0
 BOLT_R = 0.28
 BOLT_HIT_R = 0.7            # 光弹命中玩家的判定半径
 BOLT_LIFE = 3.0
 
 PICKUP_R = 0.9              # 拾取判定半径
-AMMO_PICKUP = 24
+AMMO_PICKUP = 20            # 打磨轮：24→20（与开局弹药同向收紧）
 MEDKIT_HEAL = 25
 
 
@@ -317,6 +317,8 @@ class FpsKernel(Service):
         self.bolts = []                 # 敌人光弹
         self.pickups = []
         self.kills = 0
+        self.shots = 0                  # 射击次数（命中率统计，demo 结算用）
+        self.hits = 0                   # 命中次数（含击杀）
         self.time = 0.0
         self.shoot_cd = 0.0
         self.muzzle = 0.0               # 枪口闪光强度（demo 用，0..1）
@@ -408,6 +410,8 @@ class FpsKernel(Service):
         ex, ez = maze.world_of(*maze.exit)
         self.player['yaw'] = math.atan2(ez - sz, ex - sx)
         self.kills = 0
+        self.shots = 0
+        self.hits = 0
         self.time = 0.0
         self.shoot_cd = 0.0
         self.auto_path = []
@@ -486,6 +490,7 @@ class FpsKernel(Service):
         ec.spend('ammo', 1.0)
         self.shoot_cd = GUN_CD
         self.muzzle = 1.0
+        self.shots += 1
         self._emit('shoot')
 
         p = self.player
@@ -501,6 +506,7 @@ class FpsKernel(Service):
         if best is None:
             self._emit('miss')
             return True
+        self.hits += 1
         best['hp'] -= GUN_DMG
         best['flash'] = 1.0
         self._emit('hit')

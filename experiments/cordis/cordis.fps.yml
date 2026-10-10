@@ -39,4 +39,4 @@
   id: fps_kernel
   config:
     seed: 20261010
-    enemies: 8
+    enemies: 10               # 打磨轮：8→10（内核 ENEMY_COUNT 默认同步）

@@ -176,7 +176,17 @@ DeepSeek Harness 的运行时内核。
 - P1-① 神之手：`godhand_kernel.py` + `demos/godhand.py` 交互 demo（`godhand_40s` 录制入口就位；本沙箱 pyglet 原生 GL 受限，实录待本机补跑）。
 - P1-② 塔防切片：commit `f0ad2c2`（直连）→ `4642aa1`（委托内核）。
 
-**下一步**：P1-③ 射线 FPS 已「先问」收口（全哥四问已答：SDF 光线步进 / **程序化随机迷宫** / hitscan 单武器 / 完整状态机 AI），设计 note 见 §10——**待全哥 review 放行后执行**。
+**P1-③ + 打磨轮状态（2026-10-10）**
+- P1-③ 射线 FPS「迷堡枪影 / Rayhold」已交付并推送（commit `edbf8ed` + 设计 note `9246e85`，IN_SYNC=0 0）：
+  `fps_kernel.py`（MazeService + FpsKernel）、`cordis.fps.yml`、`demos/rayhold.py`（SDF 光线步进）、
+  10/10 种子 auto-pilot 通关，三内核回归全绿；执行结果见 §10.9。
+- **手感与帧率打磨一轮已执行**（全哥指令 + 「参考 Aimlabs」）：hitmarker / 灵敏度 cm/360 标定 /
+  量化结算 / 拾取可见化 / 出口高亮 / 失焦清键 / 步进调优 / 平衡复调（敌 10、更凶、弹药收紧）；
+  新增 `config_boot fps --seeds` 多种子回归入口（10/10 绿）。详见 §10.10。
+  实机录制 / 截图 / 帧率实测仍待本机补跑（沙箱 GL 受限）。
+
+**下一步**：P1-④ 延伸「先问」中（roadmap §6 第 4 项：Myst 漫游解谜 / Elite 太空 / 3D 方块解谜，
+全哥拍板后写设计 note 待 review 放行）；Rayhold 平衡的人工难度复调等本机实测数据。
 
 ---
 
@@ -332,3 +342,38 @@ DeepSeek Harness 的运行时内核。
   （已沉淀进 `~/.workbuddy/skills/cordis-v4-integration`）。
 - 待办：demo 实机录制（`record_all.py --only rayhold`）与 `--shot` 截图需本机补跑——
   沙箱 pyglet 原生 GL 受限（既往已两次遇到）；逻辑与 headless 验收已全绿。
+
+### 10.10 手感与帧率打磨（2026-10-10，全哥指令「参考 Aimlabs」后执行）
+
+**Aimlabs 借鉴（命中确认是 aim trainer 手感的核心）**
+- **hitmarker**：命中 = 白 X 一闪、击杀 = 琥珀大 X（内径随衰减外扩的"弹开"观感），
+  与既有 hit/kill 双音效构成完整命中确认链路（`u_hitmark` uniform + 着色器 45° 刻线）。
+- **灵敏度标定**：`−`/`=` 实时调 `LOOK_SPEED`（0.9/1.1 步进），打印 rad/px 与
+  **cm/360 估算**（按 800 DPI 折算）——Aimlabs 的 cm/360 通用标定理念。
+- **量化结算**：内核加 `shots/hits` 计数；胜负叠层下加小结行
+  （用时 / 击杀 / 命中率 / 余血）——Aimlabs Results 思路。
+- **准星反馈**：开火瞬间准星微扩（`u_muzzle` 驱动）+ 开火水平随机后坐微 kick。
+
+**可玩性补洞（实机最大缺口）**
+- **拾取物可见化**：此前弹药/医疗完全不可见（只靠 HUD）——着色器加 `u_pick[8]`
+  悬浮球（弹药=琥珀、医疗=翠绿，sin 浮动），与墙/敌人同一场景求交。
+- **出口格高亮**：地板金色呼吸光（`u_exit` + `u_time` 脉冲）——找路的灯塔。
+
+**帧率（全屏 raymarch 的步进成本）**
+- 命中阈值随距离放宽 `0.0018t+0.0008 → 0.0024t+0.0010`、步长松弛 0.85→0.90
+  （SDF 精确，松弛安全）；`T_MAX 30→24`（敌 AI 视距 SIGHT=13、雾在 24m ≈0.88
+  与兜底背景几乎同色，硬边不可见）；`MAX_STEPS 96→88`。贴墙慢步进是热点，
+  放宽阈值收益最大。GLSL 无法在沙箱编译验证，已逐段人工复查。
+
+**手感工程**
+- **失焦清键**（ALT-TAB 回来不再"角色自己一直走"）+ 失焦掉锁 / 回焦重锁
+  （`on_deactivate`/`on_activate`）；HUD 加 `[LOCKED]` 指示。
+
+**平衡复调（依据 §10.9 十种子"多数 HP=100 偏松"）**
+- 敌 8→10；STALKER `dmg 8→10`、`atk_cd 1.2→1.05`、速度 `3.0→3.2`；
+  SENTRY `dmg 12→14`、`atk_cd 1.6→1.4`；开局弹药 60→50、弹药包 24→20。
+- **验收**：`config_boot all` 三内核绿；**新增 `config_boot.py fps --seeds`
+  多种子回归入口**（把一次性十种子验证固化成正式命令），10/10 通关
+  （14.9~31.5s；aimbot 命中率 100% → HP 无损属预期，**人工难度上探留本机
+  实测后复调**）；GL 回滚 `3→0`。demo 平衡参数依旧集中在 `cordis.fps.yml`。
+
