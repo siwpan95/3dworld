@@ -1,6 +1,6 @@
 # P0-1 · 核心抽离到 core/（design note）
 
-> 状态：**待全哥放行** · 2026-10-10 · 依据 `docs/补完计划.md` §5 决策①（落点 = 新建 `core/` 顶层包）
+> 状态：**✅ 已执行并推送**（2026-10-10；commit `a3f7ce9`(docs) + `760791e`(refactor)，IN_SYNC）· 依据 `docs/补完计划.md` §5 决策①（落点 = 新建 `core/` 顶层包）
 > 范围：把散在各游戏内核里的 Service 实现，抽离/新建为**跨内核复用的正式共同核**。
 
 ---
@@ -85,4 +85,36 @@ core/
 
 ---
 
-*本 design note 为规划草案；放行后按 §4 分步执行，每步跑 §5 验收。*
+## 9. 执行结果（2026-10-10 ✅ 已交付）
+
+**提交**：`a3f7ce9`（docs）+ `760791e`（refactor）→ push 至 `gitee.com/siwpan/3dworld` master，`git ls-remote` 核对 **IN_SYNC**。
+
+**落地清单（12 核全部到位）**：
+
+| 类别 | 核心 | 来源 |
+|------|------|------|
+| 上提（去重） | render / economy / entity / rules | ← `tower_defense_kernel` 内联 Service |
+| 上提（去重） | terrain | ← `godhand_kernel` 内联 Service |
+| 新建 | pathing（网格 A\* + ring/grid 编队）、particles、sdf、audio、timeline | 新建 / 封装 |
+| 基础设施 | `core/_cordis.py`（cordis 定位收口）、`core/__init__.py`（PEP 562 懒导出） | 新建 |
+
+**验收（全绿）**：
+
+| 项 | 结果 |
+|----|------|
+| `config_boot all` | 三内核 RESULT 与**抽离前基线逐字一致**：td `t=138.9 gold=1140 base_hp=20`；godhand `t=31.2 mana_left=99958`；fps `t=20.6 kills=9 hp=100`；GL 回滚 `4→0` / `3→0` |
+| `python -m tests.run_tests` | `ALL_LOGIC_TESTS_PASSED`（36 项） |
+| `python -m tests.test_engine` | `ALL_ENGINE_TESTS_PASSED` |
+| `python -m tests.test_cores` | `ALL_CORE_TESTS_PASSED`（**13 项**） |
+| `contracts.verify()` | 12 核全 `ok`，`FROM_SCRATCH_CORES == []` |
+
+**测试暴露并修复的真实缺陷**（3 个，非"看起来对"）：
+1. **A\* 穿墙角** → 对角移动增加"两正交邻居均可走"检查；
+2. **SDF 面只出 4 顶点** → 补 quad→2 三角形拆分（6 顶点/面）；
+3. **`audio.render_wav` 返回 tuple** 而契约要求 `str` → 服务层按契约回路径。
+
+**运行环境**：`3dworld/.venv`（pyglet 2.1.16 + pyyaml + watchdog）；`CORDIS_SRC=vendor/cordis/src`。
+
+---
+
+*本 design note 已执行完毕；后续批次见 `docs/补完计划.md` §5 批次顺序。*
