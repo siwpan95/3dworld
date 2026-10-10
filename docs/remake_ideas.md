@@ -189,8 +189,9 @@ DeepSeek Harness 的运行时内核。
 - **P1-④「归仓 / Boxward」已执行完毕**（设计 note `0db37cc` → 全哥放行「按 note 执行」→ 执行，§11.9）：
   内核 `puzzle_kernel.py`（GridService + PuzzleKernel + 反向拉箱生成器 + BFS 求解器 +
   贪心网格化补齐 `world_mesh`）、`cordis.puzzle.yml`、`demos/boxward.py`（编辑器 + auto-play）、
-  `greedy_mesh.py`（共同核算法件）+ 6 项单测；`config_boot all` 四内核全绿、
-  10/10 生成种子回放全胜（`BOXWARD_OK`，GL 3→0）。
+  `greedy_mesh.py`（共同核算法件）+ 6 项单测；`config_boot all` **五内核**全绿、
+  10/10 生成种子回放全胜（`BOXWARD_OK`，GL 3→0）；与全哥 P0 共同核抽离线
+  rebase 对齐后推送，最终 commit `0d22d04`（IN_SYNC=0 0）。
 
 **下一步**：Rayhold 平衡与 Boxward 实机手感等本机实测数据复调；P1-⑤ 候选待全哥点菜
 （roadmap §6 之外的延伸：机关/地形变体加进 Boxward、或开新内核）。
@@ -491,5 +492,10 @@ DeepSeek Harness 的运行时内核。
   （屏幕右应为 +x），实现正确、期望错误，测试失败反而抓的是测试自己的错。
 - 待办：实机录制/截图/帧率实测需本机补跑（沙箱 pyglet 原生 GL 受限，惯例）；
   命名执行前核验已完成（Boxward 无精确占用）。
+- **与 P0 线的并行对齐**：执行期间远端进了 5 个 P0 commit（共同核抽离到 `core/` +
+  配置树统一 + `cores` 自检），push 被拒后 rebase 对齐——`RulesService` 已是
+  `core/rules_core.py` 的共享实现，`puzzle_solved` 分支随之落进共同核新家
+  （tower_defense_kernel 只留 re-export）；`config_boot all` 扩为**五项回归**
+  （td/godhand/fps/puzzle/cores）全绿。最终 commit `0d22d04`（rebase 前为 `21a63ce`）。
 
 
