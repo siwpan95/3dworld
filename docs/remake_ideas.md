@@ -185,8 +185,9 @@ DeepSeek Harness 的运行时内核。
   新增 `config_boot fps --seeds` 多种子回归入口（10/10 绿）。详见 §10.10。
   实机录制 / 截图 / 帧率实测仍待本机补跑（沙箱 GL 受限）。
 
-**下一步**：P1-④ 延伸「先问」中（roadmap §6 第 4 项：Myst 漫游解谜 / Elite 太空 / 3D 方块解谜，
-全哥拍板后写设计 note 待 review 放行）；Rayhold 平衡的人工难度复调等本机实测数据。
+**下一步**：P1-④「先问」已收口（全哥四答：3D 方块解谜 / **带关卡编辑器** / 光栅贪心合批 /
+最小切片+程序化关卡），设计 note 见 §11「归仓 / Boxward」——**待全哥 review 放行后执行**；
+Rayhold 平衡的人工难度复调等本机实测数据。
 
 ---
 
@@ -376,4 +377,83 @@ DeepSeek Harness 的运行时内核。
   多种子回归入口**（把一次性十种子验证固化成正式命令），10/10 通关
   （14.9~31.5s；aimbot 命中率 100% → HP 无损属预期，**人工难度上探留本机
   实测后复调**）；GL 回滚 `3→0`。demo 平衡参数依旧集中在 `cordis.fps.yml`。
+
+---
+
+## 11. P1-④ 方块解谜切片 · 设计 note（「归仓 / Boxward」）
+
+> 状态：规划（待全哥 review 放行后执行）
+> 机制致敬：**Sokoban(1982, Thinking Rabbit)** 的「推箱入仓」规则内核——
+> **不碰原 IP 名称与素材**（Sokoban / Boxworld / 仓庫番等既有名一律避开，合规见 §7）。
+
+### 11.1 命名与撞名核验
+- **「归仓 / Boxward」**：中文取「颗粒归仓」意象（把箱子推回仓格 = 玩法本体）；
+  英文 box + -ward（与 Roadwarden / Rayhold 的 -ward 家族呼应）。
+- 核验记录（2026-10-10，WebSearch）：①`"Boxward" steam` → **无精确占用**
+  （近似占位 Boxworld 1989/2024 复刻、Box Wrangler 2024，均不同名；
+  且确认 **Boxworld 是既有系列名，禁用**）；②`"Boxward" itch.io/indie` → 仍无精确命中；
+  ③「归仓 游戏」→ 无同名游戏。执行前再补一轮核验；产品名与代码名（grid/puzzle）解耦，
+  撞名可改名不伤架构（§10.1 教训沿用）。
+
+### 11.2 先问结论（全哥 2026-10-10 定）
+| 问题 | 结论 |
+| --- | --- |
+| P1-④ 方向 | **3D 方块解谜**（fps_kernel 里 `world_mesh` 留白 + 体素基建呼应 + 范围可控） |
+| 谜题形态 | **带关卡编辑器**（鼠标摆格 → 导出 JSON；压力板/门等机关档本轮不做） |
+| 渲染路线 | **光栅贪心合批**（把 `SdfVoxelCore.world_mesh` 落成「贪心网格化」共同核） |
+| 切片范围 | 最小切片 + **程序化关卡**（生成器 + 求解器验证 + 种子复现） |
+
+### 11.3 切片范围
+- **做**：推箱规则内核（4 向推、撞墙/撞箱不可推、全箱入仓过关）、**撤销（undo）**、
+  步数统计、**3 个手工教学关**（直推→转向→多箱排序）+ **10 种子生成关**、
+  **求解器 auto-play**、**一屏式关卡编辑器**（摆墙/箱/目标/起点，导出/加载 JSON）、
+  贪心网格化共同核、正交 45° 四向旋转视角、合成音效（推/入仓/受阻/过关）、录制入口。
+- **不做**（下轮延伸素材）：机关（压力板/门/钥匙）、冰面/洞等地形变体、
+  存档系统、关卡分享、多主题美术、超大关卡。
+
+### 11.4 复用 vs 自建
+| 复用 | 自建 |
+| --- | --- |
+| `SdfVoxelCore` 契约（block_at/voxel_get/**world_mesh 留白本次补齐**） | **贪心网格化** `experiments/cordis/greedy_mesh.py`（纯函数：同色共面格合并成大矩形，可单测） |
+| Cordis 范式（配置树挂载 / inject 排序 / `ctx.effect` GL 回滚） | **GridService**（服务名 `grid`）：关卡体素 + JSON schema + 生成器 + **BFS 求解器** |
+| `RulesService` 事件流（加 `puzzle_solved` → won） | **PuzzleKernel**（服务名 `puzzle`）：step/undo/reset/auto_play/步数，事件 push/solved/blocked |
+| `RenderService` GL 记账、`EntityCore`、合成音效（SfxPlayer） | **编辑器**（demo 层）：鼠标格子拾取 + 摆放 + 导出 |
+| `Mat4.orthogonal_projection`、blockworld 的 DDA 拾取先例 | 正交 45° 四向旋转相机（demo 层，方向映射纯函数可单测） |
+
+### 11.5 落地架构
+- **单一事实来源 = 关卡 JSON**：`{"size":[w,h], "walls":[[i,j]..], "boxes":[[i,j]..],
+  "goals":[[i,j]..], "player":[i,j], "meta":{"name","seed","par"}}`——
+  **编辑器导出的 = 生成器产出的 = 内核吃的**，三端同 schema。
+- **求解器**：BFS over `(player_pos, boxes_frozenset)`；角落死格（dead square）剪枝；
+  状态上限 20 万（超限报「超出能力」）。生成器：撒墙（密度 ~0.18）→ 摆 3~5 箱与目标 →
+  `solve()` 验证**可解且最少推数 ≥ 阈值**（防平凡），败则重掷（≤64 次，仍败降密度重试）。
+- **auto-pilot = 求解器回放**：headless 验收、`--flag auto` 录制、生成器验证**同源**——
+  「验证怎么解的 = demo 怎么玩的 = 关卡怎么验证可解的」（延续 Phase D 理念）。
+- 渲染：静态墙 → 贪心合并**单个网格**（一次 upload_mesh）；动态（箱/玩家）小 cube 逐个
+  batch；目标 = 地板色块；尽量复用引擎既有 voxel 着色器（执行时勘查 blockworld 路径）。
+- GL 资源照旧 `ctx.effect` 绑内核 fiber，dispose 回滚断言 live→0。
+- 文件清单：`greedy_mesh.py`、`puzzle_kernel.py`（GridService+PuzzleKernel）、
+  `services/puzzle.py` 适配、`cordis.puzzle.yml`、`tree_boot.WANT_PUZZLE`、
+  `config_boot.py puzzle 分支（+all 四项）`、`demos/boxward.py`、
+  `record_all.py boxward_60s`、tests 单测、README 清单 19→20。
+
+### 11.6 验收标准
+1. `config_boot all` 四内核全绿（td/godhand/fps/puzzle）；
+2. `config_boot.py puzzle --seeds …`：10 种子生成关全部「可解且回放 won」+ GL 回滚 `3→0`；
+3. `greedy_mesh` 单测：十字/T/L/角全过，合并后面数 < 逐块面数；
+4. 求解器单测：已知最小解关卡通回放序列正确；
+5. demo `py_compile` + 手工关 smoke；实机截图/录制本机补跑（沙箱 GL 受限，惯例）。
+
+### 11.7 待核实 API
+- 引擎 voxel 着色器可复用面（blockworld 的网格/图集路径）；
+- 正交相机下鼠标 → 格子拾取（逆投影 + DDA，参考 blockworld）；
+- `EntityCore` 对静态网格 vs 动态小 cube 的批量画法（见 tower_defense demo render）。
+
+### 11.8 风险
+- **求解器状态爆炸**（箱多格大）→ 箱 ≤5、死格剪枝、状态上限，超限降规模重掷；
+- **贪心合并边界情形**（十字/T 形接缝视觉裂缝）→ 单测覆盖 + 执行时首验；
+- **视角旋转的方向映射**（屏幕方向 ↔ 格方向）→ 4 状态映射纯函数 + 单测；
+- **GLSL 沙箱不可编译**→ 优先复用已验证的引擎着色器，新写则逐段复查（§10.10 惯例）；
+- **命名**→ 执行前补一轮撞名核验，解耦保改名自由。
+
 
