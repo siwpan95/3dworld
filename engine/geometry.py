@@ -30,20 +30,33 @@ class MeshData:
         colors:    扁平 [r,g,b,a, ...]（可为空）
         indices:   顶点索引（可为空 = 非索引三角形汤）
         tangents:  扁平 [tx,ty,tz, ...]（可为空，``compute_tangents`` 补）
+        joints:    蒙皮关节索引，每顶点 4 个（扁平 [i0,i1,i2,i3, ...]；非蒙皮为 None）
+        weights:   蒙皮权重，每顶点 4 个（与 joints 同序；非蒙皮为 None）
     """
 
     __slots__ = ('positions', 'normals', 'uvs', 'colors', 'indices', 'tangents',
-                 'name')
+                 'joints', 'weights', 'name')
 
     def __init__(self, positions, normals=None, uvs=None, colors=None,
-                 indices=None, tangents=None, name=''):
+                 indices=None, tangents=None, name='', joints=None, weights=None):
         self.positions = list(positions)
         self.normals = list(normals) if normals else []
         self.uvs = list(uvs) if uvs else []
         self.colors = list(colors) if colors else []
         self.indices = list(indices) if indices else []
         self.tangents = list(tangents) if tangents else []
+        # 蒙皮（P2-3）：joints/weights 各为"每顶点 4 个"的扁平数组；非蒙皮网格为 None。
+        # 用 None 而非 [] 以区分"非蒙皮"与"空蒙皮"，且保证 __slots__ 之外的旧代码零改动。
+        self.joints = list(joints) if joints else None
+        self.weights = list(weights) if weights else None
         self.name = name
+
+    @property
+    def skinned(self):
+        """是否为蒙皮网格（joints + weights 存在且长度与顶点数匹配）。"""
+        n4 = self.vertex_count * 4
+        return bool(self.joints and self.weights
+                    and len(self.joints) == n4 and len(self.weights) == n4)
 
     # ---- 度量 ----
     @property

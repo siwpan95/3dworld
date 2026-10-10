@@ -62,6 +62,11 @@ python scripts\verify_demos.py --only boids,water  只验指定 demo
 | `boxward.py` | 交互 | **《归仓 / Boxward》**（P1-④ 方块解谜，机制致敬 Sokoban 1982）：**光栅贪心合批**（静态墙由 `greedy_mesh` 合并建网，补齐 `SdfVoxelCore.world_mesh` 留白）+ 正交 45° 四向旋转视角（WASD 随相机映射）+ **BFS 求解器 auto-play**（headless 验收 / 录制 / 生成器验证同源）+ **程序化关卡**（反向拉箱打乱，可解性由构造保证）+ **关卡编辑器**（M 键摆格 / X 试解 / E 导出 JSON，三端同 schema）+ undo 与推数 par；玩法全在 `experiments/cordis/puzzle_kernel.py`，由 `cordis.puzzle.yml` 配置树挂载 | `boxward_a/b.png` |
 
 > 上表 20 项与 `demos/*.py`（不含 `_harness.py`）一一对应，也是
+| `godhand.py` | 交互 | **《神之手 / GodHand》**（P1-①，机制致敬 Populous / From Dust）：鼠标「抬山 / 挖海」实时改写地形高度场，淹没或掩埋敌方聚落即胜；玩法在 `experiments/cordis/godhand_kernel.py`，由 `cordis.godhand.yml` 配置树挂载 | — |
+| `tower_defense.py` | 交互 | **《戍卫之路 / Roadwarden》**（P1-② 首个游戏内核，机制致敬 Warcraft / Dune II 的「经济→兵力→战斗」循环）：24×24 格 + 固定车道 + 3 类塔（箭/炮/冰）+ 3 类敌人 + 5 波 + 胜负判定；玩法在 `experiments/cordis/tower_defense_kernel.py`，由 `cordis.td.yml` 挂载 | — |
+| `skinned_creature.py` | 引擎 | **蒙皮骨骼动画（P2-3）**：加载**程序化生成**的带 skin 的 glTF「骨节蛇」（8 关节 / `assets/skinned_snake.gltf`），用蒙皮顶点着色器（`pbr_skin`）渲染并驱动骨骼链正弦摆动；A 切摆动 / SPACE 暂停 / R 复位；拖动旋转、滚轮缩放 | `skinned_01..03.png` |
+
+> 上表 23 项与 `demos/*.py`（不含 `_harness.py`）一一对应，也是
 > `scripts/verify_demos.py` 逐项冒烟的对象；唯一不参与截图阶段的是
 > `scene_viewer.py`——它由 `--file` 驱动、没有固定剧照时刻。
 

@@ -175,6 +175,43 @@ void main() {
     gl_Position = window.projection * window.view * world;
 }'''
 
+# 蒙皮变体（P2-3）：顶点属性 joints/weights（各 vec4）+ 关节矩阵数组。
+# SKIN_MAX_JOINTS 必须与 engine.skin.MAX_JOINTS 一致（tests/test_skin.py 有断言守护）。
+SKIN_MAX_JOINTS = 64
+
+PBR_SKIN_VERT = ('''#version 330 core
+in vec3 position;
+in vec3 normals;
+in vec2 uvs;
+in vec3 tangents;
+in vec4 joints;             // 每顶点 4 个关节下标（float 承载，取整）
+in vec4 weights;            // 每顶点 4 个权重（CPU 侧已归一化）
+uniform WindowBlock { mat4 projection; mat4 view; } window;
+uniform mat4 model;
+uniform mat4 normal_mat;
+uniform mat4 u_joints[''' + str(SKIN_MAX_JOINTS) + '''];   // 关节矩阵数组
+out vec3 vWorldPos;
+out vec3 vNormal;
+out vec2 vUV;
+out vec3 vTangent;
+out vec4 vTint;
+void main() {
+    mat4 skin = weights.x * u_joints[int(joints.x)]
+              + weights.y * u_joints[int(joints.y)]
+              + weights.z * u_joints[int(joints.z)]
+              + weights.w * u_joints[int(joints.w)];
+    mat4 m = model * skin;
+    vec4 world = m * vec4(position, 1.0);
+    vWorldPos = world.xyz;
+    // 法线/切线：normal_mat(模型级逆转置) 与 skin 左上 3x3 合成
+    mat3 nm = mat3(normal_mat) * mat3(skin);
+    vNormal   = normalize(nm * normals);
+    vTangent  = normalize(nm * tangents);
+    vUV       = uvs;
+    vTint     = vec4(1.0, 1.0, 1.0, 0.0);
+    gl_Position = window.projection * window.view * world;
+}''')
+
 PBR_FRAG = '''#version 330 core
 in vec3 vWorldPos;
 in vec3 vNormal;
@@ -681,6 +718,7 @@ void main() {
 SOURCES = {
     'pbr': (PBR_VERT, PBR_FRAG),
     'pbr_inst': (PBR_INST_VERT, PBR_FRAG),
+    'pbr_skin': (PBR_SKIN_VERT, PBR_FRAG),
     'sky': (SKY_VERT, SKY_FRAG),
     'basic': (BASIC_VERT, BASIC_FRAG),
     'env_gen': (FULLSCREEN_VERT, ENV_GEN_FRAG),

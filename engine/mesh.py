@@ -51,6 +51,9 @@ def _set_instance_count(vlist, n):
 class Mesh:
     """单个 GPU 网格 + 它的材质与变换。"""
 
+    # 渲染器按此名分组选着色器程序（见 renderer._draw_list）——子类覆盖
+    PROGRAM_NAME = 'pbr'
+
     def __init__(self, data, program, material=None, name=''):
         assert isinstance(data, MeshData), 'data 必须是 MeshData'
         if not data.normals:
@@ -140,6 +143,66 @@ class Mesh:
         return f'Mesh({self.name!r}, tris={self.data.triangle_count})'
 
 
+class SkinnedMesh(Mesh):
+    """蒙皮网格（P2-3）：在 :class:`Mesh` 基础上加 joints/weights 顶点属性。
+
+    顶点着色器用 ``uniform mat4 u_joints[MAX_JOINTS]``（见 ``shaders.PBR_SKIN_VERT``）
+    做骨骼混合。关节矩阵来自 :class:`engine.skin.Skin`，**每帧重算并上传**
+    （关节世界矩阵随动画变化）。
+
+    Args:
+        data: 必须带 ``joints``/``weights`` 的 :class:`~engine.geometry.MeshData`。
+        program: 应为 ``shaders.get('pbr_skin')``。
+        skin: :class:`engine.skin.Skin`——其 ``joints`` 节点的 world_matrix 须已刷新。
+    """
+
+    PROGRAM_NAME = 'pbr_skin'
+
+    def __init__(self, data, program, skin, material=None, name=''):
+        assert data.skinned, 'SkinnedMesh 需要带 joints/weights 的 MeshData'
+        self.skin = skin                     # 先于 super()——_upload 之外的字段
+        super().__init__(data, program, material, name)
+
+    def _upload(self):
+        d = self.data
+        kwargs = {'position': ('f', d.positions), 'normals': ('f', d.normals),
+                  'uvs': ('f', d.uvs),
+                  'joints': ('f', d.joints), 'weights': ('f', d.weights)}
+        if d.tangents:
+            kwargs['tangents'] = ('f', d.tangents)
+        n = d.vertex_count
+        if d.indices:
+            return self.program.vertex_list_indexed(
+                n, GL_TRIANGLES, d.indices, **kwargs)
+        return self.program.vertex_list(n, GL_TRIANGLES, **kwargs)
+
+    def draw(self, unit_start=0, skip_material=False):
+        self._upload_joint_matrices()
+        return super().draw(unit_start, skip_material)
+
+    def _upload_joint_matrices(self):
+        """上传关节矩阵数组（``uniform mat4 u_joints[MAX_JOINTS]``）。
+
+        ⚠️ **实测（pyglet 2.1.16，2026-10-10）**：``program['u_joints'] = [...]``
+        **只写入数组第 0 个元素**——pyglet 的 ``_Uniform`` setter 内部用
+        ``glUniformMatrix4fv(loc, 1, ...)``（count 固定为 1），其余槽位**保持 0**。
+        后果：``skin`` 矩阵对绝大多数顶点为 0 ⇒ 顶点塌缩到原点、网格整片消失
+        （画面只剩天空，且**不报任何错**）。
+
+        因此这里**绕过 pyglet**，直接 ``glUniformMatrix4fv`` 一次性上传整个数组。
+        """
+        import ctypes
+
+        from pyglet.gl import GL_FALSE, glUniformMatrix4fv, glUseProgram
+
+        ms = self.skin.uniform_matrices()               # 长度 == MAX_JOINTS（未用槽补 I）
+        flat = [v for m in ms for v in tuple(m)]
+        arr = (ctypes.c_float * len(flat))(*flat)
+        glUseProgram(self.program.id)
+        loc = self.program.uniforms['u_joints']['location']
+        glUniformMatrix4fv(loc, len(ms), GL_FALSE, arr)
+
+
 def _pad3(m3):
     """mat3(9 元组) -> mat4(16 元组)，塞进 mat4 uniform 的左上 3x3。"""
     a, b, c, d, e, f, g, h, i = m3
@@ -152,6 +215,8 @@ class InstancedMesh:
     典型用法：草、石块、 voxel 面、粒子块。2000 个立方体走实例化是
     1 次 draw call + 2000 份实例数据；逐个画是 2000 次 draw call。
     """
+
+    PROGRAM_NAME = 'pbr_inst'
 
     def __init__(self, data, program, material=None, capacity=256, name=''):
         if not data.normals:

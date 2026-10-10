@@ -170,8 +170,8 @@ class Renderer:
         stats = {'draw_calls': 0, 'triangles': 0, 'instances': 0}
         by_program = {}
         for d in drawables:
-            prog_name = 'pbr_inst' if d.__class__.__name__ == 'InstancedMesh' else 'pbr'
-            by_program.setdefault(prog_name, []).append(d)
+            # 按网格类型选程序（Mesh.PROGRAM_NAME：pbr / pbr_inst / pbr_skin …）
+            by_program.setdefault(getattr(d, 'PROGRAM_NAME', 'pbr'), []).append(d)
         for prog_name, items in by_program.items():
             prog = self.program(prog_name)
             prog.use()

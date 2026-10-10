@@ -4,7 +4,9 @@
 支持范围（对齐规范的"能可靠渲染的最小集"）::
 
     容器      .gltf（JSON + 外部 .bin / data:URI） 与 .glb（JSON + BIN 块）
-    几何      mesh.primitives：POSITION / NORMAL / TEXCOORD_0 / TANGENT / indices
+    几何      mesh.primitives：POSITION / NORMAL / TEXCOORD_0 / TANGENT / COLOR_0 /
+              JOINTS_0 / WEIGHTS_0 / indices
+    蒙皮      skins[]：joints（节点下标）+ inverseBindMatrices -> 关节矩阵管线（P2-3）
     访问器    componentType 全类型、type 全类型、normalized、byteStride 交错
               sparse（稀疏替换：base + indices/values）
     材质      pbrMetallicRoughness（baseColor / metallic / roughness /
@@ -42,6 +44,12 @@ COMPONENT = {
 # type -> 分量数
 NCOMP = {'SCALAR': 1, 'VEC2': 2, 'VEC3': 3, 'VEC4': 4,
          'MAT2': 4, 'MAT3': 9, 'MAT4': 16}
+
+# 4×4 单位矩阵（列主序）—— skin 省略 inverseBindMatrices 时的默认值
+IDENTITY4 = (1.0, 0.0, 0.0, 0.0,
+             0.0, 1.0, 0.0, 0.0,
+             0.0, 0.0, 1.0, 0.0,
+             0.0, 0.0, 0.0, 1.0)
 
 GLB_MAGIC = 0x46546C67
 CHUNK_JSON = 0x4E4F534A
@@ -212,11 +220,17 @@ class GLTF:
             if len(colors) == len(positions) // 3 * 3:      # VEC3 -> RGBA
                 colors = [c for i, v in enumerate(colors)
                           for c in (v, v, v, 1.0)]
+        # 蒙皮（P2-3）：JOINTS_0（VEC4 整数关节下标）+ WEIGHTS_0（VEC4，可能 normalized）
+        joints = weights = None
+        if 'JOINTS_0' in attrs and 'WEIGHTS_0' in attrs:
+            joints = [int(j) for j in self.accessor(attrs['JOINTS_0'])]
+            weights = _normalize_weights(self.accessor(attrs['WEIGHTS_0']))
         indices = []
         if 'indices' in primitive:
             indices = [int(i) for i in self.accessor(primitive['indices'])]
         md = MeshData(positions, normals, uvs, colors, indices, tangents,
-                      name=primitive.get('name', ''))
+                      name=primitive.get('name', ''),
+                      joints=joints, weights=weights)
         if not md.normals:
             md.compute_normals()
         return md
@@ -248,6 +262,32 @@ class GLTF:
             for p in mesh.get('primitives', []):
                 prims.append((self.primitive_meshdata(p), p.get('material')))
             out.append((mesh.get('name', f'mesh_{mi}'), prims))
+        return out
+
+    # ------------------------------------------------------------ 蒙皮 --
+    def skins(self):
+        """解析 ``skins[]`` -> ``[{'name', 'joints', 'inverse_bind', 'skeleton'}]``。
+
+        - ``joints``：**节点下标**列表（对应 ``json['nodes']``）；
+        - ``inverse_bind``：每关节一个列主序 4×4 矩阵（16 元组）；规范允许省略，
+          省略时取单位矩阵；
+        - ``skeleton``：骨架根节点下标（可选）。
+        """
+        out = []
+        for sk in self.json.get('skins', []):
+            joints = [int(j) for j in sk.get('joints', [])]
+            if 'inverseBindMatrices' in sk:
+                vals = self.accessor(sk['inverseBindMatrices'])
+                ibm = [tuple(vals[i * 16:(i + 1) * 16])
+                       for i in range(len(vals) // 16)]
+                if len(ibm) != len(joints):     # 规范要求等长；容错：补齐/截断
+                    ibm = (ibm + [IDENTITY4] * len(joints))[:len(joints)]
+            else:
+                ibm = [IDENTITY4] * len(joints)
+            out.append({'name': sk.get('name', ''),
+                        'joints': joints,
+                        'inverse_bind': ibm,
+                        'skeleton': sk.get('skeleton')})
         return out
 
     # ------------------------------------------------------------ 节点 --
@@ -283,6 +323,16 @@ class GLTF:
         ``[(node, MeshData, material_index), ...]``——GPU 网格要等有 GL 上下文
         才能建，所以这里只把"该建什么"列出来交给调用方。
         """
+        scene, pending, _ = self.build_scene_ex(scene_index)
+        return scene, pending
+
+    def build_scene_ex(self, scene_index=0):
+        """同 :meth:`build_scene`，但额外返回 ``node_map``（``{node_index: Node}``）。
+
+        ``node_map`` 供**蒙皮**使用：glTF ``skin.joints`` 是节点下标，需要映射回
+        已构建的 ``Node``（见 ``engine.skin.make_skin_from_gltf``）。
+        返回 ``(scene, pending, node_map)``。
+        """
         from engine.scene import Scene
         nodes = self.json.get('nodes', [])
         scene = Scene(name=(self.json.get('scenes') or [{}])[min(
@@ -311,7 +361,7 @@ class GLTF:
 
         for root in self.scene_nodes(scene_index):
             build(root, scene.root)
-        return scene, pending
+        return scene, pending, built
 
     # ------------------------------------------------------------ 动画 --
     def animations(self):
@@ -362,6 +412,23 @@ class GLTF:
 
 
 # ------------------------------------------------------------------ 工具 --
+def _normalize_weights(vals, n=4):
+    """把每 ``n`` 个权重归一化到和为 1（全 0 时该顶点首权重置 1）。
+
+    蒙皮矩阵是关节矩阵的**仿射组合**（凸组合），权重和 ≠ 1 会让顶点被整体
+    缩放/偏移。部分资产的 WEIGHTS_0 未归一化（或量化后和≠1），故在此统一。
+    """
+    out = list(vals)
+    for i in range(0, len(out), n):
+        s = sum(out[i:i + n])
+        if s > 1e-12:
+            for k in range(n):
+                out[i + k] /= s
+        else:
+            out[i] = 1.0
+    return out
+
+
 def _normalize_int(v, ctype):
     if ctype == 5120:            # BYTE:  (v - (-128)) / 255 的简化形式
         return max(v / 127.0, -1.0)
