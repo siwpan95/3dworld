@@ -212,6 +212,100 @@ void main() {
     gl_Position = window.projection * window.view * world;
 }''')
 
+# ============================================================ GPU-Driven（P3-1）
+# compute：视锥剔除 + LOD 选择 + **命令生成**。
+#
+# ⚠️ 设计要点（实测逼出来的）：
+#   本机真实窗口上下文是 **GL 3.3**（pyglet 的 shadow context 才报 4.6），
+#   `gl_BaseInstanceARB` / `gl_DrawIDARB`（GL_ARB_shader_draw_parameters）**不生效**
+#   ——早先"每实例一条命令 + baseInstance 索引实例"的方案会让全部实例塌到 mat[0]。
+#   故改为**不依赖 draw parameter** 的形态：
+#     · 可见实例按 LOD **固定分区**写入 visible[lv * N + slot]（slot 由 atomic 取）
+#     · **每个 LOD 一条命令**；命令的 instanceCount 字段本身用 atomicAdd 累加
+#       （⇒ 免第二趟、免 CPU 读回）
+#     · 顶点着色器用 gl_InstanceID（GL 3.1+ 核心）查 visible[uLodBase + id]
+#
+# SSBO 绑定（与 engine/gpu_cull.py 契约一致）：
+#   binding 0 InstanceData  vec4 (cx,cy,cz,radius)
+#   binding 1 InstanceMat   vec4 mat[]   4 个 vec4 = 列的 4×4 模型矩阵
+#   binding 3 Counts        uint counts[]  [0] = 总可见
+#   binding 4 Commands      uint cmd[]     MAX_LOD 条 × 4 uint（count, instanceCount, first, 0）
+#   binding 5 Visible       uint visible[] MAX_LOD 段 × N（固定分区）
+GPU_CULL_COMP = '''#version 430 core
+layout(local_size_x = 64) in;
+
+layout(std430, binding = 0) buffer InstanceData { vec4 inst[]; };
+layout(std430, binding = 3) buffer Counts       { uint counts[]; };
+layout(std430, binding = 4) buffer Commands     { uint cmd[]; };
+layout(std430, binding = 5) buffer Visible      { uint visible[]; };
+
+uniform vec4  uPlanes[6];
+uniform vec3  uCamPos;
+uniform float uLodDists[4];
+uniform int   uLodFirst[4];
+uniform int   uLodCount[4];
+uniform int   uCount;          // 实例总数
+uniform int   uMaxLod;         // 实际 LOD 级数
+
+void main() {
+    uint i = gl_GlobalInvocationID.x;
+    if (i >= uint(uCount)) return;
+
+    vec4 sph = inst[i];
+    vec3 c   = sph.xyz;
+    float r  = sph.w;
+
+    // ---- 视锥剔除 ----
+    for (int k = 0; k < 6; ++k) {
+        if (dot(uPlanes[k].xyz, c) + uPlanes[k].w < -r) return;   // 剔除：不写任何表
+    }
+
+    // ---- LOD 选择（按到相机距离）----
+    float d = distance(c, uCamPos);
+    uint lv = 0u;
+    for (uint k = 0u; k < 4u; ++k) { if (d >= uLodDists[k]) lv = k + 1u; }
+    lv = min(lv, uint(uMaxLod - 1));
+
+    // ---- 分组落表：可见表按 LOD 固定分区；命令的 instanceCount 直接累加 ----
+    uint slot = atomicAdd(cmd[lv * 4u + 1u], 1u);
+    visible[lv * uint(uCount) + slot] = i;
+    atomicAdd(counts[0], 1u);
+}'''
+
+# 顶点着色器（#version 430：需要 SSBO 读实例矩阵；**不依赖** draw parameter）
+GPU_DRIVEN_VERT = '''#version 430 core
+in vec3 position;
+in vec3 normals;
+layout(std430, binding = 1) buffer InstanceMat { vec4 mat[]; };
+layout(std430, binding = 5) buffer Visible { uint visible[]; };
+uniform WindowBlock { mat4 projection; mat4 view; } window;
+uniform int uLodBase;                       // 本此 draw 的 LOD 分区起点 = lod * N
+out vec3 vNormal;
+out vec3 vWorld;
+void main() {
+    uint id = visible[uLodBase + uint(gl_InstanceID)];   // 查表得真实实例下标
+    mat4 m = mat4(mat[id * 4u + 0u], mat[id * 4u + 1u], mat[id * 4u + 2u], mat[id * 4u + 3u]);
+    vec4 world = m * vec4(position, 1.0);
+    vWorld  = world.xyz;
+    vNormal = normalize(mat3(m) * normals);
+    gl_Position = window.projection * window.view * world;
+}'''
+
+GPU_DRIVEN_FRAG = '''#version 430 core
+in vec3 vNormal;
+in vec3 vWorld;
+layout(location = 0) out vec4 outColor;
+uniform vec3 uBaseColor;
+uniform vec3 uLightDir;
+void main() {
+    vec3 n  = normalize(vNormal);
+    float ndl = max(dot(n, normalize(uLightDir)), 0.0);
+    float rim = 0.25 * pow(1.0 - max(dot(n, vec3(0.0, 0.0, 1.0)), 0.0), 2.0);
+    outColor = vec4(uBaseColor * (0.16 + 0.84 * ndl) + rim, 1.0);
+}'''
+
+COMPUTE_SOURCES = {'gpu_cull': GPU_CULL_COMP}
+
 PBR_FRAG = '''#version 330 core
 in vec3 vWorldPos;
 in vec3 vNormal;
@@ -719,6 +813,7 @@ SOURCES = {
     'pbr': (PBR_VERT, PBR_FRAG),
     'pbr_inst': (PBR_INST_VERT, PBR_FRAG),
     'pbr_skin': (PBR_SKIN_VERT, PBR_FRAG),
+    'gpu_driven': (GPU_DRIVEN_VERT, GPU_DRIVEN_FRAG),
     'sky': (SKY_VERT, SKY_FRAG),
     'basic': (BASIC_VERT, BASIC_FRAG),
     'env_gen': (FULLSCREEN_VERT, ENV_GEN_FRAG),
@@ -744,6 +839,21 @@ def build(name):
 
 _CACHE = {}
 
+_COMPUTE_CACHE = {}
+
+
+def build_compute(name):
+    """编译一个 **compute** 程序（P3-1：GPU 剔除/命令生成用）。"""
+    from pyglet.graphics.shader import Shader, ShaderProgram
+    return ShaderProgram(Shader(COMPUTE_SOURCES[name], 'compute'))
+
+
+def get_compute(name):
+    """取（并缓存）一个 compute 程序。"""
+    if name not in _COMPUTE_CACHE:
+        _COMPUTE_CACHE[name] = build_compute(name)
+    return _COMPUTE_CACHE[name]
+
 
 def get(name):
     """取（并缓存）一个着色器程序。同一 GL 上下文内可复用。"""
@@ -755,3 +865,4 @@ def get(name):
 def invalidate_cache():
     """上下文销毁后调用（缓存的 program id 已失效）。"""
     _CACHE.clear()
+    _COMPUTE_CACHE.clear()
