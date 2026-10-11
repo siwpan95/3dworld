@@ -44,6 +44,7 @@ from pyglet.math import Mat4, Vec3
 
 from _harness import DemoApp, orbit_camera_input, run
 from core.geometry import box_data
+from engine.soft_shadow import pcss_glsl
 from logic.animation import quat_from_axis_angle, quat_to_mat4
 from logic.camera import OrbitCamera, look_at_matrix
 
@@ -82,7 +83,7 @@ void main() {
     gl_Position = window.projection * window.view * wp;
 }'''
 
-MAIN_FS = '''#version 330 core
+MAIN_FS = ('''#version 330 core
 in vec4 v_color;
 in vec3 v_world;
 in vec4 v_light;
@@ -95,6 +96,11 @@ uniform float u_bias;
 uniform float u_texel;
 uniform int   u_shadow_on;
 uniform int   u_pcf;          // PCF 半径：1 → 3x3，2 → 5x5
+uniform int   u_pcss;         // 1 = PCSS（P 键第三档）
+uniform float u_light_size;   // 光源尺寸（影响半影宽度）
+uniform float u_search_texels;// blocker search 半径（纹素）
+uniform float u_max_penumbra; // 半影上限（纹素）
+''' + pcss_glsl() + '''
 
 float shadow_factor(float ndl) {
     vec3 p = v_light.xyz / v_light.w * 0.5 + 0.5;
@@ -103,6 +109,7 @@ float shadow_factor(float ndl) {
     }
     // 斜率偏移：法线越背光，深度比较的容差越大（压住自阴影条纹）
     float bias = u_bias * (1.0 + 2.0 * (1.0 - ndl));
+    if (u_pcss == 1) { return pcss_factor(p.xy, p.z, bias); }   // PCSS 档
     float sum = 0.0;
     float cnt = 0.0;
     // 固定跑 5x5 的循环范围，用半径 r 裁掉外圈：GLSL 330 的循环边界必须是
@@ -130,7 +137,7 @@ void main() {
     lit += vec3(0.10) * pow(max(dot(reflect(-u_light_dir, n), v), 0.0), 28.0) * sh;
     lit = mix(lit, u_fog_color, smoothstep(24.0, 72.0, length(v_world - u_eye)));
     final_colors = vec4(lit, v_color.a);
-}'''
+}''')
 
 PANEL_VS = '''#version 330 core
 in vec3 position;
@@ -281,11 +288,19 @@ class ShadowDemo(DemoApp):
         self.light_offset = 0.0
         self.bias_i = 1
         self.shadow_on = 1
-        self.pcf = 1                         # 1 = 3x3，2 = 5x5（P 键切换）
+        # 阴影模式（P 键三档循环）：0=PCF 3x3  1=PCF 5x5  2=PCSS
+        self.shadow_mode = 0
+        self.light_size = 2.6        # PCSS 光源尺寸（越大半影越宽）
+        self.search_texels = 6.0     # blocker search 半径（纹素）
+        self.max_penumbra = 14.0     # 半影上限（纹素）
         self.auto_orbit = True
         # 命令行起始状态：--flag pcf5 / --flag nobias-… 便于无人值守验证
+        if 'pcf3' in self.args.flags:
+            self.shadow_mode = 0
         if 'pcf5' in self.args.flags:
-            self.pcf = 2
+            self.shadow_mode = 1
+        if 'pcss' in self.args.flags:
+            self.shadow_mode = 2
         if 'noshadow' in self.args.flags:
             self.shadow_on = 0
         if 'noon' in self.args.flags:
@@ -301,7 +316,7 @@ class ShadowDemo(DemoApp):
         elif symbol == key.S:
             self.shadow_on = 0 if self.shadow_on else 1
         elif symbol == key.P:
-            self.pcf = 2 if self.pcf == 1 else 1      # 3x3 ↔ 5x5
+            self.shadow_mode = (self.shadow_mode + 1) % 3   # PCF3x3 → PCF5x5 → PCSS
         elif symbol == key.A:
             self.auto_orbit = not self.auto_orbit
 
@@ -369,7 +384,11 @@ class ShadowDemo(DemoApp):
         prog['u_bias'] = BIASES[self.bias_i]
         prog['u_texel'] = 1.0 / float(self.MAP_SIZE)
         prog['u_shadow_on'] = self.shadow_on if self.fbo_ok else 0
-        prog['u_pcf'] = self.pcf
+        prog['u_pcf'] = 1 if self.shadow_mode == 0 else 2
+        prog['u_pcss'] = 1 if self.shadow_mode == 2 else 0
+        prog['u_light_size'] = self.light_size
+        prog['u_search_texels'] = self.search_texels
+        prog['u_max_penumbra'] = self.max_penumbra
         glActiveTexture(GL_TEXTURE0)
         glBindTexture(GL_TEXTURE_2D, self.shadow_tex.id)
         prog['u_shadow'] = 0
@@ -405,8 +424,9 @@ class ShadowDemo(DemoApp):
     def status_text(self):
         _, _, light_eye = self._light()
         az = (28.0 + self.light_offset + 360.0 * self.time / self.DURATION) % 360.0
-        return (f'光源方位 {az:5.1f}°   bias {BIASES[self.bias_i]:.4f}   '
-                f'PCF {3 if self.pcf == 1 else 5}x{3 if self.pcf == 1 else 5}   '
+        mode = ('PCF 3x3', 'PCF 5x5',
+                f'PCSS(light={self.light_size:.1f} search={self.search_texels:.0f}tex)')[self.shadow_mode]
+        return (f'光源方位 {az:5.1f}°   bias {BIASES[self.bias_i]:.4f}   {mode}   '
                 f'阴影 {"开" if self.shadow_on else "关"}   '
                 f'影图 {self.MAP_SIZE}²   {"FBO-OK" if self.fbo_ok else "FBO-FAIL"}   '
                 f'{self.fps:5.1f} fps{"  [PAUSED]" if self.paused else ""}')

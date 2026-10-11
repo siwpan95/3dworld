@@ -306,6 +306,64 @@ void main() {
 
 COMPUTE_SOURCES = {'gpu_cull': GPU_CULL_COMP}
 
+# ============================================================ WBOIT（P2-2）
+# Weighted Blended OIT（McGuire 2013）—— **顺序无关透明**，单趟 + 一次合成。
+# 透明物写两张 MRT：accum(RGB=Σc·α·w, A=Σα·w) 与 reveal(Π(1-α))。
+# per-RT blend 不同：accum 用 (ONE, ONE) 加法；reveal 用 (ZERO, ONE_MINUS_SRC_COLOR) 乘法
+# —— 靠 `glBlendFunci(index, ...)`（GL 4.0；本机驱动可用，见 engine/oit.py 的能力探测）。
+WBOIT_VERT = '''#version 330 core
+in vec3 position;
+in vec3 normals;
+uniform WindowBlock { mat4 projection; mat4 view; } window;
+uniform mat4 model;
+uniform mat4 normal_mat;
+out vec3 vNormal;
+out vec3 vWorld;
+void main() {
+    vec4 world = model * vec4(position, 1.0);
+    vWorld  = world.xyz;
+    vNormal = normalize(mat3(normal_mat) * normals);
+    gl_Position = window.projection * window.view * world;
+}'''
+
+WBOIT_FRAG = '''#version 330 core
+in vec3 vNormal;
+in vec3 vWorld;
+layout(location = 0) out vec4 outAccum;    // Σ c·α·w , Σ α·w
+layout(location = 1) out vec4 outReveal;   // Π(1-α)
+uniform vec3  uColor;
+uniform float uAlpha;
+uniform vec3  uLightDir;
+// McGuire 的距离权重：近处权重高、极远处迅速衰减（避免远景透明糊成一片）
+float wboit_w(float z, float a) {
+    return a * max(1e-2, min(3e3,
+        10.0 / (1e-5 + pow(z / 200.0, 4.0) + pow(z / 10.0, 2.0))));
+}
+void main() {
+    vec3 n = normalize(vNormal);
+    float ndl = max(dot(n, normalize(uLightDir)), 0.0);
+    vec3 c = uColor * (0.25 + 0.75 * ndl);
+    float a = uAlpha;
+    float w = wboit_w(gl_FragCoord.z, a);
+    outAccum  = vec4(c * a * w, a * w);
+    outReveal = vec4(a, 1.0, 1.0, 1.0);    // 配合 (ZERO, 1-SRC) -> 乘 (1-a)
+}'''
+
+WBOIT_COMPOSITE_FRAG = '''#version 330 core
+in vec2 vNdc;
+layout(location = 0) out vec4 outColor;
+uniform sampler2D uAccum;
+uniform sampler2D uReveal;
+uniform sampler2D uScene;
+void main() {
+    vec2 uv = vNdc * 0.5 + 0.5;
+    vec4 accum  = texture(uAccum, uv);
+    float reveal = texture(uReveal, uv).r;
+    vec3  C  = accum.rgb / max(accum.a, 1e-5);       // 加权平均色
+    vec3  bg = texture(uScene, uv).rgb;
+    outColor = vec4(mix(bg, C, clamp(1.0 - reveal, 0.0, 1.0)), 1.0);
+}'''
+
 PBR_FRAG = '''#version 330 core
 in vec3 vWorldPos;
 in vec3 vNormal;
@@ -814,6 +872,8 @@ SOURCES = {
     'pbr_inst': (PBR_INST_VERT, PBR_FRAG),
     'pbr_skin': (PBR_SKIN_VERT, PBR_FRAG),
     'gpu_driven': (GPU_DRIVEN_VERT, GPU_DRIVEN_FRAG),
+    'wboit': (WBOIT_VERT, WBOIT_FRAG),
+    'wboit_composite': (FULLSCREEN_VERT, WBOIT_COMPOSITE_FRAG),
     'sky': (SKY_VERT, SKY_FRAG),
     'basic': (BASIC_VERT, BASIC_FRAG),
     'env_gen': (FULLSCREEN_VERT, ENV_GEN_FRAG),
