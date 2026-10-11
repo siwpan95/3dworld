@@ -617,7 +617,7 @@ DeepSeek Harness 的运行时内核。
 
 ## 13. 弹潮 v1.1 · boss 波与弹幕图案生成器（Swarmward 延伸）
 
-> 状态：规划（note 就绪，待全哥点菜执行）——§12.3 遗留素材转正，设计档位取推荐项。
+> 状态：**✅ 已执行并推送**（2026-10-11）—— §12.3 遗留素材转正，设计档位取推荐项。
 
 ### 13.1 命名
 不换名：Swarmward 就地升级（版本 v1.1），无新增核验。
@@ -649,6 +649,33 @@ particles（boss 死亡大爆炸）、entity/render 记账；自建 **PatternEmi
 ### 13.6 风险
 碰撞峰值（boss 弹幕 + 小兵同屏 O(n²)）→ 网格分桶备选；auto-pilot 在花瓣弹幕下
 通过率 → 10 种子回归把关，不达标先降 boss 弹速。
+
+### 13.7 执行结果（2026-10-11 ✅ 已交付）
+
+**落地**：`storm_kernel.py` 就地扩展 —— `emit_plan`（螺旋/花瓣/扇形/环爆/扫射五图案，纯函数
+确定性）+ `boss_phase` / `boss_hp_for_wave` / `is_boss_wave` + `StormKernel._boss` /
+`_boss_fire`（三阶段 + P2 召唤 drone）+ `EBULLET_CAP` 限流 + auto-pilot 增强；
+`demos/swarmward.py` 加 boss 绘制 + **顶部血条**；`tests/run_tests.py` 加 3 项。
+
+**验收**：`config_boot storm --seeds`（10 种子）**10/10 通关**（68.0~72.9s）；
+`run_tests` 新增 3 项（图案确定性/角度覆盖、阶段切换、boss 波编排）全过；全量回归全绿；
+`config_boot all` 6/6；demo 出图（boss + 血条 + 俯视战场）。
+
+**平衡过程（实测记录，供后续参考）**：
+- 初版 auto-pilot 在 boss 波**必死**（10 种子 8/10 → 逐步定位）；
+- 三个死因依次暴露：① 玩家**贴边**被环爆/扫射沿边打死；② boss 输出高于玩家火力（boss 血掉得慢）；
+  ③ **狂暴 P3 占比过大**（0.33 阈值 → P3 覆盖 67% 血量）；
+- 最终有效组合：**boss 波前回满命**（检查点）＋ **boss 战无敌帧 ×1.8** ＋ **弱向心引导**
+  （`margin` 线性，系数 1.6）＋ **缩短 P3**（阈值 0.33→**0.50**）＋ boss 弹速 ×0.46；
+- **反效果记录（别重犯）**：**降 boss 血量** → 更快进 P3，反而更危险；
+  **强边界惩罚**（zone=6）→ 把 AI 推回屏心、撞上 boss 围死。
+
+**顺带修掉三个既有缺陷**（§12 遗留，headless 验收不渲染所以一直没暴露）：
+1. `self.auto` 从未初始化 → demo 一进 `update()` 就 `AttributeError`；
+2. **demo 视图错误**：`view=Mat4()` + `near=0.1` 实为"相机在原点朝 −z"，地面（y=0 水平面）
+   退化成一条线、z>0 实体被 near 裁掉 → **demo 从没正常出过图**；改**俯视**后地面覆盖率 0% → 86%；
+3. **auto 与 headless 时序不一致**：demo 用真实可变 dt、headless 用固定 1/60，AI 对 dt 敏感
+   （demo 22s 死 vs headless 70s 通关）→ demo 改**固定 1/60 子步进**。
 
 ---
 

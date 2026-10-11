@@ -1251,15 +1251,66 @@ def test_cam_move_dirs_mapping():
 
 
 # ============================================== P1-⑤ 弹潮 / Swarmward ==
+def test_storm_emit_plan():
+    """§13 弹幕图案生成器：确定性 + 五图案非空 + 密度可预期 + 环爆角度覆盖。"""
+    from experiments.cordis.storm_kernel import emit_plan
+    # 确定性（同参数同计划）——headless 与实机看到的弹幕必须一致
+    for p in ('spiral', 'flower', 'fan', 'ring_burst', 'sweep'):
+        a = emit_plan(p, 1.234, phase=0.5, count=12, aim=0.3)
+        b = emit_plan(p, 1.234, phase=0.5, count=12, aim=0.3)
+        assert a == b, f'{p} 计划不确定'
+        assert len(a) >= 10, f'{p} 弹数过少: {len(a)}'
+        # 速度必须为正（负速度 = 往回飞的弹，逻辑上不合理）
+        assert all(sp > 0.0 for _ang, sp in a), f'{p} 出现非正弹速'
+    # 未知图案 -> 空计划（调用方跳过，不炸）
+    assert emit_plan('nope', 1.0) == []
+    # ring_burst 角度均匀覆盖（12 发 -> 相邻间隔 2π/12）
+    ring = sorted(ang % (2 * math.pi) for ang, _ in emit_plan('ring_burst', 0.0, count=12))
+    gaps = [round((ring[(i + 1) % 12] - ring[i]) % (2 * math.pi), 4) for i in range(12)]
+    assert all(abs(g - 2 * math.pi / 12) < 1e-3 for g in gaps), gaps
+    print('  ok: 弹幕图案（5 种确定/非空/正弹速；未知图案空计划；环爆角度均匀）')
+
+
+def test_storm_boss_phase():
+    """§13 boss 三阶段：阈值 66%/50% 切换，单调不回头；血量随波号递增。"""
+    from experiments.cordis.storm_kernel import (boss_hp_for_wave, boss_phase,
+                                                 is_boss_wave)
+    # 阈值是严格大于：66% 落 P2，50% 落 P3
+    assert [boss_phase(h, 100) for h in (100, 80, 67, 66, 51, 50, 34)] == [1, 1, 1, 2, 2, 3, 3]
+    assert boss_phase(0, 100) == 3
+    assert [is_boss_wave(w) for w in (4, 5, 6, 9, 10, 11)] == [False, True, False, False, True, False]
+    hps = [boss_hp_for_wave(w) for w in (5, 10)]
+    assert hps == [75, 90], hps
+    assert hps[1] > hps[0], '后期 boss 血量应更高'
+    print(f'  ok: boss 阶段切换(66%/50%) + 波次编排 + 血量 {hps}')
+
+
+def test_storm_boss_wave_plan():
+    """§13 boss 波：wave_plan 标出 is_boss 且小兵减量（boss 是主角）。"""
+    from experiments.cordis.storm_kernel import wave_plan
+    w5 = wave_plan(20261011, 4)      # 0 基 4 -> 1 基 5
+    w9 = wave_plan(20261011, 8)      # 1 基 9（非 boss）
+    w10 = wave_plan(20261011, 9)     # 1 基 10
+    assert w5['is_boss'] and w10['is_boss'] and not w9['is_boss']
+    assert w5['boss_hp'] == 75 and w10['boss_hp'] == 90
+    assert w5['count'] < w9['count'], 'boss 波小兵应减量'
+    print(f"  ok: boss 波编排（w5 hp={w5['boss_hp']} 小兵={w5['count']} / "
+          f"非 boss w9 小兵={w9['count']}）")
+
+
 def test_wave_plan_monotonic():
     from experiments.cordis.storm_kernel import wave_plan
     plans = [wave_plan(20261011, i) for i in range(10)]
+    # v1.1：boss 波（1 基 5/10）的小兵数**故意减量**（boss 是主角）——
+    # 敌数单调性只在非 boss 波之间成立。
+    normal = [p for p in plans if not p['is_boss']]
+    for a, b in zip(normal, normal[1:]):
+        assert b['count'] >= a['count'], '敌数应随波号单调不减（非 boss 波）'
     for a, b in zip(plans, plans[1:]):
-        assert b['count'] >= a['count'], '敌数应随波号单调不减'
         assert b['speed'] >= a['speed'], '速度倍率应随波号单调不减'
         assert b['f_weaver'] >= a['f_weaver'], 'weaver（会射击）占比应单调不减'
-    assert plans[0]['count'] >= 6 and plans[-1]['count'] <= 24
-    print('  ok: 程序化编波难度单调（敌数/速度/weaver 占比随波号递增）')
+    assert plans[0]['count'] >= 6 and max(p['count'] for p in plans) <= 24
+    print('  ok: 程序化编波难度单调（非 boss 波敌数/速度/weaver 占比递增）')
 
 
 def test_formation_layout():
@@ -1357,6 +1408,9 @@ if __name__ == '__main__':
     print('test_solver_unsolvable');              test_solver_unsolvable()
     print('test_generate_solvable_by_construction'); test_generate_solvable_by_construction()
     print('test_cam_move_dirs_mapping');          test_cam_move_dirs_mapping()
+    print('test_storm_emit_plan');                test_storm_emit_plan()
+    print('test_storm_boss_phase');               test_storm_boss_phase()
+    print('test_storm_boss_wave_plan');           test_storm_boss_wave_plan()
     print('test_wave_plan_monotonic');            test_wave_plan_monotonic()
     print('test_formation_layout');               test_formation_layout()
     print('test_circle_hit');                     test_circle_hit()

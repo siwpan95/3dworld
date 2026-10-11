@@ -38,8 +38,9 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from experiments.cordis.tree_boot import WANT_STORM, config_path, mount_tree  # noqa: E402
+from engine.camera import look_at_matrix  # noqa: E402
 from experiments.cordis.storm_kernel import (  # noqa: E402
-    ARENA_H, ARENA_W, PLAYER_R,
+    ARENA_H, ARENA_W, BOSS_R, PLAYER_R,
 )
 
 VERTEX_SRC = '''#version 330 core
@@ -108,6 +109,7 @@ TINT_PLAYER = (0.40, 0.62, 0.95)
 TINT_CHASER = (0.90, 0.30, 0.24)
 TINT_WEAVER = (0.72, 0.40, 0.92)
 TINT_DRONE = (0.92, 0.78, 0.30)
+TINT_BOSS = (0.98, 0.34, 0.44)
 TINT_BULLET = (0.95, 0.97, 1.00)
 TINT_EBULLET = (1.00, 0.45, 0.25)
 TINT_PARTICLE = (1.00, 0.82, 0.45)
@@ -134,6 +136,10 @@ class SwarmwardDemo(DemoApp):
 
         # ---- Cordis 挂载（配置树驱动）----
         self.ctx, self.kernel = self._boot_kernel()
+        # `--flag auto`：闪避 AI 驾驶（与 headless 验收同一套逻辑）
+        # ⚠️ 原版漏了这一行 —— demo 一进 update() 就 AttributeError（headless
+        #    验收走 config_boot 不经过 demo，所以这个缺陷一直没暴露）。
+        self.auto = 'auto' in self.args.flags
         for f in self.args.flags:
             if f.startswith('seed') and f[4:].isdigit():
                 self.kernel.restart(int(f[4:]))
@@ -270,11 +276,20 @@ class SwarmwardDemo(DemoApp):
         if self.paused:
             return
         if self.auto:
-            self.kernel.auto_step(dt)              # 与 headless 验收同一套逻辑
+            # ⚠️ **固定 1/60 子步进**：headless 验收（config_boot）用固定 dt=1/60，
+            #    而 demo 的真实帧时间随帧率浮动（且可能远大于 1/60）。auto-pilot 的
+            #    预测/闪避对 dt 敏感 —— 直接用真实 dt 会让 demo 里的 AI 与验收表现
+            #    不一致（实测：demo 里 22s 就死，headless 却 70s 通关）。
+            left = min(dt, 0.25)
+            while left > 1e-9:
+                step = min(1.0 / 60.0, left)
+                self.kernel.auto_step(step)
+                self.kernel.update(step)
+                left -= step
         else:
             self._input_move(dt)
             self._input_shoot()
-        self.kernel.update(dt)
+            self.kernel.update(dt)
         for ev in self.kernel.drain_events():
             self._sfx(ev)
 
@@ -285,9 +300,14 @@ class SwarmwardDemo(DemoApp):
         # 正交固定屏：竞技场完整可见（letterbox）
         scale = max(ARENA_W / (2.0 * aspect), ARENA_H) / 2.0
         hw, hh = scale * aspect, scale
-        self.window.view = Mat4()
+        # ⚠️ 俯视（原本用 `Mat4()` 单位 view + near=0.1 —— 那是"相机在原点朝 -z 看"，
+        #    地面（y=0 水平面）在正视图里退化成一条线、z>0 的实体被 near 裁掉：
+        #    demo 从没正常出过图，因为 §12 只跑了 headless 验收）。俯视才符合
+        #    ARENA_W×ARENA_H 固定屏的设计意图。
+        self.window.view = look_at_matrix((0.0, 22.0, 0.0), (0.0, 0.0, 0.0),
+                                          (0.0, 0.0, -1.0))
         self.window.projection = Mat4.orthogonal_projection(
-            -hw, hw, -hh, hh, 0.1, 100.0)
+            -hw, hw, -hh, hh, 1.0, 60.0)
 
         prog = self.program
         prog.use()
@@ -301,14 +321,19 @@ class SwarmwardDemo(DemoApp):
         # 敌（受击白闪 = Aimlabs hitmarker 的 3D 等价物）
         for e in k.enemies:
             tint = {'chaser': TINT_CHASER, 'weaver': TINT_WEAVER,
-                    'drone': TINT_DRONE}[e['kind']]
+                    'drone': TINT_DRONE, 'boss': TINT_BOSS}[e['kind']]
             f = e.get('flash', 0.0)
             if f > 0.0:
                 tint = tuple(t + (TINT_FLASH[i] - t) * f for i, t in enumerate(tint))
             prog['u_tint'] = tint
-            prog['u_model'] = _mat_translate(e['x'], 0.35, e['z']) \
-                @ _mat_scale(0.62 if e['kind'] == 'drone' else 0.78, 0.7,
-                             0.62 if e['kind'] == 'drone' else 0.78)
+            if e['kind'] == 'boss':
+                # boss 明显更大（半球压在场地上的观感）
+                prog['u_model'] = _mat_translate(e['x'], 0.75, e['z']) \
+                    @ _mat_scale(BOSS_R * 1.55, BOSS_R * 1.15, BOSS_R * 1.55)
+            else:
+                prog['u_model'] = _mat_translate(e['x'], 0.35, e['z']) \
+                    @ _mat_scale(0.62 if e['kind'] == 'drone' else 0.78, 0.7,
+                                 0.62 if e['kind'] == 'drone' else 0.78)
             self.cube.draw(GL_TRIANGLES)
 
         # 玩家（无敌帧闪烁）
@@ -353,7 +378,42 @@ class SwarmwardDemo(DemoApp):
         prog['u_model'] = _mat_translate(0, 0, 0)
         self.particles_vl.draw(GL_TRIANGLES)
 
+        self._draw_boss_hp(w, h)
         self._draw_overlay(w, h)
+
+    def _draw_boss_hp(self, w, h):
+        """顶部 boss 血条（2D 叠加；仅 boss 存在时画）。颜色随剩余血量分段。"""
+        k = self.kernel
+        if float(k.boss_max) <= 0.0:
+            return
+        b = next((e for e in k.enemies if e['kind'] == 'boss'), None)
+        if b is None:
+            return
+        frac = max(0.0, min(1.0, float(b['hp']) / max(1.0, float(b['hp_max']))))
+        glDisable(GL_DEPTH_TEST)
+        keep = self.window.projection
+        self.window.view = Mat4()
+        self.window.projection = Mat4.orthogonal_projection(0, w, 0, h, -1, 1)
+        prog = self.program
+        prog.use()
+        bar_w, bar_h = w * 0.52, 16.0
+        cx, cy = w / 2.0, h - 52.0
+        prog['u_tint'] = (0.10, 0.09, 0.11)
+        prog['u_model'] = _mat_translate(cx, cy, 0.0) @ _mat_scale(bar_w, bar_h, 1.0)
+        self.cube.draw(GL_TRIANGLES)
+        if frac > 0.5:
+            tint = (0.95, 0.30, 0.34)
+        elif frac > 0.25:
+            tint = (0.98, 0.58, 0.20)
+        else:
+            tint = (0.99, 0.20, 0.24)
+        fw = bar_w * frac
+        prog['u_tint'] = tint
+        prog['u_model'] = _mat_translate(cx - (bar_w - fw) * 0.5, cy, 0.01) \
+            @ _mat_scale(max(0.5, fw), bar_h * 0.66, 1.0)
+        self.cube.draw(GL_TRIANGLES)
+        glEnable(GL_DEPTH_TEST)
+        self.window.projection = keep
 
     def _draw_overlay(self, w, h):
         rules = self.kernel.ctx.rules

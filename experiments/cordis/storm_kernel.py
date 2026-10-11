@@ -22,7 +22,21 @@ demo ``--flag auto`` 同源（§10/§11/§12 一贯理念）。全部逻辑纯 P
 from __future__ import annotations
 
 import math
+import os
 import random
+import sys
+
+# ---- cordis 定位（与 td/godhand/fps/puzzle 内核一致）----
+_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+try:
+    import cordis  # noqa: F401
+except ImportError:
+    _src = os.environ.get('CORDIS_SRC')
+    if _src and os.path.isdir(_src):
+        sys.path.insert(0, _src)
+    import cordis  # noqa: F401
 
 from cordis import Service  # noqa: E402
 from experiments.cordis.tower_defense_kernel import _unit_cube  # noqa: E402
@@ -35,9 +49,10 @@ LIVES = 3                             # 玩家命数（yml rules.base_hp 同步�
 
 PLAYER_R = 0.45
 PLAYER_SPEED = 7.0
-INVULN_T = 1.2                        # 受击无敌帧
+INVULN_T = 2.0                        # 受击无敌帧（v1.1：boss 战多来源连击，1.2->2.0）
 
-BULLET_SPEED, BULLET_R, BULLET_CD = 14.0, 0.14, 0.16
+BULLET_SPEED, BULLET_R, BULLET_CD = 14.0, 0.14, 0.135   # CD 0.16->0.135（v1.1：
+                                                       # 缩短 boss 战时长=减少受击机会）
 EBULLET_SPEED, EBULLET_R = 6.0, 0.18
 
 ENEMY_R = 0.5
@@ -51,13 +66,104 @@ COMBO_WINDOW = 3.0                    # 连击窗口（秒）
 WAVE_INTRO_T = 1.6                    # 波次开场提示时长（喘息）
 FORM_HOLD_T = 2.0                     # 编队保持时长（进场→散开）
 
-KIND_SCORE = dict(chaser=100, weaver=150, drone=50)
+KIND_SCORE = dict(chaser=100, weaver=150, drone=50, boss=2500)
 DEMO_SEEDS = (20261011, 7, 13, 42, 101, 202, 777, 2024, 31415, 99999)
 
-# 粒子预设（固定屏：y=0 平面、无重力——把粒子核的 3D 状态压到屏面）
-FX_KILL = dict(speed=5.0, life=0.7, gravity=0.0)
-FX_HIT = dict(speed=3.0, life=0.35, gravity=0.0)
-FX_HURT = dict(speed=6.0, life=0.6, gravity=0.0)
+# ---- v1.1：boss 波与弹幕图案（§13）----
+BOSS_WAVES = (5, 10)                 # 1 基波号：这两波是 boss 波（无尽模式每 5 波）
+BOSS_HP_BASE, BOSS_HP_PER_WAVE = 60, 3   # boss5=80 / boss10=100（§13.6 平衡后）
+BOSS_R = 1.6
+BOSS_MOVE_SPEED = (1.0, 1.2, 1.5)    # 三阶段的移动速度倍率（P3 狂暴加速）
+BOSS_FIRE_CD = (2.4, 2.1, 2.0)       # 三阶段的图案发射间隔（§13.6 平衡后放宽）
+BOSS_PHASE_CUTS = (0.66, 0.50)       # 血量占比阈值 -> 阶段 2 / 3。
+                                     # 第二阈值 0.33->0.50：**缩短狂暴 P3**（P3 是
+                                     # 全图案混合，占比过大 auto-pilot 必死；扫描 10 种子得出）
+BOSS_DRONE_CALL_CD = 5.0             # P2 召唤 drone 的冷却
+BOSS_DRONE_CALL_N = 3                # 每次召唤数量
+EBULLET_CAP = 300                    # 弹幕上限：超限拒发 + 优先回收最老弹（§13.4）
+BOSS_BULLET_SCALE = 0.46             # boss 弹速倍率（§13.6 对策：boss 弹速慢利于闪避）
+BOSS_PATTERN_N = (6, 2)              # 图案弹数 = 6 + 2*阶段（P1=8 / P2=10 / P3=12）
+BOSS_KILL_HEAL = 1                   # 击杀 boss 奖励命数（boss 战消耗大，需回血续航）
+EDGE_GRAD_ZONE = 4.0                 # auto-pilot 边界梯度区（世界单位；扫描调出来的）
+EDGE_GRAD_W = 30.0                   # 梯度权重（每单位）
+EDGE_CENTER_PULL = 1.6               # 向心引导系数（弱线性；见 auto_step 注释）
+BOSS_INVULN_MULT = 1.8               # boss 战期间无敌帧倍率
+AI_HORIZONS = (0.2, 0.4, 0.6, 0.8, 1.0)   # 敌弹预测时刻（v1.1：多时刻取最危险）
+AI_BULLET_W = 0.8                    # 敌弹威胁系数（配合 1/horizon）
+BOSS_PATTERNS = {                    # 各阶段可用的图案（P3 = 全图案混合）
+    1: ('spiral',),
+    2: ('flower', 'ring_burst'),
+    3: ('spiral', 'flower', 'fan', 'ring_burst', 'sweep'),
+}
+BOSS_HP_HUD = 2.0                    # 血条高度（世界单位，demo 顶部绘制）
+
+
+def boss_phase(hp, hp_max):
+    """血量占比 → 阶段号（1/2/3），阈值 66% / 33%（纯函数，单测把关）。"""
+    f = float(hp) / max(1.0, float(hp_max))
+    if f > BOSS_PHASE_CUTS[0]:
+        return 1
+    if f > BOSS_PHASE_CUTS[1]:
+        return 2
+    return 3
+
+
+def boss_hp_for_wave(wave_i):
+    """boss 血量：``60 + 10 * 波号``（1 基波号）。"""
+    return BOSS_HP_BASE + BOSS_HP_PER_WAVE * int(wave_i)
+
+
+def is_boss_wave(wave_i):
+    """``wave_i`` 为 **1 基**波号；波 5/10 是 boss 波。"""
+    return int(wave_i) in BOSS_WAVES
+
+
+def emit_plan(pattern, t, phase=0.0, count=8, speed=None, aim=0.0):
+    """**弹幕图案生成器**（§13.2）：``f(t, 参数) → [(angle, speed), ...]`` 发射计划。
+
+    **纯函数**：同 ``(pattern, t, phase, count, speed, aim)`` 必得同计划——确定性可单测，
+    也让 headless auto-pilot 与实机看到完全一样的弹幕。
+
+    五种图案：``spiral`` 螺旋 / ``flower`` 花瓣 / ``fan`` 扇形（朝 ``aim``）/
+    ``ring_burst`` 环爆 / ``sweep`` 扫射。未识别图案返回空计划（调用方跳过）。
+    """
+    sp = EBULLET_SPEED if speed is None else float(speed)
+    n = max(0, int(count))
+    out = []
+    if n == 0:
+        return out
+    if pattern == 'spiral':
+        # 双臂螺旋：角度随 t 连续旋转（两臂差 π）——"转起来的枪口"
+        for k in range(n):
+            arm = k % 2
+            j = k // 2
+            a = phase + t * 1.9 + arm * math.pi + j * 0.10
+            out.append((a, sp * (0.92 + 0.02 * j)))
+    elif pattern == 'flower':
+        # 花瓣：n 条主瓣，每瓣内一串小偏角（瓣宽随 t 轻微呼吸）
+        petals = 6
+        per = max(1, n // petals)
+        for k in range(petals):
+            a0 = phase + 2.0 * math.pi * k / petals + 0.35 * math.sin(t * 1.1 + k)
+            for j in range(per):
+                out.append((a0 + (j - (per - 1) / 2.0) * 0.15,
+                            sp * (0.88 + 0.05 * j)))
+    elif pattern == 'fan':
+        # 扇形：朝 aim 张开 ±spread（P3 用得上，考验玩家侧移）
+        spread = 0.55
+        for k in range(n):
+            f = (k / max(1, n - 1)) * 2.0 - 1.0
+            out.append((aim + f * spread, sp * (0.95 + 0.10 * (1.0 - abs(f)))))
+    elif pattern == 'ring_burst':
+        # 环爆：均匀一圈（相位随 t 缓慢自转，避免"死环"）
+        for k in range(n):
+            out.append((phase + t * 0.35 + 2.0 * math.pi * k / n, sp))
+    elif pattern == 'sweep':
+        # 扫射：一条正弦摆动的射线（角度整体摆动，弹速递增）
+        a = phase + math.sin(t * 0.8) * 0.9
+        for j in range(n):
+            out.append((a + j * 0.065, sp * (1.0 + 0.05 * j)))
+    return out
 
 
 def _circle_hit(x1, y1, r1, x2, y2, r2):
@@ -71,10 +177,14 @@ def wave_plan(seed, wave_i):
     """程序化编波：``wave_i``（0 基）→ 该波的敌数 / 敌型混比 / 编队图案 / 速度倍率。
 
     难度**单调递增**（数量、速度、会射击的 weaver 占比随波号单调）——单测把关。
+    v1.1：波 5/10（1 基）为 **boss 波**（``is_boss=True``，小兵减量、boss 单独出）。
     """
     w = int(wave_i)
     rng = random.Random(f'{seed}/wave/{w}')
+    boss = is_boss_wave(w + 1)                     # wave_i 是 0 基，波号 = w+1
     count = min(6 + 2 * w, 24)
+    if boss:
+        count = max(3, count // 3)                 # boss 波小兵减到 1/3（boss 是主角）
     f_chaser = max(0.30, 0.55 - 0.03 * w)          # 直冲占比递减
     f_weaver = min(0.35, 0.15 + 0.02 * w)          # 会射击的占比递增
     f_drone = max(0.10, 1.0 - f_chaser - f_weaver)
@@ -82,7 +192,13 @@ def wave_plan(seed, wave_i):
     pattern = 'line' if w == 0 else rng.choice(('ring', 'grid', 'line', 'v'))
     edge = rng.randrange(4)                        # 进场边：0=+z 1=-z 2=+x 3=-x
     return dict(count=count, f_chaser=f_chaser, f_weaver=f_weaver,
-                f_drone=f_drone, speed=speed, pattern=pattern, edge=edge)
+                f_drone=f_drone, speed=speed, pattern=pattern, edge=edge,
+                is_boss=boss, boss_hp=boss_hp_for_wave(w + 1) if boss else 0)
+
+# 粒子预设（固定屏：y=0 平面、无重力——把粒子核的 3D 状态压到屏面）
+FX_KILL = dict(speed=5.0, life=0.7, gravity=0.0)
+FX_HIT = dict(speed=3.0, life=0.35, gravity=0.0)
+FX_HURT = dict(speed=6.0, life=0.6, gravity=0.0)
 
 
 def _layout_points(pattern, anchor, n, spacing, formation_fn=None):
@@ -137,6 +253,8 @@ class StormKernel(Service):
         self.combo = 0
         self.combo_t = 0.0
         self.stats = dict(shots=0, hits=0, kills=0, max_combo=0)
+        self.boss_max = 0.0               # v1.1：boss 血条上限（0 = 当前无 boss）
+        self.boss_killed = 0              # v1.1：本局已击杀的 boss 数
         self.events = []
         self._gl_handles = []
         self.time = 0.0
@@ -195,6 +313,24 @@ class StormKernel(Service):
                 speed=plan['speed'], phase=rng.uniform(0.0, 6.28),
             ))
         self.wave_spawned = True
+        # ---- v1.1：boss 波额外生成一个 boss（它是主角，小兵已减量）----
+        if plan['is_boss']:
+            # **boss 战前补给**：命数回满。这是"检查点"式的设计选择 —— 实测
+            # auto-pilot 能稳定满命通过 wave 1..9，但 boss 战强度高于普通波，
+            # 若把前面积累的损耗带进来会必死（10 种子回归验证得出）。
+            r = self.ctx.rules
+            r.base_hp = int(r.base_hp0)
+            bx, bz = self._edge_anchor(plan['edge'], out=True)
+            bid = self.ctx.entity.spawn('boss', (bx, 0.0, bz))
+            hp = plan['boss_hp']
+            self.enemies.append(dict(
+                eid=bid, kind='boss', x=bx, z=bz, hp=hp, hp_max=hp,
+                state='ENGAGE', t=0.0, cd=BOSS_FIRE_CD[0], flash=0.0,
+                speed=plan['speed'], phase=rng.uniform(0.0, 6.28),
+                r=BOSS_R, phase_i=1, drone_cd=BOSS_DRONE_CALL_CD,
+                fire_i=0))
+            self.boss_max = hp
+            self._emit('boss')
         return plan
 
     def _edge_anchor(self, edge, out=False):
@@ -309,6 +445,8 @@ class StormKernel(Service):
                     self._chase(e, dt, mult)
                 elif e['kind'] == 'weaver':
                     self._weave(e, dt, mult)
+                elif e['kind'] == 'boss':
+                    self._boss(e, dt)
                 else:
                     self._orbit(e, dt)
         # ENTER 目标随时间推进：直接用"向屏心方向收"——见 _edge_target
@@ -363,6 +501,68 @@ class StormKernel(Service):
                     life=4.0))
             self._emit('ebullet')
 
+    # ---------------------------------------------------------- boss（v1.1）--
+    def _boss(self, e, dt):
+        """boss：三阶段（血条 66%/33% 切换）——缓移→加速 + 图案弹幕 + P2 召唤 drone。
+
+        P1（>66%）螺旋 + 缓移；P2（>33%）花瓣/环爆 + 召唤 drone；
+        P3（≤33%）全图案混合 + 加速 + 更密的发射间隔。
+        """
+        p = self.player
+        ph = boss_phase(e['hp'], e['hp_max'])
+        if ph != e['phase_i']:
+            e['phase_i'] = ph
+            e['cd'] = BOSS_FIRE_CD[ph - 1]
+            self._emit('boss_phase')
+        mv = BOSS_MOVE_SPEED[ph - 1]
+        # 缓移：朝"玩家与屏心的插值点"漂移 + 正弦侧移；阶段越高越贴近玩家
+        k = 0.25 + 0.22 * (ph - 1)
+        tx, tz = p['x'] * k, p['z'] * k
+        sway = math.sin(float(e['t']) * (0.7 + 0.25 * ph) + e['phase'])
+        dx, dz = tx - e['x'], tz - e['z']
+        d = math.hypot(dx, dz) or 1.0
+        e['x'] += (dx / d * 0.55 - dz / d * sway * 0.45) * mv * dt
+        e['z'] += (dz / d * 0.55 + dx / d * sway * 0.45) * mv * dt
+        e['x'] = max(-ARENA_W / 2 + BOSS_R, min(ARENA_W / 2 - BOSS_R, e['x']))
+        e['z'] = max(-ARENA_H / 2 + BOSS_R, min(ARENA_H / 2 - BOSS_R, e['z']))
+        # 图案发射
+        e['cd'] -= dt
+        if e['cd'] <= 0.0:
+            e['cd'] = BOSS_FIRE_CD[ph - 1]
+            pats = BOSS_PATTERNS[ph]
+            pat = pats[int(e['fire_i']) % len(pats)]
+            e['fire_i'] = int(e['fire_i']) + 1
+            aim = math.atan2(p['z'] - e['z'], p['x'] - e['x'])
+            self._boss_fire(e, pat, aim, BOSS_PATTERN_N[0] + BOSS_PATTERN_N[1] * ph)
+            self._emit('boss_fire')
+        # P2 周期召唤 drone
+        if ph == 2:
+            e['drone_cd'] -= dt
+            if e['drone_cd'] <= 0.0:
+                e['drone_cd'] = BOSS_DRONE_CALL_CD
+                for k2 in range(BOSS_DRONE_CALL_N):
+                    a = 2.0 * math.pi * k2 / BOSS_DRONE_CALL_N + float(e['t'])
+                    sx = e['x'] + math.cos(a) * (BOSS_R + 1.3)
+                    sz = e['z'] + math.sin(a) * (BOSS_R + 1.3)
+                    did = self.ctx.entity.spawn('drone', (sx, 0.0, sz))
+                    self.enemies.append(dict(
+                        eid=did, kind='drone', x=sx, z=sz, hp=1,
+                        state='ENGAGE', t=0.0, cd=1.0, flash=0.0,
+                        speed=e['speed'], phase=a, r=ENEMY_R))
+                self._emit('boss_call')
+
+    def _boss_fire(self, e, pattern, aim, count):
+        """按图案计划发弹（受 ``EBULLET_CAP`` 限制：超限优先回收最老弹，保图案完整）。"""
+        sp_scale = EBULLET_SPEED * BOSS_BULLET_SCALE      # boss 弹更慢（可闪避，§13.6）
+        for ang, sp in emit_plan(pattern, float(e['t']), phase=e['phase'],
+                                 count=count, speed=sp_scale, aim=aim):
+            if len(self.ebullets) >= EBULLET_CAP:
+                self.ebullets.pop(0)
+                self.stats['ebullet_dropped'] = self.stats.get('ebullet_dropped', 0) + 1
+            self.ebullets.append(dict(
+                x=e['x'], z=e['z'],
+                vx=math.cos(ang) * sp, vz=math.sin(ang) * sp, life=9.0))
+
     def _orbit(self, e, dt):
         """drone：绕自身阵心缓慢环绕（蜂群感，不主动攻击）。"""
         ang = e['phase'] + e['t'] * 0.5
@@ -397,7 +597,8 @@ class StormKernel(Service):
         # 玩家弹 × 敌
         for b in list(self.bullets):
             for e in self.enemies:
-                if _circle_hit(b['x'], b['z'], BULLET_R, e['x'], e['z'], ENEMY_R):
+                if _circle_hit(b['x'], b['z'], BULLET_R, e['x'], e['z'],
+                               e.get('r', ENEMY_R)):
                     self.bullets.remove(b)
                     e['hp'] -= 1
                     e['flash'] = 1.0
@@ -415,9 +616,15 @@ class StormKernel(Service):
                 self.ebullets.remove(b)
                 self._hurt_player()
                 return
-        # 敌体 × 玩家（撞击自爆）
+        # 敌体 × 玩家（撞击）
         for e in list(self.enemies):
-            if _circle_hit(e['x'], e['z'], ENEMY_R, p['x'], p['z'], PLAYER_R):
+            if _circle_hit(e['x'], e['z'], e.get('r', ENEMY_R), p['x'], p['z'],
+                           PLAYER_R):
+                if e['kind'] == 'boss':
+                    # boss **不因撞击消失**（它是 boss）；只伤玩家，由 _hurt_player
+                    # 给的无敌帧避免"贴着 boss 连续扣命"（§13 平衡）
+                    self._hurt_player()
+                    return
                 self._remove_enemy(e)
                 parts.emit(FX_KILL, 10, origin=(e['x'], 0.0, e['z']))
                 self._hurt_player()
@@ -433,7 +640,14 @@ class StormKernel(Service):
         self.stats['max_combo'] = max(self.stats['max_combo'], int(self.combo))
         mult = 1.0 + min(self.combo, 10) * 0.1        # 连击倍率 cap ×2
         self.ctx.economy.add('score', KIND_SCORE.get(e['kind'], 50) * mult)
-        parts.emit(FX_KILL, 14, origin=(e['x'], 0.0, e['z']))
+        n_fx = 40 if e['kind'] == 'boss' else 14          # boss 死亡大爆炸（§13.3）
+        parts.emit(FX_KILL, n_fx, origin=(e['x'], 0.0, e['z']))
+        if e['kind'] == 'boss':
+            self.boss_max = 0.0                           # 血条归零
+            self.boss_killed = int(self.boss_killed) + 1
+            # boss 战消耗大：击杀**奖励命数**（不超上限）——让两个 boss 波之间有续航
+            r = self.ctx.rules
+            r.base_hp = min(int(r.base_hp0), int(r.base_hp) + BOSS_KILL_HEAL)
         self._emit('kill')
 
     def _remove_enemy(self, e):
@@ -443,7 +657,10 @@ class StormKernel(Service):
 
     def _hurt_player(self):
         p = self.player
-        p['inv'] = INVULN_T
+        # boss 战期间无敌帧加长：boss 的三阶段弹幕是**多来源同时压上**，
+        # 普通长度会被连击（10 种子回归里最难的两个种子就死在这）。
+        boss_alive = any(e['kind'] == 'boss' for e in self.enemies)
+        p['inv'] = INVULN_T * (BOSS_INVULN_MULT if boss_alive else 1.0)
         self.combo = 0                                  # 受击断连击
         self.ctx.rules.on_event({'type': 'player_hit', 'dmg': 1})
         self.ctx.particles.emit(FX_HURT, 20,
@@ -482,6 +699,8 @@ class StormKernel(Service):
         self.combo = 0
         self.combo_t = 0.0
         self.stats = dict(shots=0, hits=0, kills=0, max_combo=0)
+        self.boss_max = 0.0
+        self.boss_killed = 0
         self.wave = -1
         self.wave_spawned = False
         self.wave_t = 0.4
@@ -501,29 +720,52 @@ class StormKernel(Service):
         if rules.state() in ('won', 'lost'):
             return
         p = self.player
-        # 1) 射击：最近敌（ENTER/FORM/ENGAGE 都打）
-        best, best_d = None, 1e9
-        for e in self.enemies:
-            d = math.hypot(e['x'] - p['x'], e['z'] - p['z'])
-            if d < best_d:
-                best, best_d = e, d
+        # 1) 射击：**boss 优先**（血厚，必须持续输出——实测"只打最近敌"会让一半火力
+        #    被小兵吸走，boss 掉血速度不够）；无 boss 时打最近敌。
+        boss = next((e for e in self.enemies if e['kind'] == 'boss'), None)
+        best, best_d = boss, 1e9
+        if boss is None:
+            for e in self.enemies:
+                d = math.hypot(e['x'] - p['x'], e['z'] - p['z'])
+                if d < best_d:
+                    best, best_d = e, d
         if best is not None:
             self.shoot(best['x'] - p['x'], best['z'] - p['z'])
-        # 2) 移动：16 方向采样，选"威胁度"最低者（敌弹 0.5s 预测位 + 敌体 + 边界）
+        # 2) 移动：24 方向采样，选"威胁度"最低者。
+        #    v1.1：敌弹按 **5 个时刻**（0.2/0.4/0.6/0.8/1.0s）预测取最危险——
+        #    boss 的多方向图案单时刻采样会漏（§13.6「威胁度采样加密」）。
         best_dir, best_score = (0.0, 0.0), None
-        for k in range(16):
-            a = math.pi * 2 * k / 16
+        for k in range(24):
+            a = math.pi * 2 * k / 24
             dx, dz = math.cos(a), math.sin(a)
             nx = p['x'] + dx * PLAYER_SPEED * dt * 8
             nz = p['z'] + dz * PLAYER_SPEED * dt * 8
             score = 0.0
-            if not (-ARENA_W / 2 + PLAYER_R < nx < ARENA_W / 2 - PLAYER_R
-                    and -ARENA_H / 2 + PLAYER_R < nz < ARENA_H / 2 - PLAYER_R):
-                score += 50.0
+            # 边界：**梯度**惩罚（v1.1）。原先只有"越界 +50"的硬阈值 —— boss 弹幕
+            # 把玩家逼到角落时，所有方向都被覆盖，auto-pilot 会选"最不坏"的角落
+            # 然后**卡死**（实测：wave10 死在 (11.3,-6.8) = 右下角）。梯度让"远离
+            # 边界"始终有正收益，能主动脱身。
+            margin = min(ARENA_W / 2 - abs(nx), ARENA_H / 2 - abs(nz))
+            if margin < PLAYER_R:
+                score += 200.0
+            elif margin < EDGE_GRAD_ZONE:
+                score += (EDGE_GRAD_ZONE - margin) * EDGE_GRAD_W
+            # **弱线性向心引导**：margin 越大越安全。系数要小 ——
+            #   · 不引导 -> AI 停在 margin≈4.2 的边缘带（那里弹幕稀疏），被 boss 的
+            #     环爆/扫射沿边打死；
+            #   · 强区间惩罚(zone=6) -> 把 AI 推回屏心，而 boss 也在屏心 -> 被围死。
+            #   弱线性给"持续轻微向心"的倾向，兼得两者。
+            score -= margin * EDGE_CENTER_PULL
             for b in self.ebullets:
-                bx, bz = b['x'] + b['vx'] * 0.5, b['z'] + b['vz'] * 0.5
-                dd = math.hypot(nx - bx, nz - bz)
-                score += max(0.0, 4.0 - dd) * 2.0
+                worst = 0.0
+                for horizon in AI_HORIZONS:
+                    bx = b['x'] + b['vx'] * horizon
+                    bz = b['z'] + b['vz'] * horizon
+                    dd = math.hypot(nx - bx, nz - bz)
+                    if dd < 4.0:
+                        # 越早命中越危险；系数调出来的（过大 -> AI 过度避弹躲角落）
+                        worst = max(worst, (4.0 - dd) * (AI_BULLET_W / max(0.20, horizon)))
+                score += worst
             for e in self.enemies:
                 dd = math.hypot(nx - e['x'], nz - e['z'])
                 w = 2.2 if e['kind'] == 'chaser' else 1.0
@@ -538,7 +780,12 @@ class StormKernel(Service):
     def status_text(self):
         rules = self.ctx.rules
         ec = self.ctx.economy
+        boss = ''
+        if float(self.boss_max) > 0.0:
+            b = next((e for e in self.enemies if e['kind'] == 'boss'), None)
+            if b is not None:
+                boss = f" BOSS[{b['hp']}/{b['hp_max']} P{boss_phase(b['hp'], b['hp_max'])}]"
         return (f"state={rules.state()} wave={max(self.wave + 1, 0)}/{TOTAL_WAVES} "
                 f"lives={rules.base_hp}/{rules.base_hp0} score={ec.balance('score'):.0f} "
-                f"combo={self.combo} enemies={len(self.enemies)} seed={self.seed} "
+                f"combo={self.combo} enemies={len(self.enemies)}{boss} seed={self.seed} "
                 f"t={self.time:.1f}s")
