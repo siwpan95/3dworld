@@ -681,7 +681,7 @@ particles（boss 死亡大爆炸）、entity/render 记账；自建 **PatternEmi
 
 ## 14. 静馆 / Stillhall · Myst 漫游解谜
 
-> 状态：规划（note 就绪，待全哥点菜执行）——致敬 `Myst`(1993, Cyan) 的
+> 状态：**✅ 已执行并推送**（2026-10-11）——致敬 `Myst`(1993, Cyan) 的
 > 「节点式漫游 + 点击热点 + 谜题状态机」；**不碰原 IP 名称与素材**（合规见 §7）。
 
 ### 14.1 命名与撞名核验
@@ -724,6 +724,37 @@ demo：当前景固定机位渲染（kkrieger 场景组件复用）+ 屏面射�
 **内容量是主风险**（谜题与美术设计是内容活）→ 切片铁律 3 景 3 谜；
 LLM 场景 JSON ↔ hall schema 映射层工作量 → 先手写一份样例场景定 schema；
 热点/物品栏是否升共同核 → 执行时评估，先内核内置。
+
+### 14.8 执行结果（2026-10-11 ✅ 已交付）
+
+**落地**：`experiments/cordis/hall_kernel.py`（服务名 `hall`）—— 节点图 + 热点表 +
+物品栏 + **谜题状态机**（顺序解锁链）+ **`click(hotspot_id)` API**（headless 与 demo 同入口）+
+场景 JSON **加载/热重载**（坏 JSON **拒绝并保留旧场景**）；`services/hall.py` + `cordis.hall.yml`
++ `tree_boot.WANT_HALL` + `config_boot hall`；`demos/stillhall.py`（固定机位示意渲染 +
+热点点击/悬停高亮 + 物品栏 HUD + `1` 键自动推进）；`run_tests.py` 加 **4 项**。
+
+**场景 JSON schema**（与 `scene_viewer` / LLM 场景生成工作流同源）::
+
+    {"start": "atrium",
+     "nodes": [{"id": "atrium", "name": "门厅", "look": "...",
+                "hotspots": [{"id": "h_take_key", "label": "黄铜钥匙",
+                              "area": [0.60, 0.52, 0.14, 0.12],     # 归一化屏面矩形
+                              "action": {"type": "take", "item": "brass_key"}}]}],
+     "edges": [["atrium", "hall"]],
+     "puzzle": {"steps": [{"id": "s1", "desc": "...", "flag": "has_key"}]}}
+
+动作类型：`take`（取物）/ `use`（开机关，可 `requires`/`grants`/`gives`）/
+`move`（换景，需有边）/ `final`（终局 → `rules.puzzle_solved` → **won**）。
+
+**验收（全绿）**：`config_boot hall` → `HALLKERNEL_OK`：
+① 节点图连通（3 景全可达）；② 点击序列 5 步全过 → `puzzle_solved` → won；
+③ **锁生效**（缺前置点终局/上锁通道均被拒 —— 两条反向断言）；
+④ **热重载**（改文件生效；坏 JSON 被拒且旧场景未被污染）。
+`run_tests` 新增 4 项（热点命中 / 节点图连通 / 谜题顺序解锁 / 场景校验挡 6 类坏结构）全过；
+全量回归全绿；`config_boot all` **8/8**；demo 出图。
+
+**踩坑**：`Service.__init__` 的 `super().__init__(ctx, "<服务名>")` **必须调** ——
+漏了会让服务**挂载静默失败**（只报"配置树未就绪/缺失服务: ['hall']"，不给根因，排查成本高）。
 
 ---
 

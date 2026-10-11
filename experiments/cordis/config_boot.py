@@ -29,7 +29,7 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from experiments.cordis.tree_boot import (  # noqa: E402
-    WANT_CORES, WANT_FPS, WANT_GODHAND, WANT_PUZZLE, WANT_STORM, WANT_TD,
+    WANT_CORES, WANT_FPS, WANT_GODHAND, WANT_HALL, WANT_PUZZLE, WANT_STORM, WANT_TD,
     config_path, mount_tree,
 )
 from experiments.cordis.godhand_kernel import START_MANA  # noqa: E402
@@ -48,6 +48,7 @@ CONFIGS = {
     'cores': ('cordis.cores.yml', WANT_CORES),
     'puzzle': ('cordis.puzzle.yml', WANT_PUZZLE),
     'storm': ('cordis.storm.yml', WANT_STORM),
+    'hall': ('cordis.hall.yml', WANT_HALL),
 }
 
 
@@ -307,6 +308,70 @@ async def run_storm(ctx, seeds=None):
     await _rollback(ctx, kernel, render, 'STORMKERNEL')
 
 
+async def run_hall(ctx, seeds=None):
+    """静馆：加载场景 JSON -> 点击序列 -> 3 谜全解 -> puzzle_solved -> won（§14.6 验收）。"""
+    import json as _json
+    import tempfile
+
+    from experiments.cordis.hall_kernel import (DEFAULT_SCENE, graph_reachable,
+                                                validate_scene)
+    kernel = ctx.hall
+    render = ctx.render
+    rules = ctx.rules
+    scene = kernel.scene
+    print(f"[config] scene={kernel.loaded_from} nodes={len(scene['nodes'])} "
+          f"steps={len(scene['puzzle']['steps'])} hotspots="
+          f"{sum(len(n.get('hotspots', [])) for n in scene['nodes'])}")
+    assert render.live_count() > 0, "GL 资源未取得"
+
+    # ---- 节点图连通：3 景必须全部可达 ----
+    reach = graph_reachable(scene['edges'], scene['start'])
+    ids = {n['id'] for n in scene['nodes']}
+    assert reach == ids, f"节点图不连通: 可达 {reach} != 全部 {ids}"
+    print(f"RESULT graph connected: {sorted(reach)}")
+
+    # ---- 正向：点击序列（headless 与 demo 同一 click() 入口）----
+    seq = ['h_take_key', 'h_to_hall', 'h_lamp', 'h_to_vault', 'h_final']
+    for hsid in seq:
+        r = kernel.click(hsid)
+        print(f"  click {hsid:<12} ok={r['ok']} {r['detail']}")
+        assert r['ok'], f"点击 {hsid} 失败: {r['detail']}"
+    assert 'final_open' in kernel.flags, "终局门未开启"
+    assert rules.state() == 'won', f"puzzle_solved 未让 rules 进 won: {rules.state()}"
+    print(f"RESULT solve ok: items={kernel.inventory()} flags={sorted(kernel.flags)}")
+
+    # ---- 反向：谜题的"锁"真的生效（缺前置直接点终局/上锁通道 -> 拒绝）----
+    kernel.node_id = scene['start']
+    kernel.flags, kernel.items = set(), []
+    r_bad = kernel.click('h_final')
+    assert not r_bad['ok'], "缺齿轮时终局门竟被打开（锁失效）"
+    kernel.flags, kernel.items = set(), []
+    kernel.node_id = 'hall'
+    r_locked = kernel.click('h_to_vault')
+    assert not r_locked['ok'], "未点灯时穹室通道竟可通行（锁失效）"
+    print(f"RESULT locks ok: {r_bad['detail']} / {r_locked['detail']}")
+
+    # ---- 热重载：改文件生效；坏 JSON 拒绝并保留旧场景 ----
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, 'scene.json')
+        with open(p, 'w', encoding='utf-8') as f:
+            _json.dump(DEFAULT_SCENE, f, ensure_ascii=False)
+        assert kernel.load_scene(p), "合法 JSON 加载失败"
+        assert kernel.loaded_from == p
+        before = kernel.scene['nodes'][0]['name']
+        with open(p, 'w', encoding='utf-8') as f:
+            _json.dump({'nodes': 'not-a-list'}, f)          # 坏结构
+        assert not kernel.load_scene(p), "坏 JSON 竟被接受"
+        assert kernel.reload_errors == 1, kernel.reload_errors
+        assert kernel.scene['nodes'][0]['name'] == before, "坏 JSON 污染了旧场景"
+        print(f"RESULT reload ok: 坏 JSON 被拒（旧场景保留 name={before}）")
+
+    ok_bad, reason = validate_scene({'start': 'x', 'nodes': []})
+    assert not ok_bad, f"空场景竟通过校验: {reason}"
+    print("== HALLKERNEL_OK ==")
+    await _rollback(ctx, kernel, render, 'HALLKERNEL')
+
+
 async def run_one(kind, seeds=None):
     name, want = CONFIGS[kind]
     # 纯共同核配置树（cores）无内核取 GL 句柄 -> 不要求 GL 就绪
@@ -320,6 +385,8 @@ async def run_one(kind, seeds=None):
         await run_cores(ctx)
     elif kind == 'storm':
         await run_storm(ctx, seeds)
+    elif kind == 'hall':
+        await run_hall(ctx, seeds)
     elif kind == 'fps':
         await run_fps(ctx, seeds)
     else:
@@ -329,7 +396,8 @@ async def run_one(kind, seeds=None):
 def main(argv=None):
     ap = argparse.ArgumentParser(description="试点三 cordis.yml 配置树引导")
     ap.add_argument('kind', nargs='?', default='all',
-                    choices=['td', 'godhand', 'fps', 'puzzle', 'storm', 'cores', 'all'],
+                    choices=['td', 'godhand', 'fps', 'puzzle', 'storm', 'hall',
+                             'cores', 'all'],
                     help='运行哪个配置树（默认 all；cores = 全共同核自检）')
     ap.add_argument('--seeds', default=None,
                     help='fps/puzzle/storm 专属：逗号分隔多种子回归（如 --seeds 20261010,11,22）'
@@ -339,7 +407,7 @@ def main(argv=None):
         ap.error('--seeds 仅支持 fps / puzzle / storm')
     seeds = ([int(s) for s in args.seeds.split(',') if s.strip()]
              if args.seeds else None)
-    kinds = (['td', 'godhand', 'fps', 'puzzle', 'storm', 'cores']
+    kinds = (['td', 'godhand', 'fps', 'puzzle', 'storm', 'hall', 'cores']
              if args.kind == 'all' else [args.kind])
     for k in kinds:
         print(f"\n########## 配置树：{k} ##########")

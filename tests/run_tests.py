@@ -1251,6 +1251,62 @@ def test_cam_move_dirs_mapping():
 
 
 # ============================================== P1-⑤ 弹潮 / Swarmward ==
+def test_hall_hit_test():
+    """§14 热点命中：矩形内/外/边界。"""
+    from experiments.cordis.hall_kernel import hit_test
+    a = [0.2, 0.3, 0.4, 0.2]                     # x∈[0.2,0.6] y∈[0.3,0.5]
+    assert hit_test(a, 0.2, 0.3) and hit_test(a, 0.6, 0.5), '边界应算命中'
+    assert hit_test(a, 0.4, 0.4), '中心应命中'
+    assert not hit_test(a, 0.19, 0.4) and not hit_test(a, 0.4, 0.51), '外沿应不命中'
+    print('  ok: 热点命中（中心/边界命中，外沿不命中）')
+
+
+def test_hall_graph_connectivity():
+    """§14 节点图：邻接查询 + BFS 可达（3 景连通，断边后收缩）。"""
+    from experiments.cordis.hall_kernel import (DEFAULT_SCENE, graph_neighbors,
+                                                graph_reachable)
+    edges = DEFAULT_SCENE['edges']
+    assert set(graph_neighbors(edges, 'hall')) == {'atrium', 'vault'}
+    reach = graph_reachable(edges, DEFAULT_SCENE['start'])
+    assert reach == {n['id'] for n in DEFAULT_SCENE['nodes']}, reach
+    assert graph_reachable(edges[:1], DEFAULT_SCENE['start']) == {'atrium', 'hall'}
+    print(f'  ok: 节点图连通（{sorted(reach)}；断边后可达集正确收缩）')
+
+
+def test_hall_puzzle_state_machine():
+    """§14 谜题状态机：顺序解锁（flag 逐个点亮，全亮返回 None；乱序不跳步）。"""
+    from experiments.cordis.hall_kernel import DEFAULT_SCENE, next_step
+    steps = DEFAULT_SCENE['puzzle']['steps']
+    flags, order = set(), []
+    for _ in range(len(steps) + 1):
+        s = next_step(steps, flags)
+        if s is None:
+            break
+        order.append(s['id'])
+        flags.add(s['flag'])
+    assert order == [s['id'] for s in steps], order
+    assert next_step(steps, flags) is None, '全解后应返回 None'
+    assert next_step(steps, {'lamp_lit'})['id'] == 's1', '乱序旗标不应跳步'
+    print(f'  ok: 谜题状态机顺序解锁 {order}（乱序旗标不跳步）')
+
+
+def test_hall_scene_validate():
+    """§14 场景校验：6 类坏结构必须被拒（热重载要能挡住坏 JSON）。"""
+    from experiments.cordis.hall_kernel import DEFAULT_SCENE, validate_scene
+    ok, err = validate_scene(DEFAULT_SCENE)
+    assert ok, err
+    for bad in (
+            None,
+            {'nodes': []},
+            {'nodes': [{'id': 'a'}], 'start': 'b'},
+            {'nodes': [{'id': 'a'}, {'id': 'a'}], 'start': 'a'},
+            {'nodes': [{'id': 'a'}], 'start': 'a', 'edges': [['a', 'z']]},
+            {'nodes': [{'id': 'a', 'hotspots': [{'id': 'h'}]}], 'start': 'a'}):
+        ok2, _e = validate_scene(bad)
+        assert not ok2, f'坏场景竟通过校验: {bad}'
+    print('  ok: 场景校验挡住 6 类坏结构')
+
+
 def test_storm_emit_plan():
     """§13 弹幕图案生成器：确定性 + 五图案非空 + 密度可预期 + 环爆角度覆盖。"""
     from experiments.cordis.storm_kernel import emit_plan
@@ -1408,6 +1464,10 @@ if __name__ == '__main__':
     print('test_solver_unsolvable');              test_solver_unsolvable()
     print('test_generate_solvable_by_construction'); test_generate_solvable_by_construction()
     print('test_cam_move_dirs_mapping');          test_cam_move_dirs_mapping()
+    print('test_hall_hit_test');                  test_hall_hit_test()
+    print('test_hall_graph_connectivity');        test_hall_graph_connectivity()
+    print('test_hall_puzzle_state_machine');      test_hall_puzzle_state_machine()
+    print('test_hall_scene_validate');            test_hall_scene_validate()
     print('test_storm_emit_plan');                test_storm_emit_plan()
     print('test_storm_boss_phase');               test_storm_boss_phase()
     print('test_storm_boss_wave_plan');           test_storm_boss_wave_plan()

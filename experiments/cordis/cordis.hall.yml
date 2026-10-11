@@ -1,0 +1,23 @@
+# 静馆 / Stillhall · cordis.yml 配置树（P1-⑥ §14 节点式漫游解谜）
+#
+# 声明「本次挂哪些插件」——共同核 + 内核全由配置驱动；Cordis 按 inject 依赖图自动
+# 排序挂载（HallKernel.inject = [render, rules]，零手工编排）。
+# 扁平 entry 列表（嵌套 plugin-group 会让子服务对根 ctx 不可见，见 cordis.godhand.yml 注释）。
+#
+# 本文件同时是 demos/stillhall.py 的实际挂载声明（tree_boot.mount_tree 加载本文件）——
+# 「demo 怎么挂的 = headless 验证怎么挂的」，接线只有这一份。
+#
+#   scene —— 外部场景 JSON 路径（留空 = 用内核内置样例：3 景 3 谜）
+#            与 scene_viewer / 「LLM 场景生成工作流」同 schema（nodes/edges/puzzle）
+#
+# 运行（headless 验证）：python experiments/cordis/config_boot.py hall
+- name: experiments.cordis.services.render
+  id: render
+- name: experiments.cordis.services.rules
+  id: rules
+  config:
+    base_hp: 100              # 本内核不用血量；字段保持契约默认
+- name: experiments.cordis.services.hall
+  id: hall
+  config:
+    scene: ''                 # 空 = 内置样例场景

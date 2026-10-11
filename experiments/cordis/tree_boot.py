@@ -56,6 +56,7 @@ WANT_GODHAND = ('godhand', 'render', 'terrain', 'rules', 'economy', 'entity')
 WANT_FPS = ('fps', 'render', 'rules', 'economy', 'entity', 'maze')
 WANT_PUZZLE = ('puzzle', 'render', 'rules', 'entity', 'grid')
 WANT_STORM = ('storm', 'render', 'rules', 'economy', 'entity', 'particles', 'pathing')
+WANT_HALL = ('hall', 'render', 'rules')
 # 全共同核（P0-4 配置树统一）：cordis.cores.yml 声明挂载的全部核
 WANT_CORES = ('render', 'economy', 'entity', 'rules', 'terrain',
               'pathing', 'particles', 'sdf', 'audio', 'timeline')
