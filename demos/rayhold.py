@@ -343,6 +343,30 @@ class RayholdDemo(DemoApp):
                 flat.append(float(df[i][j]))
         return tuple(flat)
 
+    def _upload_arrays(self, prog):
+        """**数组 uniform 必须绕过 pyglet**。
+
+        pyglet 2.1.16 对 ``uniform T arr[N]`` 的 setter 只会写第 0 个元素，而且尺寸校验
+        直接抛 ``AssertionError: Size of data (64) does not match size of the uniform: 16``
+        —— 与 P2-3 里 ``u_joints[MAX_JOINTS]`` 撞的是**同一个限制**。这里直调
+        ``glUniform1fv`` / ``glUniform4fv`` 一次性上传整份数组。
+        """
+        import ctypes
+
+        from pyglet.gl import glUniform1fv, glUniform4fv, glUseProgram
+
+        glUseProgram(prog.id)
+        u = prog.uniforms
+        if 'u_grid' in u and getattr(self, '_grid', None):
+            g = (ctypes.c_float * len(self._grid))(*self._grid)
+            glUniform1fv(u['u_grid']['location'], len(self._grid), g)
+        for name, vals, n in (('u_enemy', self._enemy_uniform(), 16),
+                              ('u_bolt', self._bolt_uniform(), 8),
+                              ('u_pick', self._pick_uniform(), 8)):
+            if name in u and vals:
+                a = (ctypes.c_float * len(vals))(*vals)
+                glUniform4fv(u[name]['location'], n, a)
+
     def _enemy_uniform(self):
         """敌人 → 16×vec4：xy=位置，z=类型(整数位)+淡出(小数位/0.9)，w=受击白闪。"""
         out = [0.0] * (16 * 4)
@@ -486,10 +510,8 @@ class RayholdDemo(DemoApp):
         prog['u_cell'] = float(maze.cell)
         prog['u_half'] = float(maze.half)
         prog['u_wall_h'] = float(WALL_H)
-        prog['u_grid'] = self._grid                # 数组 uniform：不带下标、一次赋整份
-        prog['u_enemy'] = self._enemy_uniform()
-        prog['u_bolt'] = self._bolt_uniform()
-        prog['u_pick'] = self._pick_uniform()
+        # 数组 uniform 走直调 GL（pyglet 的数组 setter 只写第 0 个元素 / 尺寸校验会炸）
+        self._upload_arrays(prog)
         prog['u_exit'] = self._exit_xy
         prog['u_muzzle'] = float(k.muzzle)
         prog['u_hurt'] = float(k.hurt_flash)

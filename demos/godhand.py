@@ -143,11 +143,13 @@ class GodHandDemo(DemoApp):
         cpos, cshade = _unit_cube()
         self.cube = self.program.vertex_list(len(cpos) // 3, GL_TRIANGLES,
                                              position=('f', cpos), shade=('f', cshade))
+        # ---------- 挂载 Cordis 内核（阶段 C：玩法委托给内核）----------
+        # ⚠️ **必须在 _build_surface/_build_water 之前**：它们要读 self.kernel.ctx.terrain
+        #    （原顺序反了 -> demo 一进 setup 就 AttributeError；verify_demos 抓到）
+        self.ctx, self.kernel = self._boot_kernel()
+
         self._build_surface()
         self._build_water()
-
-        # ---------- 挂载 Cordis 内核（阶段 C：玩法委托给内核）----------
-        self.ctx, self.kernel = self._boot_kernel()
 
         # 交互 / 展示状态
         self.power = 'raise'        # 神手当前之力：raise=抬山 / lower=挖海
