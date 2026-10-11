@@ -200,8 +200,9 @@ DeepSeek Harness 的运行时内核。
   + Aimlabs 手感件）、`core/particles_core.py` 加 `snapshot()`（共同核最小扩展）；
   `config_boot all` **六项**全绿、10/10 种子 10 波全通关（`STORMKERNEL_OK`，GL 3→0）。
 
-**下一步**：Swarmward 实机手感（双摇杆/粒子观感）本机验证后复调；P1-⑥ 候选待全哥点菜
-（§12.3 遗留素材：boss 波与弹幕图案生成器 / Myst 漫游 / Elite 太空 / 节奏音击）。
+**下一步**：P1-⑤ 弹潮 v1.1（boss 波 + 弹幕图案生成器，§13）/ P1-⑥ 候选四 note 全部
+就绪（§13-16：弹潮 v1.1 / 静馆 Stillhall / 星阑 Voidward / 落音 Pulsefall）——
+**待全哥点菜排期**；Rayhold/Boxward/Swarmward 实机手感数据复调。
 
 ---
 
@@ -611,6 +612,179 @@ DeepSeek Harness 的运行时内核。
   （62.6~71.4s，击杀 136~150，`STORMKERNEL_OK`，GL `3→0`）；单测 4 项
   （编波单调/编队图案/圆碰撞/连击窗口）并入 run_tests 全绿。
 - 待办：实机录制/截图/手感（双摇杆+粒子观感）本机补跑（沙箱 GL 受限，惯例）。
+
+---
+
+## 13. 弹潮 v1.1 · boss 波与弹幕图案生成器（Swarmward 延伸）
+
+> 状态：规划（note 就绪，待全哥点菜执行）——§12.3 遗留素材转正，设计档位取推荐项。
+
+### 13.1 命名
+不换名：Swarmward 就地升级（版本 v1.1），无新增核验。
+
+### 13.2 切片范围
+- **做**：**弹幕图案库**（参数化生成器：spiral 螺旋 / flower 花瓣 / fan 扇形 /
+  ring-burst 环爆 / sweep 扫射——图案 = ``f(t, 参数) → [(angle, speed), ...]`` 发射计划）；
+  **boss 敌型**（hp 60+10·波号、半径 1.6、**3 阶段**按血量 66%/33% 切换：
+  P1 螺旋+缓移 → P2 花瓣+召唤 drone → P3 狂暴加速全图案混合）；波次编排
+  （10 波制的波 5/10 为 boss 波；无尽模式每 5 波）；boss 血条（HUD）；auto-pilot
+  boss 应对（boss 弹速慢利于闪避，威胁度采样加密）。
+- **不做**：多 boss 图鉴（一个 boss 模型多配色）、弹幕编辑器、成就系统。
+
+### 13.3 复用 vs 自建
+复用 rules（boss 波也是一波，`wave_cleared` 不变）、economy（boss 大额分）、
+particles（boss 死亡大爆炸）、entity/render 记账；自建 **PatternEmitter**
+（纯函数，同 t 同参数同计划——确定性可单测）与 BossState 阶段机。
+
+### 13.4 落地架构
+`storm_kernel.py` 就地扩展（不改文件结构）：pattern 发射函数放模块级
+（``emit_plan(pattern, t, phase)``）；boss = 特殊敌 dict；``ebullets`` cap 300
+（超限拒发 + 优先回收最老弹）；demo 加顶部血条（2D 条 vertex_list）。
+
+### 13.5 验收标准
+1. `config_boot storm --seeds`（含 boss 波的完整 10 波）10/10 通关；
+2. 图案单测：确定性、密度上限、角度分布覆盖；boss 阶段切换单测；
+3. 实机弹幕观感与 auto-pilot boss 通过率本机验证。
+
+### 13.6 风险
+碰撞峰值（boss 弹幕 + 小兵同屏 O(n²)）→ 网格分桶备选；auto-pilot 在花瓣弹幕下
+通过率 → 10 种子回归把关，不达标先降 boss 弹速。
+
+---
+
+## 14. 静馆 / Stillhall · Myst 漫游解谜
+
+> 状态：规划（note 就绪，待全哥点菜执行）——致敬 `Myst`(1993, Cyan) 的
+> 「节点式漫游 + 点击热点 + 谜题状态机」；**不碰原 IP 名称与素材**（合规见 §7）。
+
+### 14.1 命名与撞名核验
+**Stillhall**（still + hall，静默馆邸）。核验（2026-10-11 组合查询）：无精确命中
+（候选 Hushwing 因 MTG 名卡 Hushwing Gryff 弃用）。**执行前补单轮核验**。
+
+### 14.2 设计前提（未经先问，档位取推荐项，review 可调）
+- 漫游形态：**节点式**（经典 Myst 式：固定机位实时渲染 + 点击画面边缘/热点换景），
+  而非自由 WASD——省关卡设计、保"凝视旧地"氛围。
+- 谜题形态：顺序解锁链（1 馆 3 景 3 谜：找钥匙 → 开机关 → 终局门）。
+- **项目特色卖点**：场景数据 JSON 与 `scene_viewer` / 「LLM 场景生成工作流」同 schema——
+  LLM 生成场景 → 内核消费（§14.5）。
+
+### 14.3 切片范围
+- **做**：节点图（3 景 + 邻接边）、热点点击 + 光标反馈、物品栏（3-4 件）、
+  谜题状态机（顺序解锁）、场景 JSON 加载（含热重载）、headless 点击序列验收、
+  环境音（风/钟摆，合成）。
+- **不做**：多馆、自由视角、NPC 对话、预渲染帧管线、存档。
+
+### 14.4 复用 vs 自建
+| 复用 | 自建 |
+| --- | --- |
+| `scene_viewer` 场景 JSON 管线（加载/热重载）；engine 场景组装（kkrieger/nordic 先例） | `hall_kernel.py`（hall）：节点图 + 热点表 + 谜题状态机 + **`click(hotspot_id)` API**（headless 可驱动） |
+| rules：终局谜题 → `puzzle_solved` 事件（P1-④ 已加，**零改动**） | 物品栏（entity 存即可）；场景 JSON schema（nodes/edges/hotspots） |
+| render 记账 + `ctx.effect` 回滚；合成环境音（SfxPlayer） | 固定机位渲染的景切换（淡入淡出） |
+
+### 14.5 落地架构
+场景 JSON：``{"nodes": [{"id", "scene_ref", "hotspots": [{"id", "area", "action"}]}],
+"edges": [...], "puzzle": {...}}``——scene_viewer 的场景描述 + 交互层的最小并集。
+demo：当前景固定机位渲染（kkrieger 场景组件复用）+ 屏面射线拾取热点
+（正交/透视两用）+ 热点悬停高亮 + 物品栏 HUD。
+
+### 14.6 验收标准
+1. `config_boot hall`：加载场景 JSON → 模拟点击序列 → 3 谜全解 → `puzzle_solved` → won；
+2. 场景 JSON 热重载（改文件生效，坏 JSON 拒绝保旧——scene_viewer 惯例）；
+3. 单测：热点命中、谜题状态机、节点图连通；
+4. 实机漫游/解谜体验本机验证。
+
+### 14.7 风险
+**内容量是主风险**（谜题与美术设计是内容活）→ 切片铁律 3 景 3 谜；
+LLM 场景 JSON ↔ hall schema 映射层工作量 → 先手写一份样例场景定 schema；
+热点/物品栏是否升共同核 → 执行时评估，先内核内置。
+
+---
+
+## 15. 星阑 / Voidward · Elite 太空贸易
+
+> 状态：规划（note 就绪，待全哥点菜执行）——致敬 `Elite`(1984, Acornsoft) 的
+> 「惯性飞行 + 贸易 + 战斗」；**不碰原 IP 名称与素材**（合规见 §7）。
+
+### 15.1 命名与撞名核验
+**Voidward**（void + -ward，家族第六作：…/Boxward/Swarmward/Voidward）。核验
+（2026-10-11 组合查询）：无精确命中（VoidFall 桌游/游戏、Pulse://Void 均不同名）。
+**执行前补单轮核验**。
+
+### 15.2 设计前提（未经先问，档位取推荐项，review 可调）
+惯性飞行 + 单星系贸易 + 海盗拦截；**economy 核第二个重度消费者**（市场模拟是工程亮点）；
+范围最大 → 狠砍清单见 §15.3。
+
+### 15.3 切片范围
+- **做**：1 星系（恒星 + 3 行星 + 1 空间站）、5 种货（价格 = 基准 × 供需随机游走
+  + 事件冲击，确定性可复现）、船 1 艘（货舱 20 / 炮 1）、海盗 2-3 艘拦截战、
+  2 级升级（舱位/炮）、胜负 = 资产达标（credits ≥ 10000 → won）。
+- **不做**：着陆/行星表面、多星系跳转、派系与 NPC 对话、稀有货、自动驾驶仪。
+
+### 15.4 复用 vs 自建
+| 复用 | 自建 |
+| --- | --- |
+| **economy**：credits + 5 种货物库存全走 KV 计账 | `void_kernel.py`（void）：星系图 + 市场模块（`price(good, t)` 确定性函数 + 事件冲击）+ 船状态 |
+| rules：加一条 `asset_reached` 分支（第 6 条事件，RulesService 小扩） | 惯性物理（推力 + 软阻尼——terrain_flyover 相机先例）；空间战斗（追击/射击/命中） |
+| entity（海盗/货站实体）；render 记账 + `ctx.effect` 回滚 | 海盗 AI（接近→拦截→射击）；星图 HUD（M 键） |
+| engine FlyCamera（惯性飞行相机现成） | 交易面板（数字键买/卖/升级） |
+
+### 15.5 落地架构
+市场数值：``price = base * (1 + 0.3*sin(t/period + phase) + shock)``——确定性可复现，
+事件冲击由种子驱动（引力紊乱 → 某货涨价）；headless 贸易脚本 = 「低买高卖 +
+海盗击退」的策略回放（与 demo 手玩同 API：`buy/sell/upgrade`）。
+
+### 15.6 验收标准
+1. `config_boot void`：贸易脚本达标 won（含至少一次海盗战胜利）；
+2. 市场单测：价格确定性、事件冲击方向、供需回归均值；海盗战斗单测；
+3. 惯性飞行手感与市场节奏本机验证（赚钱速率曲线调参）。
+
+### 15.7 风险
+范围最大（四选一时的评估仍成立）→ 铁律砍单；市场数值平衡 → headless 脚本
+验证赚钱速率；惯性手感实机调参。
+
+---
+
+## 16. 落音 / Pulsefall · 节奏音击
+
+> 状态：规划（note 就绪，待全哥点菜执行）——致敬下落式音击品类
+> （Beatmania IIDX 1999 等）；**不碰原 IP 名称与素材**（合规见 §7）。
+
+### 16.1 命名与撞名核验
+**Pulsefall**（pulse 脉冲 + fall 下落）。核验（2026-10-11 组合查询）：无精确命中
+（Pulse://Void 不同名）。**执行前补单轮核验**。
+
+### 16.2 设计前提（未经先问，档位取推荐项，review 可调）
+4 轨道下落 + 3 档判定窗；**谱面与音乐同源**——程序化生成器同一组参数
+（BPM/密度/种子）同时产出 note 时间轴与合成音乐，零对轴误差（工程亮点）；
+**audio 核首个内核消费者**（Track/tone 合成：鼓点/贝斯/主旋律三层）。
+
+### 16.3 切片范围
+- **做**：4 轨道（DFJK 四键）、3 谱面（BPM 90/120/150 各一，种子复现）、
+  判定 3 档（PERFECT ±40ms / GOOD ±90ms / MISS）、血量（miss 扣 → lost）、
+  连击/得分（economy）、结算（P/G/M 计数 + 准确率 + 最大连击）、
+  实机 offset 校准（F4 ±20ms）。
+- **不做**：长按/滑键 note、自制谱面导入、多人、曲目商店。
+
+### 16.4 复用 vs 自建
+| 复用 | 自建 |
+| --- | --- |
+| **audio**：`Track/tone` 合成音乐（内核按谱面参数生成三层曲子）——**首个内核消费者** | `pulse_kernel.py`（pulse）：`chart(seed, bpm, bars)` → notes + synth_events（同源核心） |
+| rules：base_hp 复用血量（player_hit → lost 已有） | 判定窗（逻辑时钟）；`hit(track, t_now)` API（headless 自动演奏 = 到点即 hit） |
+| economy 存 score；render 记账 + `ctx.effect` 回滚 | 下落渲染（轨道 + note 方块 + 判定线，正交 2D——boxward/swarmward 骨架） |
+
+### 16.5 落地架构
+谱面可打性约束（生成器内置）：同轨最小间隔 ≥ 1/8 拍、全局密度上限、
+时长 = bars 精确；音乐合成事件与 note 一一对应（同 t）。
+
+### 16.6 验收标准
+1. `config_boot pulse`：3 谱面自动演奏全连 won；
+2. 谱面单测：可打性约束、时长准确；判定窗单测；音频合成 smoke（wav 落盘）；
+3. 实机音画同步（offset 校准后）与听感验证——**本机验证要求最高**（§12 四选一时的评估）。
+
+### 16.7 风险
+实机音画同步（pyglet 播放延迟）→ offset 校准 + 判定窗放宽兜底；程序化音乐听感
+（三层合成器单薄）→ 实机评估，P2 再谈采样器；60Hz 逻辑步进 16.7ms 粒度
+< 40ms PERFECT 窗 ✓ 判定可行。
 
 
 
