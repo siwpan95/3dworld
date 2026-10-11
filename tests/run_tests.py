@@ -1251,6 +1251,53 @@ def test_cam_move_dirs_mapping():
 
 
 # ============================================== P1-⑤ 弹潮 / Swarmward ==
+def test_void_market_deterministic():
+    """§15 市场：价格确定性（同参一致、换种子变化、站间有价差）。"""
+    from experiments.cordis.void_kernel import STATIONS, station_price
+    st = STATIONS[1]
+    a = station_price('chips', st, 88.0, 20261012, {})
+    assert a == station_price('chips', st, 88.0, 20261012, {}), '同参价格不一致'
+    b = station_price('chips', st, 88.0, 20261013, {})
+    assert a != b, '换种子价格应变化'
+    # 站间 bias 造成稳定价差（贸易的基础）
+    p_ferro = station_price('ore', STATIONS[1], 10.0, 1, {})
+    p_lumen = station_price('ore', STATIONS[3], 10.0, 1, {})
+    assert p_lumen > p_ferro, f'铁砂的矿应更便宜: {p_ferro:.2f} vs {p_lumen:.2f}'
+    assert station_price('ore', STATIONS[1], 10.0, 1, {('ferro', 'ore'): -5.0}) == 1.0, '价格下限应为 1'
+    print(f'  ok: 价格确定性 + 站间价差（ore 铁砂 {p_ferro:.1f} < 流光 {p_lumen:.1f}）+ 下限钳制')
+
+
+def test_void_shock_and_reversion():
+    """§15 事件冲击方向 + 均值回归（长期围绕基准波动）。"""
+    from experiments.cordis.void_kernel import (GOODS, STATIONS, mean_reversion_gap,
+                                                shock_at, shock_table, station_price)
+    p0 = station_price('meds', STATIONS[3], 40.0, 7, {})
+    p1 = station_price('meds', STATIONS[3], 40.0, 7, {('lumen', 'meds'): 0.30})
+    assert p1 > p0, '正向冲击应抬价'
+    evs = shock_table(20261012)
+    assert len(evs) == 3, evs
+    assert shock_at(evs, evs[0][0] + 0.5), '事件窗口内应有冲击'
+    assert not shock_at(evs, evs[-1][1] + 100.0), '事件窗口外应无冲击'
+    ser = [station_price('ore', STATIONS[0], t, 5, {}) for t in range(300)]
+    assert mean_reversion_gap(ser) < 22.0 * 0.6, '摆动过大（未围绕基准）'
+    assert len(GOODS) == 5, GOODS
+    print(f'  ok: 冲击方向（+30% 抬价）+ 事件窗口 + 均值回归 gap={mean_reversion_gap(ser):.2f}')
+
+
+def test_void_station_geometry():
+    """§15 星系几何：4 站点、最近站点查询、停靠半径。"""
+    from experiments.cordis.void_kernel import DOCK_R, STATIONS, nearest_station
+    assert len(STATIONS) == 4, len(STATIONS)
+    kinds = {s['kind'] for s in STATIONS}
+    assert kinds == {'station', 'planet'}, kinds
+    st, d = nearest_station((0.0, 0.0))
+    assert st['id'] == 'hub' and d == 0.0, (st, d)
+    st2, d2 = nearest_station(STATIONS[1]['pos'])
+    assert st2['id'] == 'ferro' and d2 == 0.0
+    assert DOCK_R > 0
+    print(f'  ok: 星系几何（{len(STATIONS)} 站点 / 最近站点查询 / DOCK_R={DOCK_R}）')
+
+
 def test_hall_hit_test():
     """§14 热点命中：矩形内/外/边界。"""
     from experiments.cordis.hall_kernel import hit_test
@@ -1464,6 +1511,9 @@ if __name__ == '__main__':
     print('test_solver_unsolvable');              test_solver_unsolvable()
     print('test_generate_solvable_by_construction'); test_generate_solvable_by_construction()
     print('test_cam_move_dirs_mapping');          test_cam_move_dirs_mapping()
+    print('test_void_market_deterministic');      test_void_market_deterministic()
+    print('test_void_shock_and_reversion');       test_void_shock_and_reversion()
+    print('test_void_station_geometry');          test_void_station_geometry()
     print('test_hall_hit_test');                  test_hall_hit_test()
     print('test_hall_graph_connectivity');        test_hall_graph_connectivity()
     print('test_hall_puzzle_state_machine');      test_hall_puzzle_state_machine()

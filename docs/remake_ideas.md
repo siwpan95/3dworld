@@ -760,7 +760,7 @@ LLM 场景 JSON ↔ hall schema 映射层工作量 → 先手写一份样例场�
 
 ## 15. 星阑 / Voidward · Elite 太空贸易
 
-> 状态：规划（note 就绪，待全哥点菜执行）——致敬 `Elite`(1984, Acornsoft) 的
+> 状态：**✅ 已执行并推送**（2026-10-12）——致敬 `Elite`(1984, Acornsoft) 的
 > 「惯性飞行 + 贸易 + 战斗」；**不碰原 IP 名称与素材**（合规见 §7）。
 
 ### 15.1 命名与撞名核验
@@ -799,6 +799,34 @@ LLM 场景 JSON ↔ hall schema 映射层工作量 → 先手写一份样例场�
 ### 15.7 风险
 范围最大（四选一时的评估仍成立）→ 铁律砍单；市场数值平衡 → headless 脚本
 验证赚钱速率；惯性手感实机调参。
+
+### 15.8 执行结果（2026-10-12 ✅ 已交付）
+
+**落地**：`experiments/cordis/void_kernel.py`（服务名 `void`）—— 4 站点星系
+（1 空间站 + 3 行星，各带 goods bias）+ 5 种货 + **确定性市场**
+（`station_price`：`base × (1 + bias + 0.42·sin(t/period + φ) + shock)`，φ 由
+`(seed, station, good)` 派生）+ **事件冲击表**（`shock_table`/`shock_at`，种子驱动）
++ **惯性飞行**（`thrust` + 阻尼终端速度 ≈22）+ **海盗拦截**（保持中距 / 开火 / 赏金）
++ `buy/sell/upgrade`（2 级舱位与炮）+ **auto_step 贸易脚本**（低买高卖 + 海盗击退，
+与 demo 手玩同 API）；`services/void.py` + `cordis.void.yml` + `tree_boot.WANT_VOID` +
+`config_boot void`；`demos/voidward.py`（2D 星图 + 惯性飞行 + 交易 HUD）；
+`run_tests.py` 加 **3 项**。**rules 新增第 6 条事件 `asset_reached`**（§15.4）。
+
+**验收（全绿）**：`config_boot void` → `VOIDKERNEL_OK`：
+① 价格确定性（同参一致 / 换种子变化）；② 事件冲击方向正确（`+0.22` 抬价 `base×0.22`）；
+③ 均值回归（长期围绕基准）；④ 海盗战斗（击退入账）；⑤ **贸易脚本达标 won**
+（t=232.6s，资产 10794，39 次交易，击退 3 艘）。
+`run_tests` +3 项全过；全量回归全绿；`config_boot all` **10/10**；demo 出图。
+
+**平衡踩坑（三条都是"看起来没问题、实则是 bug"）**：
+1. **`_pirates_step` 里一行调试残留**（`getattr(self,'pending_hits',0)+1`）在 cordis 的
+   Traceable 下变成 `None + 1`，**每帧抛异常**——被 `config_boot` 的 assert 吞成
+   "贸易未达标"，实际是**玩法压根没跑**；
+2. **`SHIP_DRAG=0.86` 的终端速度只有 ~1 单位/秒**（公式 `(accel·dt)/(1-drag)`），
+   站点间距 30~50 → 每趟飞 50 秒 → 900 秒只赚 2000；改 **0.993**（终端 ≈22）后 233 秒达标；
+3. **`thrust()` 会把 `heading` 设成推进方向** —— 战斗时"刹车反推"导致**子弹朝反方向打**，
+   海盗永远打不死；须把**瞄准与推进解耦**（显式重设朝目标）。
++ 另：**把 "pirates_beaten"（击退数）误读成"存活数"**，白排查了一轮 —— 诊断输出要写清口径。
 
 ---
 

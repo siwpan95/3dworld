@@ -8,6 +8,7 @@
 * 神之手：``settlements_cleared``（敌方聚落全清）
 * 射线 FPS：``player_hit`` / ``exit_reached``
 * 归仓（方块解谜）：``puzzle_solved``（全部箱子入仓）
+* 星阑（太空贸易）：``asset_reached``（资产达标）
 
 > 依赖：仅 ``cordis``（vendored）。默认值与原塔防常量一致，保证行为不变。
 """
@@ -68,6 +69,9 @@ class RulesService(Service):
             self._state, self.won = 'won', True
         elif t == 'puzzle_solved':
             # 归仓（P1-④ 方块解谜）：全部箱子入仓 -> 胜
+            self._state, self.won = 'won', True
+        elif t == 'asset_reached':
+            # 星阑（§15 太空贸易）：资产（credits + 货值）达标 -> 胜
             self._state, self.won = 'won', True
 
     def reset(self):

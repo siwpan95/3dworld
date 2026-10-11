@@ -29,7 +29,7 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from experiments.cordis.tree_boot import (  # noqa: E402
-    WANT_CORES, WANT_FPS, WANT_GODHAND, WANT_HALL, WANT_PUZZLE, WANT_STORM, WANT_TD,
+    WANT_CORES, WANT_FPS, WANT_GODHAND, WANT_HALL, WANT_PUZZLE, WANT_STORM, WANT_TD, WANT_VOID,
     config_path, mount_tree,
 )
 from experiments.cordis.godhand_kernel import START_MANA  # noqa: E402
@@ -49,6 +49,7 @@ CONFIGS = {
     'puzzle': ('cordis.puzzle.yml', WANT_PUZZLE),
     'storm': ('cordis.storm.yml', WANT_STORM),
     'hall': ('cordis.hall.yml', WANT_HALL),
+    'void': ('cordis.void.yml', WANT_VOID),
 }
 
 
@@ -372,6 +373,77 @@ async def run_hall(ctx, seeds=None):
     await _rollback(ctx, kernel, render, 'HALLKERNEL')
 
 
+async def run_void(ctx, seeds=None):
+    """星阑：市场确定性/事件冲击/均值回归 + 贸易脚本达标 won（含海盗战胜利）（§15.6）。"""
+    from experiments.cordis.void_kernel import (GOOD_BASE, GOODS, mean_reversion_gap,
+                                                shock_at, shock_table, station_price)
+    kernel = ctx.void
+    render = ctx.render
+    rules = ctx.rules
+    print(f"[config] seed={kernel.seed} stations={len(kernel.stations)} goods={len(GOODS)} "
+          f"target={kernel.target:.0f} pirates={len(kernel.pirates)}")
+    assert render.live_count() > 0, "GL 资源未取得"
+
+    # ---- 市场：确定性（同 t 同站同货 -> 同价）----
+    st = kernel.stations[1]
+    a = station_price('chips', st, 123.4, kernel.seed, {})
+    b = station_price('chips', st, 123.4, kernel.seed, {})
+    assert abs(a - b) < 1e-12, '价格不确定'
+    c = station_price('chips', st, 123.4, kernel.seed + 1, {})
+    assert abs(a - c) > 1e-9, '换种子价格应变化（相位不同）'
+    print(f"RESULT price deterministic: {a:.2f}（同参一致；换种子 {c:.2f}）")
+
+    # ---- 事件冲击：方向正确（冲击 > 0 时价格抬升）----
+    p0 = station_price('ore', kernel.stations[0], 50.0, kernel.seed, {})
+    p1 = station_price('ore', kernel.stations[0], 50.0, kernel.seed,
+                       {('hub', 'ore'): 0.22})
+    assert p1 > p0, f'正向冲击未抬价: {p0:.2f} -> {p1:.2f}'
+    # 冲击项加在 base 上（shock × base），所以增量是 base*0.22 而非 p0*0.22
+    assert abs(p1 - (p0 + GOOD_BASE['ore'] * 0.22)) < 1e-9, '冲击幅度不对'
+    evs = shock_table(kernel.seed)
+    assert len(evs) >= 3 and shock_at(evs, evs[0][0] + 1.0), '事件表/查询不一致'
+    print(f"RESULT shock ok: {p0:.2f} -> {p1:.2f}（+22%）；事件 {len(evs)} 条")
+
+    # ---- 均值回归：价格围绕基准波动，长期不跑偏 ----
+    series = [station_price('grain', kernel.stations[2], t, kernel.seed, {})
+              for t in range(0, 400)]
+    gap = mean_reversion_gap(series)
+    assert gap < GOOD_BASE['grain'] * 0.30, f'波动过大（未围绕基准）: gap={gap:.2f}'
+    print(f"RESULT mean-reversion ok: 均价 {sum(series) / len(series):.2f} gap {gap:.2f}")
+
+    # ---- 海盗战斗：单测（开火 -> 命中 -> 击退 + 赏金）----
+    k0 = kernel.pirates_beaten
+    if kernel.pirates:
+        p = next((q for q in kernel.pirates if q['alive']), None)
+        if p is not None:
+            kernel.ship['x'], kernel.ship['z'] = p['x'] - 3.0, p['z']
+            kernel.ship['heading'] = 0.0
+            for _ in range(24):
+                kernel.ship['cd'] = 0.0
+                kernel.fire()
+                kernel._bullets_step(1.0 / 60.0)
+            assert kernel.pirates_beaten > k0, '对近距海盗开火竟未击退'
+            print(f"RESULT combat ok: 击退 {kernel.pirates_beaten - k0} 艘（赏金入账）")
+
+    # ---- 贸易脚本：auto_step 跑到资产达标 ----
+    dt = 1.0 / 60.0
+    t = 0.0
+    while rules.state() not in ('won', 'lost') and t < 900.0:
+        kernel.auto_step(dt)
+        t += dt
+    st_ = rules.state()
+    assert st_ == 'won', (f"贸易脚本未达标：state={st_} t={t:.1f} "
+                          f"资产={kernel.total_asset():.0f}/{kernel.target:.0f} "
+                          f"credits={kernel.ctx.economy.balance('credits'):.0f}")
+    assert kernel.pirates_beaten >= 1, '至少要有一次海盗战胜利'
+    assert kernel.trades >= 4, f'交易次数过少（{kernel.trades}）'
+    print(f"RESULT trade ok: state=won t={t:.1f}s 资产={kernel.total_asset():.0f} "
+          f"credits={kernel.ctx.economy.balance('credits'):.0f} 交易={kernel.trades} "
+          f"海盗={kernel.pirates_beaten}")
+    print("== VOIDKERNEL_OK ==")
+    await _rollback(ctx, kernel, render, 'VOIDKERNEL')
+
+
 async def run_one(kind, seeds=None):
     name, want = CONFIGS[kind]
     # 纯共同核配置树（cores）无内核取 GL 句柄 -> 不要求 GL 就绪
@@ -387,6 +459,8 @@ async def run_one(kind, seeds=None):
         await run_storm(ctx, seeds)
     elif kind == 'hall':
         await run_hall(ctx, seeds)
+    elif kind == 'void':
+        await run_void(ctx, seeds)
     elif kind == 'fps':
         await run_fps(ctx, seeds)
     else:
@@ -396,7 +470,7 @@ async def run_one(kind, seeds=None):
 def main(argv=None):
     ap = argparse.ArgumentParser(description="试点三 cordis.yml 配置树引导")
     ap.add_argument('kind', nargs='?', default='all',
-                    choices=['td', 'godhand', 'fps', 'puzzle', 'storm', 'hall',
+                    choices=['td', 'godhand', 'fps', 'puzzle', 'storm', 'hall', 'void',
                              'cores', 'all'],
                     help='运行哪个配置树（默认 all；cores = 全共同核自检）')
     ap.add_argument('--seeds', default=None,
@@ -407,7 +481,7 @@ def main(argv=None):
         ap.error('--seeds 仅支持 fps / puzzle / storm')
     seeds = ([int(s) for s in args.seeds.split(',') if s.strip()]
              if args.seeds else None)
-    kinds = (['td', 'godhand', 'fps', 'puzzle', 'storm', 'hall', 'cores']
+    kinds = (['td', 'godhand', 'fps', 'puzzle', 'storm', 'hall', 'void', 'cores']
              if args.kind == 'all' else [args.kind])
     for k in kinds:
         print(f"\n########## 配置树：{k} ##########")
