@@ -79,3 +79,20 @@ pip install pyyaml watchdog
   同一 `WANT_*` 列表**（`TDKERNEL_OK` / `GODHAND_OK` + 配置传递断言）。
 - **转正 · 已完成**：`vendor/cordis`（MIT，`VENDOR.md` 记账）+ `vendor/cordis.lock`
   锁定上游 commit `a3d0c171571c6bbb465d04c06eab2de53d270814`（zip SHA-256 同录）。
+- **内核族扩展 · 已完成**：同一范式（`xxx_kernel.py` + `services/xxx.py` + `cordis.xxx.yml`
+  + `config_boot xxx`）下现共 **8 个内核**：
+
+  | kind | 内核 | 一句话 |
+  |------|------|--------|
+  | `td` | 塔防「戍卫之路」 | 经济 → 兵力 → 战斗循环 |
+  | `godhand` | 神之手 | 抬高/挖低地形改写高度场 |
+  | `fps` | 迷堡枪影 | 射线 FPS + 全屏 SDF 光线步进 |
+  | `puzzle` | 归仓 | 推箱 + BFS 求解器 + 程序化关卡 |
+  | `storm` | 弹潮 | 全向生存 + **boss 波** + 弹幕图案生成器 |
+  | `hall` | 静馆 | 节点式漫游解谜 + 场景 JSON **热重载** |
+  | `void` | 星阑 | 惯性飞行 + **确定性市场** + 海盗拦截 |
+  | `pulse` | 落音 | 下落式音击（**audio 核的首个消费者**） |
+
+  外加 `cores`（纯共同核自检）。**`python experiments/cordis/config_boot.py all` → 12/12 OK**；
+  `config_boot <kind>` 是每个内核的 headless 验收入口（demo 与它共用 `mount_tree` +
+  同一 `WANT_*`，即「demo 怎么挂的 = 验收怎么挂的」）。

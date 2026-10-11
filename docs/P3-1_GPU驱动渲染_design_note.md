@@ -1,6 +1,6 @@
 # P3-1 · GPU-Driven Rendering（design note）
 
-> 状态：**待全哥放行** · 2026-10-11 · 依据 `docs/补完计划.md` §5 决策④（**已立项**：先做 GPU 剔除切片）
+> 状态：**✅ 已执行并交付**（2026-10-11）· 依据 `docs/补完计划.md` §5 决策④（**已立项**：先做 GPU 剔除切片）
 > 参照：feng3d `packages/rendering`（MIT，可借鉴**分层**；其 GPU 剔除/LOD/命令生成的产品级做法）
 
 ---

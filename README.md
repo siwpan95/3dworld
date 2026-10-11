@@ -10,7 +10,7 @@
 - `kkrieger_demo.py` —— **150 秒六幕程序化走廊漫游 + 程序化配乐**（致敬 .kkrieger）：
   走廊舱门/管道/货箱/频闪 → 大厅纪念碑/全息扫描/升降平台 → 核心过载 →
   撤离时逐段熄灯 → 重启突入（核心爆发白闪）→ 白闪传送至环面结反应堆圣殿；
-- `demos/` —— **22 个独立示例与工具**：无限隧道、SDF 光线步进、GPU 实例化粒子、
+- `demos/` —— **30 个独立示例与工具**：无限隧道、SDF 光线步进、GPU 实例化粒子、
   太阳系、程序化地形飞行、体素面剔除、水面波动、3D 鸟群、阴影贴图、
   方块世界、引擎综合展示、材质实验室、《诺德之境》、可漫步场景（S1 场景交互化）、
   方块世界可交互版（挖掘/放置 + 区块化重建）、KID-A WALKER 3D（无限走廊 + 能量/碎片）、
@@ -50,7 +50,7 @@ presentation/        表现层：装配窗口事件 → 逻辑层 → 渲染
   hud.py               幕字幕（淡入/停留/淡出）+ 状态行
   timeline_ui.py       底部时间轴面板（播放/循环/拖动/幕标记）
   shot.py              离屏抓帧（glReadPixels，DPI 无关）
-demos/               22 个单文件示例与工具 + 公共骨架 _harness.py（详见 demos/README.md）
+demos/               30 个单文件示例与工具 + 公共骨架 _harness.py（详见 demos/README.md）
 scripts/
   make_gem_obj.py      程序化生成 assets/gem.obj
   verify_demos.py      demos 批量验收（冒烟 + 截图 + 退出码）
@@ -75,6 +75,14 @@ docs/                设计文档 + 渲染验证截图
   AABB 碰撞 + 重力 + 沿墙滑动
 - **工程化**：性能面板（p1/jank + GPU 计时查询）、场景 JSON 序列化 + 热重载、
   统一 CLI（`--smoke/--shot/--bench`）
+- **进阶渲染**（2026-10 后批）：
+  - **蒙皮骨骼动画**（`skin.py`）：glTF `skin` 解析 + 关节矩阵管线 + `pbr_skin` 着色器
+    （`u_joints[MAX_JOINTS]`；⚠️ pyglet 的数组 uniform 只写第 0 个元素，须直调 `glUniformMatrix4fv`）
+  - **GPU 驱动渲染**（`gpu_cull.py`）：compute 里做**剔除 + LOD + 命令生成**，
+    CPU 每帧只 1 次 dispatch + N 次 indirect draw；含**运行时能力探测 + CPU 回退**
+  - **PCSS 软阴影**（`soft_shadow.py`）：blocker search → 半影估计 → 可变半径 PCF（Poisson 盘）
+  - **WBOIT 顺序无关透明**（`oit.py`）：一趟写 accum/reveal 两张 MRT 再合成，无需排序
+  - **点云 + EDL**（`pointcloud.py`）：程序化点云 + imposter 圆盘 + 深度轮廓增强
 
 综合演示（把上面全部跑一遍）：
 
@@ -162,7 +170,7 @@ python kkrieger_demo.py --shot     抓一组验证截图（9 张）到 docs/（�
 > "platform" 模式下实际 framebuffer = 请求尺寸，但 viewport setter 会乘
 > scale → 渲染放大裁切；本 Demo 统一设 `pyglet.options['dpi_scaling'] = 'real'`。
 
-## demos/ —— 22 个单文件 3D 示例与工具
+## demos/ —— 30 个单文件 3D 示例与工具
 
 ```bat
 python demos\demoscene_tunnel.py --smoke     冒烟
@@ -193,17 +201,32 @@ python scripts\verify_demos.py               批量验收（冒烟 + 截图 + �
 | `tower_defense.py` | **《戍卫之路》**（P1-② 塔防内核，致敬 Warcraft/Dune II）：3 类塔 + 3 类敌人 + 5 波 + 经济循环（Cordis 内核插件） |
 | `rayhold.py` | **《迷堡枪影》**（P1-③ 射线 FPS，致敬 Wolfenstein 3D/Doom）：程序化迷宫 + 全屏 SDF 光线步进 + hitscan 枪 + 敌人状态机（Cordis 内核插件） |
 | `skinned_creature.py` | **蒙皮骨骼动画**（P2-3）：加载程序化生成的带 skin 的 glTF「骨节蛇」，蒙皮顶点着色器 + 关节矩阵管线驱动骨骼链摆动 |
+| `gpu_cull_field.py` | **GPU 驱动渲染**（P3-1）：4096 实例，剔除 + LOD + 命令生成全在 compute 里；CPU 每帧只做 1 次 dispatch + 3 次 indirect draw；F2 切 GPU/CPU、F3 切 LOD |
+| `wboit_demo.py` | **顺序无关透明**（P2-2）：Weighted Blended OIT —— 4 个相交半透明球，一趟写 accum/reveal 两张 MRT 再合成，无需排序；S 切 WBOIT/排序、O 反转顺序 |
+| `pointcloud_edl.py` | **点云 + EDL**（P2-4）：程序化点云（地形/双螺旋）+ `gl_PointSize` 圆盘点 + EDL 深度轮廓增强；E 开关 EDL |
+| `stillhall.py` | **《静馆》**（§14 节点式漫游解谜，致敬 Myst）：固定机位点击热点换景/取物/开机关 + 物品栏 + 谜题状态机；场景 JSON 与 scene_viewer 同 schema 且热重载 |
+| `voidward.py` | **《星阑》**（§15 Elite 式太空贸易）：1 星系 + 5 货确定性市场（事件冲击）+ 惯性飞行 + 海盗拦截 + 交易/升级；资产达标 10000 → won |
+| `pulsefall.py` | **《落音》**（§16 下落式音击）：4 轨道（DFJK）+ 3 谱面（BPM 90/120/150 种子复现）+ 判定 3 档 + 血量/连击/结算；音乐由 audio 核按谱面程序化合成 |
+| `swarmward.py` | **《弹潮》**（P1-⑤ 全向生存弹幕，致敬 Robotron 2084）：固定屏双摇杆 + 程序化编波（难度单调）+ **boss 波**（三阶段 + 血条 + 五图案弹幕生成器）+ 粒子/编队两核消费者 |
+| `boxward.py` | **《归仓》**（P1-④ 方块解谜，致敬 Sokoban）：光栅贪心合批 + 正交 45° 四向视角 + **BFS 求解器 auto-play** + 程序化关卡 + 关卡编辑器 |
+| `kid_a_walker_3d.py` | **KID-A WALKER 3D**（arcade 伪 3D 重制为真 3D）：41 房间模版 → 区块无限走廊 + 能量/碎片系统 |
 
 详见 [demos/README.md](demos/README.md)（含统一命令行与踩坑清单）。
 
 ## 测试与验收
 
 ```bat
-python -m tests.run_tests           逻辑层无窗口单测（36 项）
+python -m tests.run_tests           逻辑层无窗口单测（62 项）
+python -m tests.test_cores          共同核契约（13 项）
+python -m tests.test_engine         引擎层无窗口单测（26 项）
+python -m tests.test_skin           蒙皮骨骼动画（8 项）
+python -m tests.test_gpu_cull       GPU 驱动渲染（7 项，含"GPU 剔除 == CPU 剔除"逐实例比对）
+python -m tests.test_p2_render      PCSS / WBOIT / 点云+EDL（7 项）
+python experiments/cordis/config_boot.py all   8 个内核 + 共同核的 headless 验收（12/12 OK）
 python main.py --shot               主线演出渲染验证（4 张）
 python kkrieger_demo.py --shot      漫游渲染验证（9 张）
-python scripts\verify_demos.py      22 个 demo 逐个冒烟 + 截图
-python scripts\verify_demos.py --bench 3   22 个 demo 的真实帧率（vsync 与重绘节流全关）
+python scripts\verify_demos.py      30 个 demo 逐个冒烟 + 截图
+python scripts\verify_demos.py --bench 3   30 个 demo 的真实帧率（vsync 与重绘节流全关）
 ```
 
 单测覆盖：相机位姿与钳制（含**自定义范围**与非法范围拒绝）、look-at 矩阵性质、
@@ -211,7 +234,10 @@ python scripts\verify_demos.py --bench 3   22 个 demo 的真实帧率（vsync �
 骨骼层级传播、**五幕编排的循环连续性与幕边界连续性**、**机械臂逆运动学落点**、
 kkrieger 六幕的循环连续性与舱门/平台/灯带状态机、**镜头穿模检查**
 （机位与立柱/门洞/顶棚/纪念碑的距离）、boids 可复现与有界、Gerstner 解析梯度、
-**地形逐行装配与朴素装配逐位一致**、**体素换种子与剔除率**。
+**地形逐行装配与朴素装配逐位一致**、**体素换种子与剔除率**；
+后批追加：**蒙皮绑定姿态 == 单位矩阵**、**热点命中/节点图连通/谜题顺序解锁/场景校验**、
+**市场确定性/事件冲击/均值回归**、**谱面可打性约束/判定窗**、
+**弹幕图案确定性与角度覆盖/boss 阶段切换/编波单调**。
 
 ## 性能基准（真实帧率）
 

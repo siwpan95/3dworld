@@ -65,8 +65,14 @@ python scripts\verify_demos.py --only boids,water  只验指定 demo
 | `godhand.py` | 交互 | **《神之手 / GodHand》**（P1-①，机制致敬 Populous / From Dust）：鼠标「抬山 / 挖海」实时改写地形高度场，淹没或掩埋敌方聚落即胜；玩法在 `experiments/cordis/godhand_kernel.py`，由 `cordis.godhand.yml` 配置树挂载 | — |
 | `tower_defense.py` | 交互 | **《戍卫之路 / Roadwarden》**（P1-② 首个游戏内核，机制致敬 Warcraft / Dune II 的「经济→兵力→战斗」循环）：24×24 格 + 固定车道 + 3 类塔（箭/炮/冰）+ 3 类敌人 + 5 波 + 胜负判定；玩法在 `experiments/cordis/tower_defense_kernel.py`，由 `cordis.td.yml` 挂载 | — |
 | `skinned_creature.py` | 引擎 | **蒙皮骨骼动画（P2-3）**：加载**程序化生成**的带 skin 的 glTF「骨节蛇」（8 关节 / `assets/skinned_snake.gltf`），用蒙皮顶点着色器（`pbr_skin`）渲染并驱动骨骼链正弦摆动；A 切摆动 / SPACE 暂停 / R 复位；拖动旋转、滚轮缩放 | `skinned_01..03.png` |
+| `gpu_cull_field.py` | 引擎 | **GPU 驱动渲染（P3-1，A/B/C 全做）**：4096 实例阵列，**剔除 + LOD + 命令生成全在 compute 里**（按 LOD 固定分区写可见表、命令的 instanceCount 由 atomicAdd 累加）；CPU 每帧只做 1 次 dispatch + 3 次 `glDrawArraysIndirect`；F2 切 GPU/CPU 剔除、F3 切 LOD、HUD 实时计数；含运行时能力探测 + CPU 回退 | `gpu_cull_01..03.png` |
+| `wboit_demo.py` | 引擎 | **顺序无关透明（P2-2）**：Weighted Blended OIT（McGuire 2013）—— 4 个**互相相交**的半透明球，透明物一趟写 accum/reveal 两张 MRT 再合成，**无需排序**；S 切 WBOIT/排序、O 反转绘制顺序（可直观看出排序法会跳变） | `wboit_01..02.png` |
+| `pointcloud_edl.py` | 引擎 | **点云 + EDL（P2-4）**：**程序化**点云（值噪声地形 / 双螺旋，20000~40000 点），`gl_PointSize` + 片元圆盘（imposter）；**EDL 全屏 pass** 按深度邻域差给轮廓加深（点云从"散点"变"有体积"）；E 开关 EDL、1/2 换云、`[`/`]` 调点大小 | `pointcloud_01..02.png` |
+| `stillhall.py` | 交互 | **《静馆 / Stillhall》**（§14 **节点式漫游解谜**，致敬 Myst 1993）：固定机位 + **点击热点换景/取物/开机关**（非自由 WASD）+ 物品栏 + **谜题状态机**（顺序解锁链：取钥 → 点灯得齿轮 → 开终局门）；场景数据走 **JSON（与 scene_viewer / LLM 场景生成工作流同 schema）**且支持热重载（坏 JSON 拒收保旧）；`1` 键自动推进 | `stillhall_01..02.png` |
+| `voidward.py` | 交互 | **《星阑 / Voidward》**（§15 **Elite 式太空贸易**，四份 note 里范围最大）：1 星系（恒星 + 3 行星 + 1 空间站）+ 5 种货（价格 = 基准 × 供需正弦 + **种子驱动事件冲击**，确定性可复现）+ **惯性飞行**（松油门滑行）+ 海盗拦截战（击退有赏金）+ 舱位/炮 2 级升级；资产达标 10000 → won；WASD 推进、空格开火、B/V 买卖、N 升级、G 自动贸易 | `voidward_01..02.png` |
+| `pulsefall.py` | 交互 | **《落音 / Pulsefall》**（§16 **下落式音击**）：4 轨道（DFJK）+ 3 谱面（BPM 90/120/150，**种子复现**）+ 判定 3 档（PERFECT ±40ms / GOOD ±90ms / MISS）+ 血量与连击得分 + 结算（P/G/M + 准确率 + 最大连击）；音乐由 **audio 核按谱面程序化合成**（三层：低音/和弦/主旋律）；F4/F5 offset 校准、G 自动演奏 | `pulsefall_01..02.png` |
 
-> 上表 23 项与 `demos/*.py`（不含 `_harness.py`）一一对应，也是
+> 上表 30 项与 `demos/*.py`（不含 `_harness.py`）一一对应，也是
 > `scripts/verify_demos.py` 逐项冒烟的对象；唯一不参与截图阶段的是
 > `scene_viewer.py`——它由 `--file` 驱动、没有固定剧照时刻。
 

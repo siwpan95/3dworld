@@ -1,6 +1,7 @@
 # 复刻早期经典游戏 · 规划（3dworld × Cordis）
 
-> 状态：规划（待全哥 review 后按五阶段逐内核推进）
+> 状态：**内核族 8 个已交付**（td / godhand / fps / puzzle / storm / hall / void / pulse）；
+> §13-16 四份候选 note 已全部落地（2026-10-12）。各节状态行见其 §x.7/§x.8「执行结果」。
 > 关联：`experiments/cordis/README.md`（Cordis 试点一：场景管线）、`demos/mountain.py`（已完成）、`recordings/mountain_100s.mp4`（已录制）
 
 ---
