@@ -832,7 +832,7 @@ LLM 场景 JSON ↔ hall schema 映射层工作量 → 先手写一份样例场�
 
 ## 16. 落音 / Pulsefall · 节奏音击
 
-> 状态：规划（note 就绪，待全哥点菜执行）——致敬下落式音击品类
+> 状态：**✅ 已执行并推送**（2026-10-12）——致敬下落式音击品类
 > （Beatmania IIDX 1999 等）；**不碰原 IP 名称与素材**（合规见 §7）。
 
 ### 16.1 命名与撞名核验
@@ -871,6 +871,29 @@ LLM 场景 JSON ↔ hall schema 映射层工作量 → 先手写一份样例场�
 实机音画同步（pyglet 播放延迟）→ offset 校准 + 判定窗放宽兜底；程序化音乐听感
 （三层合成器单薄）→ 实机评估，P2 再谈采样器；60Hz 逻辑步进 16.7ms 粒度
 < 40ms PERFECT 窗 ✓ 判定可行。
+
+### 16.8 执行结果（2026-10-12 ✅ 已交付）
+
+**落地**：`experiments/cordis/pulse_kernel.py`（服务名 `pulse`）—— `chart(seed, bpm, bars)`
+**同源产出 notes + synth_events**（一一对应、同 t；内置可打性约束：同轨 ≥1/8 拍、
+密度 ≤8/s、时长精确）+ 判定窗（`judge`/`accuracy`）+ 血量/连击/得分 + 结算 +
+**offset 校准**（F4 ±20ms）+ `hit(track, t_now)` API（headless 自动演奏同源）；
+**audio 核的首个内核消费者**：`synth_events_to_track()` 把谱面合成成三层曲子
+（低音 square / 和弦 sine / 主旋律 saw）；`services/pulse.py` + `cordis.pulse.yml` +
+`tree_boot.WANT_PULSE` + `config_boot pulse`；`demos/pulsefall.py`（4 轨道下落 + note +
+判定线 + 结算 HUD + 1/2/3 切 BPM + G 自动）；`run_tests.py` 加 **2 项**。
+
+**验收（全绿）**：`config_boot pulse` → `PULSEKERNEL_OK`：
+① 判定窗与准确率口径；② 3 谱面时长精确 + 同轨间隔合规 + 种子复现；
+③ **3 谱面自动演奏全连**（BPM 90: P78 / 120: P68 / 150: P74，**M0、acc 100%**）；
+④ **音频合成 smoke**（wav 1.64MB 落盘）。`run_tests` +2 项全过；全量回归全绿；
+`config_boot all` **12/12**；demo 出图。
+
+**踩坑**：
+1. **economy 的 KV 键未建立时 `balance/spend` 会 KeyError** —— 必须 `add('score', 0)` 先建键；
+2. **`AUTOPLAY_TOL_MS` 必须 ≥ 帧步长（16.7ms）** —— 12ms 时 note 落在两帧之间被漏判成
+   MISS（实测 M10、血量耗尽）；改 24ms（仍远在 PERFECT 窗 40ms 内）；
+3. 谱面"同轨 ≥1/8 拍"的断言与生成器都要留**浮点容差**（网格步长恰等于阈值）。
 
 
 

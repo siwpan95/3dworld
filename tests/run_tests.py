@@ -1251,6 +1251,39 @@ def test_cam_move_dirs_mapping():
 
 
 # ============================================== P1-⑤ 弹潮 / Swarmward ==
+def test_pulse_chart_constraints():
+    """§16 谱面：时长精确、同轨最小间隔 ≥ 1/8 拍、密度上限、种子复现。"""
+    from experiments.cordis.pulse_kernel import BARS, BPM_LIST, N_TRACKS, chart
+    for bpm in BPM_LIST:
+        notes, synth, meta = chart(20261012, bpm, BARS)
+        assert abs(meta['duration'] - BARS * 4 * 60.0 / bpm) < 1e-6, '时长不准'
+        last = {}
+        for t, tr in notes:
+            assert 0 <= tr < N_TRACKS, tr
+            if tr in last:
+                assert t - last[tr] >= 60.0 / bpm * 0.5 - 1e-6, f'{bpm} 同轨间隔过近'
+            last[tr] = t
+        assert notes == chart(20261012, bpm, BARS)[0], '谱面不可复现'
+        assert len(synth) >= len(notes), '合成事件应覆盖 note'
+        # 密度上限：任一 1s 窗口 <= 8
+        for k, (t0, _tr) in enumerate(notes):
+            cnt = sum(1 for t, _ in notes[k:] if t < t0 + 1.0)
+            assert cnt <= 8, f'{bpm} 密度超限 {cnt}'
+    print(f'  ok: 谱面约束（3 BPM 时长精确 / 同轨 ≥1/8 拍 / 密度 ≤8/s / 种子复现）')
+
+
+def test_pulse_judge_windows():
+    """§16 判定窗与准确率口径。"""
+    from experiments.cordis.pulse_kernel import (GOOD_MS, PERFECT_MS, accuracy, judge)
+    assert judge(0.0) == 'PERFECT' and judge(-PERFECT_MS) == 'PERFECT'
+    assert judge(PERFECT_MS + 0.1) == 'GOOD' and judge(-GOOD_MS) == 'GOOD'
+    assert judge(GOOD_MS + 0.1) == 'MISS' and judge(-999.0) == 'MISS'
+    assert abs(accuracy(10, 0, 0) - 100.0) < 1e-9
+    assert abs(accuracy(0, 10, 0) - 40.0) < 1e-9
+    assert accuracy(0, 0, 0) == 0.0
+    print(f'  ok: 判定窗（±{PERFECT_MS:.0f}ms P / ±{GOOD_MS:.0f}ms G）+ 准确率口径')
+
+
 def test_void_market_deterministic():
     """§15 市场：价格确定性（同参一致、换种子变化、站间有价差）。"""
     from experiments.cordis.void_kernel import STATIONS, station_price
@@ -1511,6 +1544,8 @@ if __name__ == '__main__':
     print('test_solver_unsolvable');              test_solver_unsolvable()
     print('test_generate_solvable_by_construction'); test_generate_solvable_by_construction()
     print('test_cam_move_dirs_mapping');          test_cam_move_dirs_mapping()
+    print('test_pulse_chart_constraints');        test_pulse_chart_constraints()
+    print('test_pulse_judge_windows');            test_pulse_judge_windows()
     print('test_void_market_deterministic');      test_void_market_deterministic()
     print('test_void_shock_and_reversion');       test_void_shock_and_reversion()
     print('test_void_station_geometry');          test_void_station_geometry()

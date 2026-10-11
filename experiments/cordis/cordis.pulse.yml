@@ -1,0 +1,35 @@
+# 落音 / Pulsefall · cordis.yml 配置树（P1-⑥ §16 下落式音击）
+#
+# 声明「本次挂哪些插件」——共同核 + 内核全由配置驱动；Cordis 按 inject 依赖图自动
+# 排序挂载（PulseKernel.inject = [render, rules, economy, audio]，零手工编排）。
+# 扁平 entry 列表（嵌套 plugin-group 会让子服务对根 ctx 不可见，见 cordis.godhand.yml 注释）。
+#
+# **audio 核的首个内核消费者**：内核把谱面的 synth_events 合成成三层曲子（低音/和弦/旋律）。
+#
+# 本文件同时是 demos/pulsefall.py 的实际挂载声明（tree_boot.mount_tree 加载本文件）——
+# 「demo 怎么挂的 = headless 验证怎么挂的」，接线只有这一份。
+#
+#   seed       —— 谱面种子（同种子 → 同谱面，录制与验收可锁定）
+#   bpm        —— 初始 BPM（3 谱面：90 / 120 / 150，切换用 load_chart）
+#   offset_ms  —— 实机音画 offset 校准（F4 ±20ms）
+#
+# 运行（headless 验证）：python experiments/cordis/config_boot.py pulse
+- name: experiments.cordis.services.render
+  id: render
+- name: experiments.cordis.services.economy
+  id: economy
+  config:
+    score: 0                  # 计分（判定得分累加）
+- name: experiments.cordis.services.rules
+  id: rules
+  config:
+    base_hp: 10               # 血量（MISS 扣 1 -> lost）
+    total_waves: 1            # 谱面走完 = wave_cleared -> won（单"波"）
+- name: experiments.cordis.services.audio
+  id: audio
+- name: experiments.cordis.services.pulse
+  id: pulse
+  config:
+    seed: 20261012
+    bpm: 120
+    offset_ms: 0.0

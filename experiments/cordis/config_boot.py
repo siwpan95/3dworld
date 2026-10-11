@@ -29,7 +29,8 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from experiments.cordis.tree_boot import (  # noqa: E402
-    WANT_CORES, WANT_FPS, WANT_GODHAND, WANT_HALL, WANT_PUZZLE, WANT_STORM, WANT_TD, WANT_VOID,
+    WANT_CORES, WANT_FPS, WANT_GODHAND, WANT_HALL, WANT_PULSE, WANT_PUZZLE,
+    WANT_STORM, WANT_TD, WANT_VOID,
     config_path, mount_tree,
 )
 from experiments.cordis.godhand_kernel import START_MANA  # noqa: E402
@@ -50,6 +51,7 @@ CONFIGS = {
     'storm': ('cordis.storm.yml', WANT_STORM),
     'hall': ('cordis.hall.yml', WANT_HALL),
     'void': ('cordis.void.yml', WANT_VOID),
+    'pulse': ('cordis.pulse.yml', WANT_PULSE),
 }
 
 
@@ -444,6 +446,71 @@ async def run_void(ctx, seeds=None):
     await _rollback(ctx, kernel, render, 'VOIDKERNEL')
 
 
+async def run_pulse(ctx, seeds=None):
+    """落音：3 谱面自动演奏全连 won + 可打性/时长/判定窗/音频合成（§16.6）。"""
+    import os as _os
+
+    from experiments.cordis.pulse_kernel import (BARS, BPM_LIST, GOOD_MS, N_TRACKS,
+                                                 PERFECT_MS, accuracy, chart, judge)
+    kernel = ctx.pulse
+    render = ctx.render
+    rules = ctx.rules
+    print(f"[config] seed={kernel.seed} tracks={N_TRACKS} bpm_list={BPM_LIST} "
+          f"bars={BARS} judge=±{PERFECT_MS:.0f}/{GOOD_MS:.0f}ms audio={ctx.audio is not None}")
+    assert render.live_count() > 0, "GL 资源未取得"
+    assert ctx.audio is not None, "audio 核未挂载（§16 的首个内核消费者）"
+
+    # ---- 判定窗（纯函数）----
+    assert judge(0.0) == 'PERFECT' and judge(-39.9) == 'PERFECT'
+    assert judge(40.1) == 'GOOD' and judge(-90.0) == 'GOOD'
+    assert judge(90.1) == 'MISS' and judge(-500.0) == 'MISS'
+    assert abs(accuracy(10, 0, 0) - 100.0) < 1e-9
+    assert abs(accuracy(0, 10, 0) - 40.0) < 1e-9
+    assert abs(accuracy(0, 0, 10)) < 1e-9
+    print(f"RESULT judge ok: ±{PERFECT_MS:.0f}ms PERFECT / ±{GOOD_MS:.0f}ms GOOD；准确率口径正确")
+
+    # ---- 谱面：可打性约束 + 时长准确（种子复现）----
+    for bpm in BPM_LIST:
+        notes, synth, meta = chart(kernel.seed, bpm, BARS)
+        want = BARS * 4 * 60.0 / bpm
+        assert abs(meta['duration'] - want) < 1e-6, f'{bpm} 时长不准'
+        # 同轨最小间隔 >= 1/8 拍
+        last = {}
+        for t, tr in notes:
+            if tr in last:
+                assert t - last[tr] >= 60.0 / bpm * 0.5 - 1e-6, f'{bpm} 同轨间隔过近'
+            last[tr] = t
+        assert len(synth) >= len(notes), '合成事件应覆盖所有 note'
+        n2, _, _ = chart(kernel.seed, bpm, BARS)
+        assert n2 == notes, f'{bpm} 谱面不可复现'
+    print(f"RESULT chart ok: 3 谱面时长准确 + 同轨间隔合规 + 种子复现")
+
+    # ---- 3 谱面自动演奏（全连 won）----
+    for bpm in BPM_LIST:
+        kernel.load_chart(bpm)
+        dur = kernel.meta['duration']
+        dt = 1.0 / 60.0
+        t = 0.0
+        while rules.state() not in ('won', 'lost') and t < dur + 30.0:
+            kernel.auto_step(dt)
+            t += dt
+        r = kernel.result()
+        assert rules.state() == 'won', (f'BPM {bpm} 自动演奏未通关：{rules.state()} '
+                                        f"M{r['MISS']} 血量={rules.base_hp}")
+        assert r['full_combo'], f"BPM {bpm} 未全连：{r}"
+        print(f"RESULT autoplay bpm={bpm}: P{r['PERFECT']} G{r['GOOD']} M{r['MISS']} "
+              f"combo={r['combo_max']} score={r['score']:.0f} acc={r['acc']:.1f}% t={t:.1f}s")
+
+    # ---- 音频合成 smoke（wav 落盘；audio 核首个消费者）----
+    path = kernel.render_music()
+    assert path and _os.path.isfile(path), f'音频渲染失败: {path}'
+    size = _os.path.getsize(path)
+    assert size > 1000, f'wav 过小: {size}'
+    print(f"RESULT audio smoke ok: {_os.path.basename(path)} {size} bytes")
+    print("== PULSEKERNEL_OK ==")
+    await _rollback(ctx, kernel, render, 'PULSEKERNEL')
+
+
 async def run_one(kind, seeds=None):
     name, want = CONFIGS[kind]
     # 纯共同核配置树（cores）无内核取 GL 句柄 -> 不要求 GL 就绪
@@ -461,6 +528,8 @@ async def run_one(kind, seeds=None):
         await run_hall(ctx, seeds)
     elif kind == 'void':
         await run_void(ctx, seeds)
+    elif kind == 'pulse':
+        await run_pulse(ctx, seeds)
     elif kind == 'fps':
         await run_fps(ctx, seeds)
     else:
@@ -470,7 +539,7 @@ async def run_one(kind, seeds=None):
 def main(argv=None):
     ap = argparse.ArgumentParser(description="试点三 cordis.yml 配置树引导")
     ap.add_argument('kind', nargs='?', default='all',
-                    choices=['td', 'godhand', 'fps', 'puzzle', 'storm', 'hall', 'void',
+                    choices=['td', 'godhand', 'fps', 'puzzle', 'storm', 'hall', 'void', 'pulse',
                              'cores', 'all'],
                     help='运行哪个配置树（默认 all；cores = 全共同核自检）')
     ap.add_argument('--seeds', default=None,
@@ -481,7 +550,8 @@ def main(argv=None):
         ap.error('--seeds 仅支持 fps / puzzle / storm')
     seeds = ([int(s) for s in args.seeds.split(',') if s.strip()]
              if args.seeds else None)
-    kinds = (['td', 'godhand', 'fps', 'puzzle', 'storm', 'hall', 'void', 'cores']
+    kinds = (['td', 'godhand', 'fps', 'puzzle', 'storm', 'hall', 'void', 'pulse',
+              'cores']
              if args.kind == 'all' else [args.kind])
     for k in kinds:
         print(f"\n########## 配置树：{k} ##########")
