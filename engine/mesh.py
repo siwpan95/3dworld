@@ -27,6 +27,44 @@ __all__ = ['Mesh', 'InstancedMesh', 'INSTANCE_ATTRS', 'build_instance_matrix']
 
 INSTANCE_ATTRS = ('i_m0', 'i_m1', 'i_m2', 'i_m3', 'i_tint')
 
+# 每个 program 当前装着的模型矩阵：id(program) -> (program, model_tuple)
+#
+# 为什么需要它：`model` / `normal_mat` 是 **program 级共享 uniform**，同 program
+# 下多个网格轮流画时会互相覆盖 —— 所以"要不要重新上传"的判据必须是
+# **该 program 的当前值**，不能是"我这个网格上次传了什么"。详见 `_bind_model`。
+#
+# 元组里同时存 program 自身是有意的：`id()` 只在对象存活期间唯一，不留引用的话
+# program 被 GC 后 id 会被复用，记录就会串到另一个 program 上。
+_MODEL_UNIFORM = {}
+
+
+def _bind_model(program, model):
+    """把 ``model`` / ``normal_mat`` 写入 ``program``，按 **program 的当前值**去重。
+
+    ⚠️ 这里是本工程踩过的一个**静默 P0**（2026-10-12 定位）：原实现把去重键放在
+    **网格自己**身上（``self._uploaded_model``），于是：
+
+    - 第 1 帧：每个网格都"首次上传"，各自用自己的矩阵画 —— 画面正确；
+    - 第 2 帧起：静止网格判定"矩阵没变"→ **跳过上传**，但 uniform 里装的是
+      **上一个网格**留下的矩阵 ⇒ 整场景的图形全部塌到最后一个绘制物的变换上。
+
+    实测症状：`docs/llm_scene_demo.json` 第 1 帧完整，第 2 帧起整座祭坛消失、
+    只剩天空与地面（祭坛被画到了"月亮"的位置，月亮周围那圈锯齿就是它），
+    而 ``draw_calls`` / ``visible`` 统计、剔除、世界矩阵**全部正常**，
+    不报任何错。任何"多个非实例化网格 + 有静止物体"的场景都会中招。
+
+    pyglet 的 ``ShaderProgram`` 定义了 ``__slots__``，挂不了自定义属性，
+    所以状态放模块级注册表 ``_MODEL_UNIFORM``。
+    """
+    m = tuple(model)
+    key = id(program)
+    rec = _MODEL_UNIFORM.get(key)
+    if rec is not None and rec[0] is program and rec[1] == m:
+        return                                  # 该 program 的 uniform 已经是对的
+    program['model'] = mat4_to_Mat4(m)
+    program['normal_mat'] = mat4_to_Mat4(_pad3(normal_matrix(m)))
+    _MODEL_UNIFORM[key] = (program, m)
+
 
 def build_instance_matrix(matrix):
     """把列主序 4x4 拆成 4 个 vec4（矩阵的四列）。"""
@@ -72,7 +110,8 @@ class Mesh:
         self.world_aabb = self.local_aabb.transformed(self.model)
         self.visible = True
         self._uniforms_dirty = True
-        self._uploaded_model = None           # 上次真正上传的矩阵（uniform 去重）
+        # 模型矩阵去重状态在 program 级（见 `_MODEL_UNIFORM`）；这里没有
+        # 网格级的 `_uploaded_model` —— 那正是曾经的 P0 缺陷所在。
         self.vlist = self._upload()
 
     # ---- 上传 ----
@@ -122,12 +161,8 @@ class Mesh:
         if not self.visible:
             return 0
         p = self.program
-        if self._uploaded_model != self.model:
-            # 与"上次实际上传的矩阵"比较而不是脏标记：同一 program 下多个
-            # 网格轮流画会互相覆盖 uniform，只看自身脏标记会漏传。
-            p['model'] = mat4_to_Mat4(self.model)
-            p['normal_mat'] = mat4_to_Mat4(_pad3(normal_matrix(self.model)))
-            self._uploaded_model = self.model
+        # 按 program 的当前 uniform 值去重（**不是**按本网格的脏标记）——理由见 `_bind_model`
+        _bind_model(p, self.model)
         if not skip_material:
             self.material.apply(p, unit_start)
         self.vlist.draw(GL_TRIANGLES)
@@ -233,7 +268,8 @@ class InstancedMesh:
         self.count = 0
         self.visible = True
         self._uniforms_dirty = True
-        self._uploaded_model = None
+        # 模型矩阵 uniform 的去重状态**不在网格上**（program 级共享），
+        # 见模块级 `_MODEL_UNIFORM` / `_bind_model`。
         self._matrices = [mat4_identity()] * self.capacity
         self._tints = [(1.0, 1.0, 1.0, 0.0)] * self.capacity
         self.world_aabb = AABB()
@@ -348,10 +384,10 @@ class InstancedMesh:
         if not self.visible or self.count <= 0:
             return 0
         p = self.program
-        if self._uploaded_model != mat4_identity():
-            p['model'] = mat4_to_Mat4(mat4_identity())
-            p['normal_mat'] = mat4_to_Mat4(_pad3(normal_matrix(mat4_identity())))
-            self._uploaded_model = mat4_identity()
+        # 实例矩阵走顶点属性，模型矩阵固定为单位阵；但**同样**要按 program 的
+        # 当前 uniform 值去重 —— 否则同 program 下的普通网格先画完，这里会
+        # 判定"单位阵没变"而跳过，把实例化网格画到那个网格的变换上。
+        _bind_model(p, mat4_identity())
         if not skip_material:
             self.material.apply(p, unit_start)
         _set_instance_count(self.vlist, self.count)

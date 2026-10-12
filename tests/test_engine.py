@@ -474,6 +474,106 @@ def test_gl_pipeline():
           f'渲染一帧 中心像素={px}')
 
 
+def test_model_uniform_is_program_scoped():
+    """``model`` uniform 是 **program 级共享**状态，去重必须按 program 当前值。
+
+    这是 2026-10-12 定位的一个**静默 P0** 的回归守卫：原实现把"上次上传的矩阵"
+    记在**网格自己**身上（``self._uploaded_model``），于是静止网格在第 2 帧
+    判定"矩阵没变"就跳过上传，而 uniform 里装的是**上一个网格**的矩阵 ——
+    整场景图形塌到最后一个绘制物的变换上，且不报任何错。
+
+    这里用假 program 记录实际写入，零 GL 依赖。
+    """
+    from engine.mathkit import mat4_from_trs
+    from engine.mesh import _bind_model
+
+    class FakeProgram:
+        """只记录被写了哪些 uniform 名。"""
+
+        def __init__(self):
+            self.writes = []
+
+        def __setitem__(self, key, value):
+            self.writes.append(key)
+
+    m_a = mat4_from_trs((1.0, 0.0, 0.0), (1, 0, 0, 0), (1, 1, 1))
+    m_b = mat4_from_trs((9.0, 0.0, 0.0), (1, 0, 0, 0), (1, 1, 1))
+
+    p = FakeProgram()
+    _bind_model(p, m_a)
+    assert p.writes == ['model', 'normal_mat'], p.writes
+    n = len(p.writes)
+    _bind_model(p, m_a)                       # 同一个 program + 同一个矩阵 → 去重
+    assert len(p.writes) == n, '重复上传：去重失效'
+    # 关键断言：换一个网格的矩阵**必须**重新上传（否则就是用别人的变换画自己）
+    _bind_model(p, m_b)
+    assert len(p.writes) == n + 2, '同一 program 下矩阵变了却没重新上传 → 复用别人的变换'
+    # 模拟"同 program 下两个网格轮流画"一帧：
+    p2 = FakeProgram()
+    for frame in range(3):
+        for m in (m_a, m_b):
+            _bind_model(p2, m)
+    # 3 帧 × 2 网格，每帧两次矩阵都在变（a→b→a…）⇒ 共 6 次上传，一次都不能省
+    assert len(p2.writes) == 12, f'轮流绘制时漏传：{len(p2.writes)} 次写入'
+    # 两个 program 各自独立
+    q = FakeProgram()
+    _bind_model(q, m_a)
+    assert len(q.writes) == 2
+    print('  ok: model uniform 按 program 去重（相邻同值省、换网格必传）')
+
+
+def test_gl_multimesh_frame_stability():
+    """多网格场景**连续两帧必须一致** —— 直接盯住上面那个 P0 的用户可见症状。
+
+    原缺陷下第 1 帧正确、第 2 帧起静止网格被画到别的网格的变换上，
+    所以只要"同相机、同场景渲染两帧，像素必须逐字节相同"就能抓住它。
+    """
+    w = _gl_available()
+    if not w:
+        return
+    import ctypes
+
+    from pyglet.gl import GL_RGBA, GL_UNSIGNED_BYTE, glReadPixels
+    from engine.camera import Camera
+    from engine.env import LightEnvironment
+    from engine.geometry import box, ground_grid, sphere
+    from engine.material import PRESETS, Material
+    from engine.mesh import Mesh
+    from engine.renderer import Renderer
+    from engine.scene import Scene
+
+    env = LightEnvironment(sun_dir=(0.3, 0.8, 0.4)).bake()
+    r = Renderer(96, 96, environment=env)
+    scene = Scene(environment=env)
+    # 3 个**静止**网格（原缺陷的触发条件：多网格 + 物体不动）
+    scene.add_mesh(Mesh(sphere(0.8, 16, 12), r.program('pbr'), PRESETS['gold'].clone()),
+                   name='orb', translation=(0, 1.0, 0))
+    scene.add_mesh(Mesh(box(1.0, 1.6, 1.0), r.program('pbr'),
+                        Material('slab', (0.8, 0.8, 0.85), 0.0, 0.6)),
+                   name='slab', translation=(2.4, 0.8, 0))
+    scene.add_mesh(Mesh(ground_grid(6, 1.0), r.program('pbr'),
+                        Material('ground', (0.3, 0.32, 0.4), 0.0, 0.9)),
+                   name='ground')
+    cam = Camera(position=(5.0, 3.2, 5.0), target=(0.8, 0.9, 0.0), fov=55.0)
+
+    def one_frame():
+        scene.update()
+        r.render(cam, scene, 1.0, window=w)
+        buf = (ctypes.c_ubyte * (96 * 96 * 4))()
+        glReadPixels(0, 0, 96, 96, GL_RGBA, GL_UNSIGNED_BYTE, buf)
+        return bytes(buf)
+
+    f1 = one_frame()
+    f2 = one_frame()
+    f3 = one_frame()
+    assert f1 == f2, '第 2 帧与第 1 帧不一致（多网格静止场景的 model uniform 复用缺陷）'
+    assert f2 == f3, '第 3 帧与第 2 帧不一致'
+    # 顺带确认"非黑"：避免退化到"两帧都是空场景"这种假通过
+    assert sum(f1[0::4]) > 96 * 96 * 4, '画面几乎全黑，用例失去意义'
+    w.close()
+    print(f'  ok: 多网格静止场景 连续 3 帧逐字节一致（均值 {sum(f1[0::4]) / (96 * 96):.1f}）')
+
+
 def test_audio_track_and_render():
     """Track 合成 + WAV 写盘：确定性、时长精确、归一化不削波。"""
     import tempfile
@@ -698,7 +798,9 @@ def main():
         test_scene_watcher, test_cameras,
         test_audio_track_and_render, test_audio_timeline_player,
         test_kkrieger_ost_structure,
+        test_model_uniform_is_program_scoped,
         test_gl_pipeline,
+        test_gl_multimesh_frame_stability,
     ]
     failed = []
     for t in tests:

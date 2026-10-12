@@ -118,11 +118,18 @@ class TimelineUI:
                                   color=COL_ACT, batch=self.batch)
 
         # 幕分隔刻度：画在轨道上层，给 48s 长编排一个定位锚点
+        #
+        # ⚠️ 必须把刻度对象存进 ``self.act_ticks``：pyglet 2.1.16 的 ``Batch``
+        # 只持有顶点数据、**不持有 Shape 对象引用**，创建后无人引用的图元会被
+        # GC 回收、根本不画（实测最小探针：持有引用的红块渲染、不持有引用的
+        # 绿块全黑）。M6 加幕刻度时就栽在这里——代码在跑，刻度从来没出现过。
+        self.act_ticks = []
         for act in self.acts:
             frac = 0.0 if self.duration <= 0 else min(1.0, act[0] / self.duration)
             tx = self.track_x0 + (self.track_x1 - self.track_x0) * frac
-            shapes.Rectangle(tx - ACT_TICK_W / 2, ty - 5, ACT_TICK_W, TRACK_H + 10,
-                             color=COL_ACT, batch=self.batch)
+            self.act_ticks.append(
+                shapes.Rectangle(tx - ACT_TICK_W / 2, ty - 5, ACT_TICK_W, TRACK_H + 10,
+                                 color=COL_ACT, batch=self.batch))
 
         self._layout_ready = True
         self.update(self.playhead, self.playing, self.looping)
