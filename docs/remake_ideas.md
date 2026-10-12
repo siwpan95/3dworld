@@ -209,7 +209,7 @@ DeepSeek Harness 的运行时内核。
 
 ## 9. P1-② 塔防切片 · 设计 note（首个内核）
 
-> 状态：规划（待全哥 review 放行后执行）
+> 状态：**✅ 已执行并推送**（P1-② 塔防「戍卫之路」；demo `tower_defense.py` 在册）
 > 机制致敬：Warcraft / Dune II 的「经济 → 兵力 → 战斗」循环；**不碰任何原 IP 名称与素材**（合规见 §7）。
 
 ### 9.1 工作标题（原创，规避 `craft`）
@@ -398,7 +398,7 @@ DeepSeek Harness 的运行时内核。
 
 ## 11. P1-④ 方块解谜切片 · 设计 note（「归仓 / Boxward」）
 
-> 状态：规划（待全哥 review 放行后执行）
+> 状态：**✅ 已执行并推送**（P1-④ 方块解谜「归仓 / Boxward」；demo `boxward.py` 在册）
 > 机制致敬：**Sokoban(1982, Thinking Rabbit)** 的「推箱入仓」规则内核——
 > **不碰原 IP 名称与素材**（Sokoban / Boxworld / 仓庫番等既有名一律避开，合规见 §7）。
 
@@ -511,7 +511,7 @@ DeepSeek Harness 的运行时内核。
 
 ## 12. P1-⑤ 弹幕固定屏射击 · 设计 note（「弹潮 / Swarmward」）
 
-> 状态：规划（待全哥 review 放行后执行）
+> 状态：**✅ 已执行并推送**（P1-⑤ 弹幕固定屏「弹潮 / Swarmward」；demo `swarmward.py` 在册）
 > 机制致敬：**Robotron 2084**(1982, Williams) 的「固定屏全向生存 + 双摇杆」品类——
 > **不碰原 IP 名称与素材**（Robotron / Geometry Wars 等既有名一律避开，合规见 §7）。
 
