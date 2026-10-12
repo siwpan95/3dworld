@@ -56,9 +56,12 @@ ENTRIES = [
     dict(name='mountain_100s',       mod='demos/mountain.py',       cls=None,          dur=100.0, size=DEMO_SIZE),
     dict(name='tower_defense_60s',   mod='demos/tower_defense.py',  cls=None,          dur=60.0, size=DEMO_SIZE),
     dict(name='godhand_40s',         mod='demos/godhand.py',        cls=None,          dur=40.0, size=DEMO_SIZE),
-    dict(name='rayhold_60s',         mod='demos/rayhold.py',        cls=None,          dur=60.0, size=DEMO_SIZE),
-    dict(name='boxward_60s',         mod='demos/boxward.py',        cls=None,          dur=60.0, size=DEMO_SIZE),
-    dict(name='swarmward_60s',       mod='demos/swarmward.py',      cls=None,          dur=60.0, size=DEMO_SIZE),
+    dict(name='rayhold_60s',         mod='demos/rayhold.py',        cls=None,          dur=60.0, size=DEMO_SIZE,
+         flags='auto'),                            # 交互型必须走 auto（否则玩家站桩挨打）
+    dict(name='boxward_60s',         mod='demos/boxward.py',        cls=None,          dur=60.0, size=DEMO_SIZE,
+         flags='auto'),                            # 求解器 auto-play
+    dict(name='swarmward_60s',       mod='demos/swarmward.py',      cls=None,          dur=60.0, size=DEMO_SIZE,
+         flags='auto'),                            # 闪避 AI 与 headless 验收同源
     dict(name='voxel_terrain_36s',   mod='demos/voxel_terrain.py', cls=None,          dur=36.0, size=DEMO_SIZE),
     dict(name='water_waves_40s',     mod='demos/water_waves.py',   cls=None,          dur=40.0, size=DEMO_SIZE),
     dict(name='engine_showcase_24s', mod='demos/engine_showcase.py', cls='ShowcaseApp', dur=24.0, size=DEMO_SIZE),
@@ -73,10 +76,12 @@ ENTRIES = [
 ]
 
 FFMPEG_CANDIDATES = [
+    # 本机（2026-10 盘符变更后）：E 盘为主；G:\repos 的旧路径已失效（G 盘移除），
+    # 保留在末尾仅作跨机兼容。
+    r'E:\ffmpeg\bin\ffmpeg.exe',
+    r'D:\custom\ffmpeg\bin\ffmpeg.exe',
     r'G:\repos\musickit\radio\ffmpeg\ffmpeg.exe',
     r'G:\repos\pluginplayer\vendor\ffmpeg\bin\ffmpeg.exe',
-    r'G:\repos\audio-generation\remix\bin\ffmpeg.exe',
-    r'G:\repos\musickit\remix\bin\ffmpeg.exe',
 ]
 
 
