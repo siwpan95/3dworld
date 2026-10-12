@@ -71,8 +71,9 @@ python scripts\verify_demos.py --only boids,water  只验指定 demo
 | `stillhall.py` | 交互 | **《静馆 / Stillhall》**（§14 **节点式漫游解谜**，致敬 Myst 1993）：固定机位 + **点击热点换景/取物/开机关**（非自由 WASD）+ 物品栏 + **谜题状态机**（顺序解锁链：取钥 → 点灯得齿轮 → 开终局门）；场景数据走 **JSON（与 scene_viewer / LLM 场景生成工作流同 schema）**且支持热重载（坏 JSON 拒收保旧）；`1` 键自动推进 | `stillhall_01..02.png` |
 | `voidward.py` | 交互 | **《星阑 / Voidward》**（§15 **Elite 式太空贸易**，四份 note 里范围最大）：1 星系（恒星 + 3 行星 + 1 空间站）+ 5 种货（价格 = 基准 × 供需正弦 + **种子驱动事件冲击**，确定性可复现）+ **惯性飞行**（松油门滑行）+ 海盗拦截战（击退有赏金）+ 舱位/炮 2 级升级；资产达标 10000 → won；WASD 推进、空格开火、B/V 买卖、N 升级、G 自动贸易 | `voidward_01..02.png` |
 | `pulsefall.py` | 交互 | **《落音 / Pulsefall》**（§16 **下落式音击**）：4 轨道（DFJK）+ 3 谱面（BPM 90/120/150，**种子复现**）+ 判定 3 档（PERFECT ±40ms / GOOD ±90ms / MISS）+ 血量与连击得分 + 结算（P/G/M + 准确率 + 最大连击）；音乐由 **audio 核按谱面程序化合成**（三层：低音/和弦/主旋律）；F4/F5 offset 校准、G 自动演奏 | `pulsefall_01..02.png` |
+| `director.py` | 工具 | **可视化导演台（③）**：把关键帧系统（`engine/shot.py` + `engine/timeline.py`）和 `TimelineUI` 串成"**编排 → 预览 → 导出 → 录制**"闭环。三个编辑目标用 `T` 循环：`$camera`（position/target/fov）、`$env`（sun_intensity/sun_dir/ibl_intensity，**真·灯光演出**，渲染器每帧 apply）、场景节点（TRS，键盘微调）。`K` 记帧 / `DEL` 删帧 / `[ ]` 选通道 / `I` 换插值 / `M` 加幕 / `F2` 导出演出 JSON / `O` 载入 / `R` 重载场景；右侧**关键帧检察器**显示每通道的插值与键刻度（可点行选中、点键 seek）；内置默认演出「绕祭坛闭环环绕 + 主体自转 + 太阳随相机扫过」，`--shot-json <path>` 可回放导出的运镜 | `director_a..d.png` |
 
-> 上表 30 项与 `demos/*.py`（不含 `_harness.py`）一一对应，也是
+> 上表 31 项与 `demos/*.py`（不含 `_harness.py`）一一对应，也是
 > `scripts/verify_demos.py` 逐项冒烟的对象；唯一不参与截图阶段的是
 > `scene_viewer.py`——它由 `--file` 驱动、没有固定剧照时刻。
 

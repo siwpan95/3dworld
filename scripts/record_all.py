@@ -75,6 +75,9 @@ ENTRIES = [
          size=DEMO_SIZE, flags='cine'),            # 可交互方块世界（脚本化运镜）
     dict(name='kid_a_walker_3d_40s', mod='demos/kid_a_walker_3d.py', cls='KidAApp', dur=40.0,
          size=DEMO_SIZE, flags='go'),              # KID-A WALKER 3D（自动探索运镜）
+    dict(name='director_20s',        mod='demos/director.py',      cls='DirectorApp', dur=20.0,
+         size=DEMO_SIZE),                          # 可视化导演台：默认演出（闭环环绕 + 灯光）
+         # 想看别的运镜就加 shot_json='shots/xxx.shot.json'（导演台 F2 导出的那份）
 ]
 
 FFMPEG_CANDIDATES = [
@@ -144,6 +147,12 @@ def build_app(entry):
         argv = ['--size', f'{w}x{h}', '--fps', '60']
         if entry.get('flags'):
             argv += ['--flag', entry['flags']]
+        # 演出 JSON（导演台）：`--shot-json` 是 demo 私有开关，`_harness.parse_args`
+        # 不认识它（还会跟 `--shot` 撞前缀歧义），所以走**类属性**注入——
+        # 和 `demos/director.py:main()` 里 `DirectorApp.SHOT_PATH = path` 同一条路。
+        if entry.get('shot_json'):
+            cls.SHOT_PATH = os.path.abspath(
+                os.path.join(ROOT, entry['shot_json']))
         app = cls(w, h, args=harness_args(argv))
     elif issubclass(cls, EngineApp):
         argv = ['--size', f'{w}x{h}', '--fps', '60']

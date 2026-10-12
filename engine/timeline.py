@@ -25,6 +25,7 @@ from engine.mathkit import slerp, quat_normalize
 __all__ = [
     'Sampler', 'Channel', 'Timeline', 'PlaybackController',
     'quat_from_axis_angle', 'slerp', 'quat_to_mat4',
+    'auto_tangents', 'make_sampler',
 ]
 
 # 允许的插值方式（glTF 2.0 规范 + 本工程未用到的均不收）
@@ -79,6 +80,101 @@ def _cubic(a, m0, b, m1, t):
     t2, t3 = t * t, t * t * t
     return ((2 * t3 - 3 * t2 + 1) * a + (t3 - 2 * t2 + t) * m0
             + (-2 * t3 + 3 * t2) * b + (t3 - t2) * m1)
+
+
+# ---------------------------------------- 裸值 -> Sampler（自动切线） --
+# 「裸值」= 手写关键帧时最顺手的形态：标量 / (x,y,z) / (w,x,y,z)。
+# glTF 的 CUBICSPLINE 要求每帧带 in/out 切线，手写时没人愿意算——这里
+# 用 Catmull-Rom 有限差分自动生成，让调用方只给"值"。
+_KIND_DIM = {'float': 1, 'vec3': 3, 'quat': 4}
+
+
+def _to_comp(v):
+    """任意关键值 -> 分量元组。"""
+    if _is_quat(v) or _is_vec3(v):
+        return tuple(v)
+    if isinstance(v, (tuple, list)):
+        return tuple(float(x) for x in v)
+    return (float(v),)
+
+
+def _from_comp(t):
+    """分量元组 -> 插值器认得的类型（1→float / 3→Vec3 / 4→Quaternion）。"""
+    if len(t) == 1:
+        return t[0]
+    if len(t) == 3:
+        return Vec3(*t)
+    if len(t) == 4:
+        return Quaternion(*t)
+    raise ValueError(f'不支持的关键值分量数：{len(t)}（只支持 1/3/4）')
+
+
+def _norm_kind(kind, v):
+    """按 ``kind`` 规整单个关键值（``auto`` 按分量数推断）。"""
+    if kind == 'auto':
+        kind = {1: 'float', 3: 'vec3', 4: 'quat'}.get(len(_to_comp(v)))
+        if kind is None:
+            raise ValueError(f'无法推断关键值形态：{v!r}')
+    dim = _KIND_DIM.get(kind)
+    comp = _to_comp(v)
+    if dim is None:
+        raise ValueError(f'未知关键值类型：{kind!r}')
+    if len(comp) != dim:
+        raise ValueError(f'{kind} 需要 {dim} 个分量，得到 {len(comp)}')
+    return _from_comp(comp)
+
+
+def auto_tangents(times, values):
+    """Catmull-Rom 有限差分切线（glTF CUBICSPLINE 的 in/out 切线）。
+
+    * 中间帧：``(v[i+1] - v[i-1]) / (t[i+1] - t[i-1])``（中心差分）；
+    * 端点：单边差分（``Sampler`` 会把切线乘上段时长 ``dt``，故这里是**斜率**）；
+    * 只有 2 帧时切线 == 割线斜率 —— 此时 Hermite 退化为**精确线性**（不会过冲）。
+
+    返回与 ``values`` 等长、类型一致的切线列表。
+    """
+    tv = [_to_comp(v) for v in values]
+    n = len(tv)
+    dim = len(tv[0])
+    out = []
+    for i in range(n):
+        if n == 1:
+            comp = [0.0] * dim
+        elif i == 0:
+            dt = times[1] - times[0]
+            comp = [(tv[1][k] - tv[0][k]) / dt for k in range(dim)]
+        elif i == n - 1:
+            dt = times[-1] - times[-2]
+            comp = [(tv[-1][k] - tv[-2][k]) / dt for k in range(dim)]
+        else:
+            dt = times[i + 1] - times[i - 1]
+            comp = [(tv[i + 1][k] - tv[i - 1][k]) / dt for k in range(dim)]
+        out.append(_from_comp(comp))
+    return out
+
+
+def make_sampler(times, values, interpolation='LINEAR', kind='auto'):
+    """由**裸关键值**构建 ``Sampler``（自动适配标量/vec3/四元数与 CUBICSPLINE 排布）。
+
+    - ``kind='float'`` 标量 / ``'vec3'`` ``(x,y,z)`` / ``'quat'`` ``(w,x,y,z)`` /
+      ``'auto'`` 按分量数推断；
+    - 四元数会自动转成 ``pyglet.math.Quaternion`` —— 否则 ``slerp`` 与逐分量
+      Hermite 都不会生效（裸 tuple 会退化成逐分量线性插值）；
+    - ``CUBICSPLINE`` 下切线由 ``auto_tangents`` 生成（手写关键帧只给"值"）；
+    - 单关键帧会铺成两帧**常量**（``Sampler`` 要求时间戳严格递增）。
+    """
+    times = [float(t) for t in times]
+    values = [_norm_kind(kind, v) for v in values]
+    if len(times) != len(values) or not times:
+        raise ValueError(f'关键帧数不匹配：{len(times)} times vs {len(values)} values')
+    if len(times) == 1:
+        times = [times[0], times[0] + 1.0]
+        values = [values[0], values[0]]
+    if interpolation == 'CUBICSPLINE':
+        tan = auto_tangents(times, values)
+        # glTF 排布 (in_tangent, value, out_tangent)：同一帧两侧共用一条切线
+        values = [(tan[i], values[i], tan[i]) for i in range(len(values))]
+    return Sampler(times, values, interpolation)
 
 
 # --------------------------------------------------- Sampler / Channel --
@@ -181,10 +277,20 @@ class Channel:
       值与规范一致（Vec3 / 四元数 / Vec3）；
     - ``tint`` / ``glow``：**本工程的演示级扩展**（Vec3 颜色乘子 / float 自发光），
       glTF 没有材质动画语义，这里只服务于 demo 的"灯光演出"，
-      命名与解析都留在表现层，不污染 TRS 的语义。
+      命名与解析都留在表现层，不污染 TRS 的语义；
+    - ``position`` / ``target`` / ``fov`` / ``intensity``：**相机与灯光演出的
+      演示级扩展**（导演台 `engine/shot.py` 用）—— ``position`` 对相机即
+      "眼睛在哪"、``target`` 是注视点、``fov`` 视场角、``intensity`` 灯强。
+      相机不是场景图节点，这些通道由表现层解释，同样不进 TRS 语义；
+    - ``sun_intensity`` / ``sun_dir`` / ``ibl_intensity`` / ``sky_intensity``：
+      **环境光演出**（对应 `engine.env.LightEnvironment` 的同名属性）。
+      渲染器每帧 `environment.apply()`，所以改这些是立刻可见的真灯光变化，
+      且只走 uniform、不做 IBL rebake。
     """
 
-    PROPS = ('translation', 'rotation', 'scale', 'tint', 'glow')
+    PROPS = ('translation', 'rotation', 'scale', 'tint', 'glow',
+             'position', 'target', 'fov', 'intensity',
+             'sun_intensity', 'sun_dir', 'ibl_intensity', 'sky_intensity')
 
     def __init__(self, node, prop, sampler):
         assert prop in self.PROPS, f'未知属性: {prop}'

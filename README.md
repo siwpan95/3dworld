@@ -10,7 +10,7 @@
 - `kkrieger_demo.py` —— **150 秒六幕程序化走廊漫游 + 程序化配乐**（致敬 .kkrieger）：
   走廊舱门/管道/货箱/频闪 → 大厅纪念碑/全息扫描/升降平台 → 核心过载 →
   撤离时逐段熄灯 → 重启突入（核心爆发白闪）→ 白闪传送至环面结反应堆圣殿；
-- `demos/` —— **30 个独立示例与工具**：无限隧道、SDF 光线步进、GPU 实例化粒子、
+- `demos/` —— **31 个独立示例与工具**：无限隧道、SDF 光线步进、GPU 实例化粒子、
   太阳系、程序化地形飞行、体素面剔除、水面波动、3D 鸟群、阴影贴图、
   方块世界、引擎综合展示、材质实验室、《诺德之境》、可漫步场景（S1 场景交互化）、
   方块世界可交互版（挖掘/放置 + 区块化重建）、KID-A WALKER 3D（无限走廊 + 能量/碎片）、
@@ -50,7 +50,7 @@ presentation/        表现层：装配窗口事件 → 逻辑层 → 渲染
   hud.py               幕字幕（淡入/停留/淡出）+ 状态行
   timeline_ui.py       底部时间轴面板（播放/循环/拖动/幕标记）
   shot.py              离屏抓帧（glReadPixels，DPI 无关）
-demos/               30 个单文件示例与工具 + 公共骨架 _harness.py（详见 demos/README.md）
+demos/               31 个单文件示例与工具 + 公共骨架 _harness.py（详见 demos/README.md）
 scripts/
   make_gem_obj.py      程序化生成 assets/gem.obj
   verify_demos.py      demos 批量验收（冒烟 + 截图 + 退出码）
@@ -170,7 +170,7 @@ python kkrieger_demo.py --shot     抓一组验证截图（9 张）到 docs/（�
 > "platform" 模式下实际 framebuffer = 请求尺寸，但 viewport setter 会乘
 > scale → 渲染放大裁切；本 Demo 统一设 `pyglet.options['dpi_scaling'] = 'real'`。
 
-## demos/ —— 30 个单文件 3D 示例与工具
+## demos/ —— 31 个单文件 3D 示例与工具
 
 ```bat
 python demos\demoscene_tunnel.py --smoke     冒烟
@@ -210,6 +210,7 @@ python scripts\verify_demos.py               批量验收（冒烟 + 截图 + �
 | `swarmward.py` | **《弹潮》**（P1-⑤ 全向生存弹幕，致敬 Robotron 2084）：固定屏双摇杆 + 程序化编波（难度单调）+ **boss 波**（三阶段 + 血条 + 五图案弹幕生成器）+ 粒子/编队两核消费者 |
 | `boxward.py` | **《归仓》**（P1-④ 方块解谜，致敬 Sokoban）：光栅贪心合批 + 正交 45° 四向视角 + **BFS 求解器 auto-play** + 程序化关卡 + 关卡编辑器 |
 | `kid_a_walker_3d.py` | **KID-A WALKER 3D**（arcade 伪 3D 重制为真 3D）：41 房间模版 → 区块无限走廊 + 能量/碎片系统 |
+| `director.py` | **可视化导演台**（**工具**）：关键帧编排相机运镜 / 环境光 / 物件 TRS，导出「演出 JSON」并可回放与录制（`record_all.py` 的 `director_20s`）；`--shot-json` 载入既有演出 |
 
 详见 [demos/README.md](demos/README.md)（含统一命令行与踩坑清单）。
 
@@ -222,11 +223,12 @@ python -m tests.test_engine         引擎层无窗口单测（26 项）
 python -m tests.test_skin           蒙皮骨骼动画（8 项）
 python -m tests.test_gpu_cull       GPU 驱动渲染（7 项，含"GPU 剔除 == CPU 剔除"逐实例比对）
 python -m tests.test_p2_render      PCSS / WBOIT / 点云+EDL（7 项）
+python -m tests.test_engine         引擎套件（含 model uniform 作用域 + 多网格连续三帧逐字节一致）
 python experiments/cordis/config_boot.py all   8 个内核 + 13 共同核全部 headless 验收（逐项 OK 标记）
 python main.py --shot               主线演出渲染验证（4 张）
 python kkrieger_demo.py --shot      漫游渲染验证（9 张）
-python scripts\verify_demos.py      30 个 demo 逐个冒烟 + 截图
-python scripts\verify_demos.py --bench 3   30 个 demo 的真实帧率（vsync 与重绘节流全关）
+python scripts\verify_demos.py      31 个 demo 逐个冒烟 + 截图
+python scripts\verify_demos.py --bench 3   31 个 demo 的真实帧率（vsync 与重绘节流全关）
 ```
 
 单测覆盖：相机位姿与钳制（含**自定义范围**与非法范围拒绝）、look-at 矩阵性质、
