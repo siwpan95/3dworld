@@ -55,9 +55,11 @@ ENTRIES = [
     dict(name='terrain_flyover_48s', mod='demos/terrain_flyover.py', cls=None,        dur=48.0, size=DEMO_SIZE),
     dict(name='mountain_100s',       mod='demos/mountain.py',       cls=None,          dur=100.0, size=DEMO_SIZE),
     dict(name='tower_defense_60s',   mod='demos/tower_defense.py',  cls=None,          dur=60.0, size=DEMO_SIZE),
-    dict(name='godhand_40s',         mod='demos/godhand.py',        cls=None,          dur=40.0, size=DEMO_SIZE),
-    dict(name='rayhold_60s',         mod='demos/rayhold.py',        cls=None,          dur=60.0, size=DEMO_SIZE,
+    dict(name='godhand_30s',         mod='demos/godhand.py',        cls=None,          dur=30.0, size=DEMO_SIZE),
+         # auto 约 28s 通关 -> 录 30s（原先 40s 有 12s 是静止结算画面）
+    dict(name='rayhold_25s',         mod='demos/rayhold.py',        cls=None,          dur=25.0, size=DEMO_SIZE,
          flags='auto'),                            # 交互型必须走 auto（否则玩家站桩挨打）
+         # auto 约 21s 通关 -> 录 25s（原先 60s 有 39s 是静止结算画面）
     dict(name='boxward_60s',         mod='demos/boxward.py',        cls=None,          dur=60.0, size=DEMO_SIZE,
          flags='auto'),                            # 求解器 auto-play
     dict(name='swarmward_60s',       mod='demos/swarmward.py',      cls=None,          dur=60.0, size=DEMO_SIZE,
