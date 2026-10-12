@@ -25,3 +25,15 @@
   id: audio
 - name: experiments.cordis.services.timeline
   id: timeline
+- name: experiments.cordis.services.inventory
+  id: inventory
+  config:
+    capacity: 20
+- name: experiments.cordis.services.skills
+  id: skills
+  config:
+    points: 0
+- name: experiments.cordis.services.loot
+  id: loot
+  config:
+    seed: 20261012

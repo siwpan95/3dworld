@@ -23,6 +23,7 @@ class PathingService(Service):
 
     def __init__(self, ctx, config):
         super().__init__(ctx, "pathing")
+        self._path_queue, self._path_cache = {}, {}
         cfg = config or {}
         self._count = int(cfg.get('count', 60))
         self._bounds = float(cfg.get('bounds', 12.0))
@@ -30,6 +31,10 @@ class PathingService(Service):
         self._flock = None            # 懒建：logic.boids.Flock
 
     # ---- 群体（委托 Flock）----
+    def _ensure_paths(self):
+        if not hasattr(self, "_path_queue"):
+            self._path_queue, self._path_cache = {}, {}
+
     def _ensure_flock(self):
         if self._flock is None:
             from logic.boids import Flock
@@ -117,6 +122,80 @@ class PathingService(Service):
         return []
 
     # ---- 编队 ----
+    # ------------------------------------------- 路径平滑 / 多单位队列（P1-⑤）
+    @staticmethod
+    def smooth(path, passable=None, keep_ends=True):
+        """**路径平滑（拉绳法）**：能直连就跳过中间点，去掉网格 A* 的锯齿。
+
+        Args:
+            path: ``[(i, j), ...]``。
+            passable: ``(i, j) -> bool`` 可通行查询；**缺省则只做共线合并**
+                （无法做视线检查时退化为保守版，不会穿墙）。
+            keep_ends: 保留首尾点（默认 True）。
+        """
+        if not path or len(path) <= 2:
+            return list(path)
+
+        def los(a, b):
+            """a->b 是否可直接通行（Bresenham 采样 + passable 检查）。"""
+            if passable is None:
+                return a[0] == b[0] or a[1] == b[1]        # 保守：仅同行/同列直连
+            steps = max(abs(b[0] - a[0]), abs(b[1] - a[1]))
+            if steps == 0:
+                return True
+            for k in range(steps + 1):
+                i = a[0] + round((b[0] - a[0]) * k / steps)
+                j = a[1] + round((b[1] - a[1]) * k / steps)
+                if not passable(i, j):
+                    return False
+            return True
+
+        out = [path[0]]
+        i = 0
+        while i < len(path) - 1:
+            j = len(path) - 1
+            while j > i + 1 and not los(path[i], path[j]):
+                j -= 1
+            out.append(path[j])
+            i = j
+        if keep_ends and out[-1] != path[-1]:
+            out.append(path[-1])
+        return out
+
+    def request_path(self, key, start, goal, grid=None):
+        """**多单位寻路队列**：登记一条请求。
+
+        同 ``key`` 且 ``(start, goal)`` 未变 -> **不重复登记**（复用已有路径）。
+        返回 ``(is_new, path_or_None)``：``is_new=False`` 表示本次直接命中缓存。
+        """
+        sig = (tuple(start), tuple(goal))
+        ent = self._path_queue.get(key)
+        if ent is not None and ent['sig'] == sig:
+            return False, self._path_cache.get(key)
+        self._path_queue[key] = dict(sig=sig, grid=grid)
+        self._path_cache.pop(key, None)
+        return True, None
+
+    def step_paths(self, budget=4):
+        """每帧最多解算 ``budget`` 条排队请求（避免多单位同帧 A* 造成卡顿）。
+
+        Returns: ``{key: path}``（本次**新解算完成**的）。
+        """
+        done = {}
+        for key in list(self._path_queue.keys())[:max(0, int(budget))]:
+            ent = self._path_queue.pop(key)
+            path = self.find_path(ent['sig'][0], ent['sig'][1], ent['grid'])
+            self._path_cache[key] = path
+            done[key] = path
+        return done
+
+    def cached_path(self, key):
+        return self._path_cache.get(key)
+
+    def clear_paths(self):
+        self._path_queue.clear()
+        self._path_cache.clear()
+
     def formation(self, anchor, n, spacing, pattern='ring'):
         """围绕锚点生成 n 个编队目标点（世界坐标）。
 

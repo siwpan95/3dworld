@@ -479,6 +479,105 @@ class SdfVoxelCore(Protocol):
 # ===========================================================================
 # 注册表：单一事实来源（供 Cordis 接线 / 文档生成直接消费）
 # ===========================================================================
+class InventoryCore(Protocol):
+    """背包（P1-⑤ 玩法通用模块）：槽位 + 堆叠 + 装备槽。
+
+    实现：``core/inventory_core.py``；提供为 Cordis 服务名 ``inventory``。
+    """
+
+    def register(self, item_id: str, stack: Optional[int] = ..., value: float = ...,
+                 tags: Any = ..., slot: Optional[str] = ...) -> str:
+        """登记物品元数据（``slot`` 非空 = 可装备到该槽）。"""
+        ...
+
+    def add(self, item_id: str, n: int = ...) -> int:
+        """加入并返回**实际加入量**（受容量/堆叠上限限制）。"""
+        ...
+
+    def remove(self, item_id: str, n: int = ...) -> int:
+        """移除并返回**实际移除量**。"""
+        ...
+
+    def count(self, item_id: str) -> int:
+        ...
+
+    def has(self, item_id: str, n: int = ...) -> bool:
+        ...
+
+    def used(self) -> int:
+        ...
+
+    def total_value(self, prices: Optional[Any] = ...) -> float:
+        ...
+
+    def equip(self, item_id: str, slot: Optional[str] = ...) -> Any:
+        ...
+
+    def unequip(self, slot: str) -> Any:
+        ...
+
+    def clear(self) -> None:
+        ...
+
+
+class SkillsCore(Protocol):
+    """技能树 + 属性面板（P1-⑤）。实现：``core/skills_core.py``；服务名 ``skills``。
+
+    **零漂移约定**：未学技能时 ``effects()`` 为空、``stat(name)`` == 基础值。
+    """
+
+    def define(self, node_id: str, name: str = ..., max_level: int = ...,
+               requires: Any = ..., effects: Any = ..., cost: int = ...) -> str:
+        ...
+
+    def can_learn(self, node_id: str, n: int = ...) -> Any:
+        """``(ok, reason)``。"""
+        ...
+
+    def learn(self, node_id: str, n: int = ...) -> Any:
+        ...
+
+    def level(self, node_id: str) -> int:
+        ...
+
+    def has(self, node_id: str) -> bool:
+        ...
+
+    def add_points(self, n: int = ...) -> int:
+        ...
+
+    def respec(self) -> int:
+        ...
+
+    def effects(self, extra: Optional[Any] = ...) -> Any:
+        ...
+
+    def stat(self, name: str, extra: Optional[Any] = ...) -> float:
+        ...
+
+    def is_neutral(self, extra: Optional[Any] = ...) -> bool:
+        ...
+
+
+class LootCore(Protocol):
+    """掉落表 + 保底 + 词缀（P1-⑤）。实现：``core/loot_core.py``；服务名 ``loot``。"""
+
+    def table(self, name: str, entries: Any, rolls: int = ...) -> str:
+        ...
+
+    def affix_table(self, kind: str, entries: Any) -> str:
+        ...
+
+    def roll(self, table: str, count: int = ..., luck: float = ...) -> Any:
+        ...
+
+    def drop_from(self, table: str, kind: str, count: int = ...) -> Any:
+        ...
+
+    def expected_value(self, table: str, prices: Any) -> float:
+        ...
+
+
 CORES: dict[str, dict[str, Any]] = {
     'render':    dict(service='render',    contract=RenderCore,    module='core.render_core',
                       status='已具备',
@@ -498,6 +597,15 @@ CORES: dict[str, dict[str, Any]] = {
     'pathing':   dict(service='pathing',   contract=PathingCore,   module='core.pathing_core',
                       status='已具备',
                       note='PathingService（core/pathing_core.py）：网格 A* + 编队 + Flock 群体'),
+    'inventory': dict(service='inventory', contract=InventoryCore, module='core.inventory_core',
+                      status='已具备',
+                      note='InventoryService（core/inventory_core.py，P1-⑤）：槽位+堆叠+装备槽'),
+    'skills':    dict(service='skills',    contract=SkillsCore,    module='core.skills_core',
+                      status='已具备',
+                      note='SkillsService（core/skills_core.py，P1-⑤）：技能树+前置图+属性面板'),
+    'loot':      dict(service='loot',      contract=LootCore,      module='core.loot_core',
+                      status='已具备',
+                      note='LootService（core/loot_core.py，P1-⑤）：权重掉落表+保底+词缀（确定性）'),
     'economy':   dict(service='economy',   contract=EconomyCore,   module='core.economy_core',
                       status='已具备',
                       note='EconomyService（core/economy_core.py）：资源存量 + 花费校验'),
@@ -604,6 +712,7 @@ __all__ = [
     'RenderCore', 'TerrainCore', 'EntityCore', 'InputCore', 'HudCore',
     'PathingCore', 'EconomyCore', 'AudioCore', 'TimelineCore', 'ParticlesCore',
     'RulesCore', 'SdfVoxelCore',
+    'InventoryCore', 'SkillsCore', 'LootCore',
     'CORES', 'WRAPPABLE_CORES', 'FROM_SCRATCH_CORES', 'SERVICE_NAMES',
     'contract_for', 'status_table', 'verify',
 ]

@@ -371,7 +371,7 @@ async def run_hall(ctx, seeds=None):
 
     ok_bad, reason = validate_scene({'start': 'x', 'nodes': []})
     assert not ok_bad, f"空场景竟通过校验: {reason}"
-    print("== HALLKERNEL_OK ==")
+    # OK 标记由 _rollback 统一打印（避免重复）
     await _rollback(ctx, kernel, render, 'HALLKERNEL')
 
 
@@ -442,7 +442,7 @@ async def run_void(ctx, seeds=None):
     print(f"RESULT trade ok: state=won t={t:.1f}s 资产={kernel.total_asset():.0f} "
           f"credits={kernel.ctx.economy.balance('credits'):.0f} 交易={kernel.trades} "
           f"海盗={kernel.pirates_beaten}")
-    print("== VOIDKERNEL_OK ==")
+    # OK 标记由 _rollback 统一打印（避免重复）
     await _rollback(ctx, kernel, render, 'VOIDKERNEL')
 
 
@@ -507,7 +507,7 @@ async def run_pulse(ctx, seeds=None):
     size = _os.path.getsize(path)
     assert size > 1000, f'wav 过小: {size}'
     print(f"RESULT audio smoke ok: {_os.path.basename(path)} {size} bytes")
-    print("== PULSEKERNEL_OK ==")
+    # OK 标记由 _rollback 统一打印（避免重复）
     await _rollback(ctx, kernel, render, 'PULSEKERNEL')
 
 

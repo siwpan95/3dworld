@@ -61,7 +61,8 @@ WANT_VOID = ('void', 'render', 'rules', 'economy', 'entity')
 WANT_PULSE = ('pulse', 'render', 'rules', 'economy', 'audio')
 # 全共同核（P0-4 配置树统一）：cordis.cores.yml 声明挂载的全部核
 WANT_CORES = ('render', 'economy', 'entity', 'rules', 'terrain',
-              'pathing', 'particles', 'sdf', 'audio', 'timeline')
+              'pathing', 'particles', 'sdf', 'audio', 'timeline',
+              'inventory', 'skills', 'loot')      # P1-⑤ 玩法通用模块 +3
 
 
 def config_path(name: str) -> str:

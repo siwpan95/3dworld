@@ -26,7 +26,10 @@ from core.contracts import (                           # noqa: E402
 from core.audio_core import AudioService               # noqa: E402
 from core.economy_core import EconomyService           # noqa: E402
 from core.entity_core import EntityService             # noqa: E402
+from core.inventory_core import InventoryService       # noqa: E402  （P1-⑤）
+from core.loot_core import LootService                 # noqa: E402  （P1-⑤）
 from core.pathing_core import PathingService           # noqa: E402
+from core.skills_core import SkillsService             # noqa: E402  （P1-⑤）
 from core.particles_core import ParticlesService       # noqa: E402
 from core.render_core import RenderService             # noqa: E402
 from core.rules_core import RulesService               # noqa: E402
@@ -42,13 +45,13 @@ def _ctx():
 
 # ---------------------------------------------------------------- 注册表 ----
 def test_cores_registry_complete():
-    """12 个契约全部注册，且无「待从零建」遗留。"""
-    assert len(CORES) == 12, f'期望 12 核，实际 {len(CORES)}'
+    """15 个契约全部注册（12 + P1-⑤ 的 3 个玩法通用模块），且无「待从零建」遗留。"""
+    assert len(CORES) == 15, f'期望 15 核，实际 {len(CORES)}'
     assert FROM_SCRATCH_CORES == [], f'仍有待从零建的核心: {FROM_SCRATCH_CORES}'
     for name, meta in CORES.items():
         assert meta.get('module'), f'{name} 缺 module'
         assert meta.get('status'), f'{name} 缺 status'
-    print(f'  ok: 12 核注册表完整，待从零建 = {FROM_SCRATCH_CORES}')
+    print(f'  ok: 15 核注册表完整，待从零建 = {FROM_SCRATCH_CORES}')
 
 
 # ------------------------------------------------------------- 结构检查 ----
@@ -265,6 +268,93 @@ def test_audio_track_and_render():
 
 
 # ----------------------------------------------------------- contracts ----
+def test_inventory_slots_stacking_equip():
+    """P1-⑤ 背包：堆叠/容量上限/装备槽/退物。"""
+    inv = InventoryService(_ctx(), {'capacity': 4, 'equip_slots': ['weapon']})
+    inv.register('ore', stack=3, value=2.0)
+    inv.register('blade', stack=1, value=50.0, slot='weapon')
+    assert inv.add('ore', 5) == 5 and inv.count('ore') == 5
+    assert inv.used() == 2, f'堆叠上限 3 -> 5 个占 2 格，实际 {inv.used()}'
+    inv.add('blade', 1)
+    assert inv.equip('blade')['ok'] is True
+    assert inv.equipped_items() == {'weapon': 'blade'}
+    assert inv.count('blade') == 0, '装上后应从背包扣掉'
+    assert inv.unequip('weapon') == 'blade' and inv.count('blade') == 1
+    # 容量语义 = **格数**（不是件数）：junk 未登记 -> 走默认堆叠上限 99，10 个只占 1 格
+    got = inv.add('junk', 10)
+    assert got == 10, f'1 格可堆 99，10 个应全进，实际 {got}'
+    assert inv.used() == 4, f'应刚好用满 4 格，实际 {inv.used()}'
+    assert inv.add('extra', 1) == 0, '容量已满应拒收'
+    # ore 5×3.0 + blade 1×50.0 + junk 10×默认 1.0 = 75
+    assert inv.total_value({'ore': 3.0}) == 15.0 + 50.0 + 10.0
+    print(f'  ok: inventory（堆叠/容量/装备/退物；used={inv.used()}/{inv.capacity}，'
+          f'总值={inv.total_value({"ore": 3.0}):.0f}）')
+
+
+def test_skills_tree_prereq_and_stats():
+    """P1-⑤ 技能树：前置依赖/点数/零漂移/属性面板/洗点。"""
+    sk = SkillsService(_ctx(), {'points': 5, 'base_stats': {'dmg': 1.0}})
+    sk.define('power', max_level=3, effects={'dmg': 0.5}, cost=1)
+    sk.define('crit', requires=('power',), max_level=1, effects={'crit': 0.15}, cost=2)
+    assert sk.is_neutral() and sk.effects() == {}, '未学技能必须零加成'
+    assert sk.stat('dmg') == 1.0, '零加成时 stat == 基础值'
+    ok, why = sk.can_learn('crit')
+    assert not ok and '前置未满足' in why, why
+    assert sk.learn('power', 2)['ok'] and sk.level('power') == 2 and sk.points == 3
+    assert sk.can_learn('crit')[0] is True
+    assert sk.learn('crit')['ok'] and sk.points == 1
+    assert abs(sk.effects()['dmg'] - 1.0) < 1e-9, '2 级 ×0.5 = 1.0'
+    assert abs(sk.stat('dmg') - 2.0) < 1e-9, '1.0 基础 + 1.0 被动'
+    assert sk.can_learn('power', 2)[0] is False, '3 级上限'
+    back = sk.respec()
+    assert back == 4 and sk.points == 5 and sk.is_neutral(), (back, sk.points)
+    print(f'  ok: skills（前置/点数/满级拒绝/属性面板 dmg={sk.stat("dmg")}；洗点退 {back} 点）')
+
+
+def test_loot_deterministic_pity_affix():
+    """P1-⑤ 掉落：确定性、权重、保底、词缀、期望收益。"""
+    lt = LootService(_ctx(), {'seed': 7, 'pity_every': 4})
+    lt.table('kill', [('coin', 80, 1, 3, 'common'), ('gem', 20, 1, 1, 'rare')])
+    lt.affix_table('gem', [('sharp', 1, {'dmg': 0.1})])
+    a = lt.roll('kill', 6)
+    b = lt.roll('kill', 6)                       # 续抽（序号前进）
+    assert len(a) == 6 and len(b) == 6
+    lt2 = LootService(_ctx(), {'seed': 7, 'pity_every': 4})
+    lt2.table('kill', [('coin', 80, 1, 3, 'common'), ('gem', 20, 1, 1, 'rare')])
+    assert lt2.roll('kill', 6) == a, '同种子必须同结果'
+    # 保底：连续 4 次内必出 rare
+    assert any(r == 'rare' for _i, _n, r in a), 'pity_every=4 时 6 抽内必有 rare'
+    d = lt.drop_from('kill', 'gem', 2)
+    assert all(len(x) == 4 for x in d)
+    ev = lt.expected_value('kill', {'coin': 2.0, 'gem': 50.0})
+    exp = 0.8 * 2.0 * 2.0 + 0.2 * 50.0           # 权重占比 × 均值 × 单价
+    assert abs(ev - exp) < 1e-6, (ev, exp)
+    print(f'  ok: loot（确定性/保底/词缀/期望 {ev:.1f}）')
+
+
+def test_pathing_smooth_and_queue():
+    """P1-⑤ 寻路强化：拉绳平滑 + 多单位队列（去重/分帧）。"""
+    from core.pathing_core import PathingService as PS
+    # 共线 -> 拉直
+    assert PS.smooth([(0, 0), (1, 0), (2, 0), (3, 0)], passable=lambda i, j: True) == [(0, 0), (3, 0)]
+    # 无 passable -> 保守（只合并同行/同列）
+    assert PS.smooth([(0, 0), (1, 1), (2, 2)]) == [(0, 0), (1, 1), (2, 2)]
+    p = PS(_ctx(), {})
+    new1, path1 = p.request_path('e1', (0, 0), (3, 3))
+    assert new1 is True and path1 is None, '首次登记应待算'
+    new2, _ = p.request_path('e1', (0, 0), (3, 3))
+    assert new2 is False, '同 key 同起终点应去重'
+    new3, _ = p.request_path('e2', (1, 1), (4, 4))
+    assert new3 is True
+    grid = [[True] * 8 for _ in range(8)]
+    done = p.step_paths(budget=1)
+    assert len(done) == 1, f'budget=1 每帧只解 1 条，实际 {len(done)}'
+    done2 = p.step_paths(budget=4)
+    assert len(done2) == 1, '剩下的 1 条应在下一帧解完'
+    assert p.cached_path('e1') is not None and p.cached_path('e2') is not None
+    print(f'  ok: pathing（smooth 拉直 + 队列去重 + 分帧 budget；缓存 2 条）')
+
+
 def test_contracts_verify_no_err():
     """契约自检：任何核都不得出现 err:（cordis 缺失记为 pending，不算失败）。"""
     from core import contracts as c
@@ -283,6 +373,10 @@ TESTS = [
     test_rules_all_three_win_conditions,
     test_terrain_edit_and_mesh,
     test_pathing_astar_and_formation,
+    test_inventory_slots_stacking_equip,
+    test_skills_tree_prereq_and_stats,
+    test_loot_deterministic_pity_affix,
+    test_pathing_smooth_and_queue,
     test_particles_emit_and_lifetime,
     test_sdf_voxel_and_mesh,
     test_timeline_factories,

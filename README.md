@@ -217,12 +217,12 @@ python scripts\verify_demos.py               批量验收（冒烟 + 截图 + �
 
 ```bat
 python -m tests.run_tests           逻辑层无窗口单测（62 项）
-python -m tests.test_cores          共同核契约（13 项）
+python -m tests.test_cores          共同核契约（17 项，含 P1-⑤ 玩法模块）
 python -m tests.test_engine         引擎层无窗口单测（26 项）
 python -m tests.test_skin           蒙皮骨骼动画（8 项）
 python -m tests.test_gpu_cull       GPU 驱动渲染（7 项，含"GPU 剔除 == CPU 剔除"逐实例比对）
 python -m tests.test_p2_render      PCSS / WBOIT / 点云+EDL（7 项）
-python experiments/cordis/config_boot.py all   8 个内核 + 共同核的 headless 验收（12/12 OK）
+python experiments/cordis/config_boot.py all   8 个内核 + 13 共同核全部 headless 验收（逐项 OK 标记）
 python main.py --shot               主线演出渲染验证（4 张）
 python kkrieger_demo.py --shot      漫游渲染验证（9 张）
 python scripts\verify_demos.py      30 个 demo 逐个冒烟 + 截图

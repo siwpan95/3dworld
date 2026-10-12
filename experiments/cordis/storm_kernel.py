@@ -351,6 +351,24 @@ class StormKernel(Service):
                               formation_fn=self.ctx.pathing.formation)
 
     # ---------------------------------------------------------- 操作 --
+    # ---------------------------------------------------------- P1-⑤ 技能加成
+    def _skill_cd_mult(self):
+        """射击冷却倍率：读 ``skills`` 核的 ``fire_cd_pct`` 被动（0~0.6 夹取）。
+
+        **零漂移保证**：skills 核缺席、或处于中性（未学技能、无装备）时返回 1.0 ——
+        接入技能树不改变既有平衡（`config_boot storm --seeds` 仍 10/10）。
+        """
+        sk = getattr(self.ctx, 'skills', None)
+        if sk is None:
+            return 1.0
+        try:
+            if sk.is_neutral():
+                return 1.0
+            pct = float(sk.effects().get('fire_cd_pct', 0.0))
+        except Exception:
+            return 1.0
+        return 1.0 - max(0.0, min(0.6, pct))
+
     def move(self, dx, dy, dt):
         """双摇杆的移动端：方向归一化 + 边界夹紧。"""
         rules = self.ctx.rules
@@ -377,7 +395,9 @@ class StormKernel(Service):
         d = math.hypot(dx, dy)
         if d < 1e-6:
             return False
-        p['cd'] = BULLET_CD
+        # P1-⑤ 技能树接入（**软引用**：skills 核缺席时跳过；未学任何技能时
+        # `is_neutral()` 为真 -> mult 恒为 1.0，**冷却行为与接入前逐字一致**）。
+        p['cd'] = BULLET_CD * self._skill_cd_mult()
         self.bullets.append(dict(x=p['x'], z=p['z'],
                                  vx=dx / d * BULLET_SPEED, vz=dy / d * BULLET_SPEED,
                                  life=2.0))
