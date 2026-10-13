@@ -8,7 +8,7 @@
 
 分层（与既有内核 demo 一致「逻辑在 Cordis、表现由宿主」）：
 
-- setup()   经 asyncio 引导 `cordis.puzzle.yml` 配置树（`tree_boot.mount_tree`），
+- setup()   经 asyncio 引导 `cordis.puzzle.yml` 配置树（`host.tree.mount_tree`），
             内核加载手工关、取得 GL 句柄记账；
 - update()  键盘走子 / `--flag auto` 的求解器回放交给内核，事件转音效；
 - render()  只读内核 / 网格状态：**静态墙 = 贪心合并网格**（`greedy_mesh`，一次建网），
@@ -42,7 +42,7 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 # 试点三：挂载由 cordis.puzzle.yml 声明（与 config_boot 的 headless 验证同一入口）
-from experiments.cordis.tree_boot import WANT_PUZZLE, config_path, mount_tree  # noqa: E402
+from host.tree import WANT_PUZZLE, config_path, mount_tree  # noqa: E402
 from experiments.cordis.puzzle_kernel import (  # noqa: E402
     _goal_plate, cam_move_dirs, level_from_json, level_to_json,
 )

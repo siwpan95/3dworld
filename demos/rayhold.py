@@ -8,7 +8,7 @@ hitscan 单武器 / 完整状态机 AI。
 
 分层（与 Phase C/D 的「逻辑在 Cordis、表现由宿主」一致）：
 
-- setup()   经 asyncio 引导 `cordis.fps.yml` 配置树（`tree_boot.mount_tree`），
+- setup()   经 asyncio 引导 `cordis.fps.yml` 配置树（`host.tree.mount_tree`），
             内核在 `__cordis_init__` 生成迷宫、布敌与拾取、注入弹药、取得 GL 句柄；
 - update()  把输入（或 `--flag auto` 的自动驾驶）交给内核，并把内核事件转成音效；
 - render()  只读内核 / 迷宫状态：全屏片元着色器做 SDF 光线步进（墙 + 地板 + 敌人 +
@@ -41,7 +41,7 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 # 试点三：挂载由 cordis.fps.yml 声明（与 config_boot 的 headless 验证同一入口）
-from experiments.cordis.tree_boot import WANT_FPS, config_path, mount_tree  # noqa: E402
+from host.tree import WANT_FPS, config_path, mount_tree  # noqa: E402
 from experiments.cordis.fps_kernel import CELL, DEATH_T, EYE, WALL_H  # noqa: E402
 
 GRID_N = 15          # 必须与 cordis.fps.yml 的 cells 一致（着色器数组长度）
@@ -326,7 +326,7 @@ class RayholdDemo(DemoApp):
 
     # -------------------------------------------------- Cordis 挂载 --
     def _boot_kernel(self):
-        """同步引导 cordis 配置树（tree_boot 是唯一挂载入口）。"""
+        """同步引导 cordis 配置树（host.tree 是唯一挂载入口）。"""
         return asyncio.run(self._mount_kernel())
 
     async def _mount_kernel(self):

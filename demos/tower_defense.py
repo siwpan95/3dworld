@@ -11,7 +11,7 @@
 
 阶段 C（本文件）：demo 不再自管玩法，而是**委托 Cordis 内核**——挂载则由
     **cordis.td.yml 配置树**声明（试点三：setup() 经 asyncio 一次性引导配置树，
-    tree_boot.mount_tree 负责挂载与就绪等待），共同核 + TowerDefenseKernel 内核
+    host.tree.mount_tree 负责挂载与就绪等待），共同核 + TowerDefenseKernel 内核
     全由 yaml 声明；内核在 __cordis_init__ 自动布防并取好 GL 资源句柄；
     update()  只做两件事：把 dt 交给内核驱动模拟，并把内核发出的语义事件（build/
               shoot/hit/kill/won/lose）转成音效；
@@ -54,9 +54,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-# 试点三：挂载由 cordis.td.yml 配置树声明（tree_boot 共享引导——
+# 试点三：挂载由 cordis.td.yml 配置树声明（host.tree 共享引导——
 # config_boot.py 的 headless 验证走同一函数与同一 WANT 列表）
-from experiments.cordis.tree_boot import WANT_TD, config_path, mount_tree  # noqa: E402
+from host.tree import WANT_TD, config_path, mount_tree  # noqa: E402
 
 # ============================================================= 地图与平衡 ==
 GRID = 20                       # 格数 / 边
@@ -297,7 +297,7 @@ class TowerDefenseDemo(DemoApp):
 
     async def _mount_kernel(self):
         # 试点三落点：本次挂哪些插件、各带什么配置，全由 cordis.td.yml 声明；
-        # tree_boot 按 Cordis 原生 Loader 装载并等待就绪（服务可达 + GL 句柄已取得）。
+        # host.tree 按 Cordis 原生 Loader 装载并等待就绪（服务可达 + GL 句柄已取得）。
         ctx = await mount_tree(config_path('cordis.td.yml'), want=WANT_TD)
         return ctx, ctx.tower_defense
 

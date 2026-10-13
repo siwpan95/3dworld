@@ -7,7 +7,7 @@
 
 分层（与既有内核 demo 一致「逻辑在 Cordis、表现由宿主」）：
 
-- setup()   经 asyncio 引导 `cordis.storm.yml` 配置树（`tree_boot.mount_tree`），
+- setup()   经 asyncio 引导 `cordis.storm.yml` 配置树（`host.tree.mount_tree`），
             内核取得 GL 句柄记账；
 - update()  双摇杆输入（或 `--flag auto` 闪避 AI）交给内核，事件转音效；
 - render()  只读内核状态：正交固定屏（竞技场完整可见），实体小方块 + 弹点 +
@@ -37,7 +37,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from experiments.cordis.tree_boot import WANT_STORM, config_path, mount_tree  # noqa: E402
+from host.tree import WANT_STORM, config_path, mount_tree  # noqa: E402
 from engine.camera import look_at_matrix  # noqa: E402
 from experiments.cordis.storm_kernel import (  # noqa: E402
     ARENA_H, ARENA_W, BOSS_R, PLAYER_R,

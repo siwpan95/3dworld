@@ -6,7 +6,7 @@
 #
 # **audio 核的首个内核消费者**：内核把谱面的 synth_events 合成成三层曲子（低音/和弦/旋律）。
 #
-# 本文件同时是 demos/pulsefall.py 的实际挂载声明（tree_boot.mount_tree 加载本文件）——
+# 本文件同时是 demos/pulsefall.py 的实际挂载声明（host.tree.mount_tree 加载本文件）——
 # 「demo 怎么挂的 = headless 验证怎么挂的」，接线只有这一份。
 #
 #   seed       —— 谱面种子（同种子 → 同谱面，录制与验收可锁定）

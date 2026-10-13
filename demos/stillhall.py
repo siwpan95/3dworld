@@ -37,7 +37,7 @@ from pyglet.graphics.shader import Shader, ShaderProgram        # noqa: E402
 from pyglet.math import Mat4, Vec3                                    # noqa: E402
 
 from engine.app import EngineApp, run                            # noqa: E402
-from experiments.cordis.tree_boot import (WANT_HALL, config_path,  # noqa: E402
+from host.tree import (WANT_HALL, config_path,  # noqa: E402
                                           mount_tree)
 
 TITLE = '3dworld 静馆 · Stillhall（§14 节点式漫游解谜）'

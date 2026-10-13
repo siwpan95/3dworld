@@ -93,6 +93,6 @@ pip install pyyaml watchdog
   | `void` | 星阑 | 惯性飞行 + **确定性市场** + 海盗拦截 |
   | `pulse` | 落音 | 下落式音击（**audio 核的首个消费者**） |
 
-  外加 `cores`（纯共同核自检）。**`python experiments/cordis/config_boot.py all` → 12/12 OK**；
+  外加 `cores`（纯共同核自检）。**`python -m cli.config_boot all` → 12/12 OK**；
   `config_boot <kind>` 是每个内核的 headless 验收入口（demo 与它共用 `mount_tree` +
   同一 `WANT_*`，即「demo 怎么挂的 = 验收怎么挂的」）。

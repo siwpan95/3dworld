@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
-"""试点三引导器：从 cordis.yml 配置树加载「共同核 + 内核」并 headless 验证。
+"""配置树引导器（CLI）：从 `configs/*.yml` 加载「共同核 + 内核」并 headless 验证。
 
-本脚本与 demos/*.py 共用 ``tree_boot.mount_tree`` 的同一条挂载路径——
+（P0-2 试点转正：原 `experiments/cordis/config_boot.py` → `cli/config_boot.py`。）
+
+本脚本与 demos/*.py 共用 ``host.tree.mount_tree`` 的同一条挂载路径——
 「demo 怎么挂的 = 验证怎么挂的」，不存在两套接线。在此之上，本脚本额外做三件事：
 
 1. 全速跑完一局（TD：撑过 5 波 / 神之手：淹没全部聚落），验证内核仍可胜；
@@ -10,12 +12,11 @@
 
 运行（无需显示器 / 不依赖 GL 窗口）::
 
-    python experiments/cordis/config_boot.py td
-    python experiments/cordis/config_boot.py godhand
-    python experiments/cordis/config_boot.py all
-    python experiments/cordis/config_boot.py fps --seeds 20261010,11,22   # 多种子回归
-    python experiments/cordis/config_boot.py puzzle --seeds 20261010,11   # 解谜多种子
-    python experiments/cordis/config_boot.py storm --seeds 20261011,7     # 弹幕多种子
+    python -m cli.config_boot td
+    python -m cli.config_boot all
+    python -m cli.config_boot fps --seeds 20261010,11,22   # 多种子回归
+    python -m cli.config_boot puzzle --seeds 20261010,11   # 解谜多种子
+    python -m cli.config_boot storm --seeds 20261011,7     # 弹幕多种子
 """
 from __future__ import annotations
 
@@ -24,11 +25,11 @@ import asyncio
 import os
 import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from experiments.cordis.tree_boot import (  # noqa: E402
+from host.tree import (  # noqa: E402
     WANT_CORES, WANT_FPS, WANT_GODHAND, WANT_HALL, WANT_PULSE, WANT_PUZZLE,
     WANT_STORM, WANT_TD, WANT_VOID,
     config_path, mount_tree,

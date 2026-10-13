@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""配置树引导（试点三）—— cordis.yml → 「共同核 + 内核」服务图的共享入口。
+"""配置树引导 —— `configs/*.yml` → 「共同核 + 内核」服务图的共享入口。
+
+（P0-2 试点转正：原 `experiments/cordis/tree_boot.py` → `host/tree.py`；
+9 棵配置树 → 顶层 `configs/`。见 `docs/5_引擎化改造规划.md`。）
 
 在 Cordis v4.0.0 原生 ``Loader`` / ``EntryTree`` 之上封装三件小事，让
 ``config_boot.py``（headless 验证）与 ``demos/*.py``（真实应用）走**同一条**挂载路径——
@@ -26,7 +29,7 @@ import asyncio
 import os
 import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     # 供配置树条目的 name（experiments.cordis.services.*）经 importlib 解析
     sys.path.insert(0, ROOT)
@@ -39,7 +42,8 @@ _cordis_locate.ensure()
 import yaml  # noqa: E402
 from cordis import Context, Loader  # noqa: E402
 
-CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
+# 配置树住顶层 configs/（P0-2 起；此前散在 experiments/cordis/）
+CONFIG_DIR = os.path.join(ROOT, 'configs')
 
 # 各配置树就绪所需的最低服务集（demo 与 headless 验证共用，避免两处漂移）
 WANT_TD = ('tower_defense', 'render', 'rules', 'economy', 'entity')
@@ -158,6 +162,6 @@ async def mount_tree(path: str, want=(), timeout: float = 8.0,
 
 __all__ = [
     'CONFIG_DIR', 'WANT_TD', 'WANT_GODHAND', 'WANT_FPS', 'WANT_PUZZLE',
-    'WANT_STORM', 'WANT_CORES',
+    'WANT_STORM', 'WANT_HALL', 'WANT_VOID', 'WANT_PULSE', 'WANT_CORES',
     'config_path', 'load_tree', 'await_ready', 'mount_tree',
 ]

@@ -9,7 +9,7 @@
 # 根（见 cordis.godhand.yml 注释），但本试点用扁平列表即足以收口。
 #
 # 本文件同时是 demos/tower_defense.py 的**实际挂载声明**：demo 的 _mount_kernel 经
-# tree_boot.mount_tree(config_path('cordis.td.yml'), want=WANT_TD) 加载本文件——
+# host.tree.mount_tree(config_path('cordis.td.yml'), want=WANT_TD) 加载本文件——
 # 「demo 怎么挂的 = headless 验证怎么挂的」，接线只有这一份。
 #
 # 运行（headless 验证）：python experiments/cordis/config_boot.py td

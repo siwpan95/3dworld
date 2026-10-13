@@ -36,7 +36,7 @@ from pyglet.math import Mat4, Vec3                               # noqa: E402
 from engine.app import EngineApp, run                            # noqa: E402
 from experiments.cordis.pulse_kernel import (BPM_LIST, GOOD_MS,  # noqa: E402
                                              N_TRACKS)
-from experiments.cordis.tree_boot import (WANT_PULSE, config_path,  # noqa: E402
+from host.tree import (WANT_PULSE, config_path,  # noqa: E402
                                           mount_tree)
 
 TITLE = '3dworld 落音 · Pulsefall（§16 下落式音击）'
