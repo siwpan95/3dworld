@@ -3,6 +3,55 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [未发布] — ④-1：级联阴影（CSM）—— 把一张阴影图切成 N 级
+
+「单张阴影图精度固定」这件事的正面解法：按视距分区，**第 0 级只罩最近一段**
+（正交盒小 ⇒ 纹素细 ⇒ 近处锐），往后逐级变大，远处也还有影子。
+单张要么近处糊成锯齿（半径给大），要么远处整片没阴影（半径给小）——CSM 两个都要。
+
+### 新增
+
+- **`engine/csm.py`**（纯数学 + 可注入 GLSL，全部可 headless 断言）：
+  * `split_scheme`   —— PSSM 线性/对数混合分割（λ=0 等分、λ=1 等比，端点精确）；
+  * `cascade_corners`—— 一段视锥的 8 个世界角点（不依赖 GL，只用视图矩阵求逆）；
+  * `light_ortho_box`—— 8 角点 → **紧贴**它们的正交光盒（正方盒 + 深度向两侧撑 `z_extra`）；
+  * `texel_snap`     —— 把光空间平移吸附到**纹素栅格**（消抖动；这是最易漏的一步，静帧看不出来）；
+  * `select_cascade` / `csm_matrices` / `csm_uniforms` / `csm_glsl`。
+- **`examples/csm_shadow.py`**（第 33 个示例）：柱林 + 程序化棋盘地面；`C` 切 1~4 级、
+  `V` **按级染色**（青/紫/橙/绿 —— 级联边界一眼可见）、`P` PCF 半径、`S` 阴影开关；
+  左上是某一级的深度图小窗（render-to-texture 自证）。剧照默认开染色（静帧不染色看不出机制）。
+- **`tests/test_csm.py`（20 项）**，其中 3 项是硬不变量 / 回归守卫：
+  ① 8 个视锥角点必须正好落在 NDC 立方体的角上（fov/near/far/朝 -z 任一处写错都会炸）；
+  ② 纹素吸附后世界原点必须**正好**落在纹素栅格上（残差 0）且位移 < 1 纹素；
+  ③ 生成的 GLSL **不许出现非常量下标索引 `sampler2D` 数组**（GL 3.3 不支持）。
+- `scripts/run_all_tests.py` 注册第 9 个模块（`tests.test_csm`）。
+
+### 修复（本轮踩到的四个，全是"画面看起来正常、其实机制没生效"）
+
+| # | 症状 | 根因 |
+|---|------|------|
+| 14 | 改机位**完全没反应**；地面整片消失 | 从未设置 `window.view` —— 平台层只在 resize 时设 `projection`，`view` 一直是**单位矩阵** ⇒ 相机形同不存在，而地面正好落在相机高度上被看成零厚度 |
+| 15 | 完全没有阴影，其余一切正常 | `glActiveTexture(GL_TEXTURE0+i); tex.bind()` —— pyglet 的 `Texture.bind()` **默认绑到 0 号单元**，于是 N 张阴影图全挤在 0 号上，1~3 号采到未绑定单元。正解：`tex.bind(i)` |
+| 16 | `prog['u_csm_vp'] = [64 个 float]` 直接 AssertionError | pyglet 2.1.16 对 `uniform mat4 u_vp[4]` 的 `_c_array` 只按 **4** 个 float 分配（把 GL 报的"数组长度 4"当成"分量数"）。改成**每级一个独立 `mat4` uniform**（选级本来就是展开的，正好一致） |
+| 17 | 深度图小窗一片黑，以为 render-to-texture 没跑 | 小窗显示的是**第 0 级**，而相机离场景 195m ⇒ 0~60m 那段本就是空空间，那张图**本来就该全远（全黑）**。改显示中间那一级 |
+
+> 另有两处 GLSL 层面的硬约束写进了代码注释（不是文档）：
+> **`uniform block` 必须在每个用到它的着色器阶段各声明一遍**（只在 VS 声明、FS 里用会
+> `ERROR: 'window' : undeclared identifier`）；
+> 而**选级必须是 if/else 展开链**（GL 3.3 不允许动态下标索引 `sampler2D` 数组）。
+
+### 验收（实测）
+
+| 门禁 | 结果 |
+|------|------|
+| `python -m tests.test_csm` | **20/20** → `ALL_CSM_TESTS_PASSED`（含真驱动编译 + uniform 上传） |
+| `scripts/run_all_tests.py` | **9/9 模块 / 225 项** / `ALL_TESTS_PASSED`（上一批 205 项） |
+| `python examples/csm_shadow.py --smoke 3` | `EXIT_OK` |
+| `python examples/csm_shadow.py --shot` | `[shot] OK 2 files`（两张分别展示不同光向 + 级联染色边界） |
+| 级联实测数据 | 3 级 → 半径 54.6 / 140.4 / 593.7，纹素 **0.022 / 0.130 / 0.548 世界单位**（近处比最远级细 25 倍） |
+| `python -m cli.config_boot all` | **10 个** OK 标记（零回归） |
+| `scripts/verify_demos.py` 全量 | `ALL_DEMOS_OK (33 demos)` |
+
 ## [未发布] — 《砖境 / Brickward》B4：成片（已录、**未挂**）
 
 BQM 致敬线的收尾。等距视角与程序化 SFX 其实在 B3 就顺手做完了，B4 只剩**录制**
