@@ -38,3 +38,6 @@ experiments/bloodmusic_ost/*.wav
 experiments/scene_walker/sfx/*.wav
 # 交互音效生成物（scripts/gen_sfx.py 产出）
 assets/sfx/*.wav
+
+# boxward 关卡编辑器导出目录（用户产物）
+levels/

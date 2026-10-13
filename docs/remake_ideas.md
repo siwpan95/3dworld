@@ -2,7 +2,7 @@
 
 > 状态：**内核族 8 个已交付**（td / godhand / fps / puzzle / storm / hall / void / pulse）；
 > §13-16 四份候选 note 已全部落地（2026-10-12）。各节状态行见其 §x.7/§x.8「执行结果」。
-> 关联：`experiments/cordis/README.md`（Cordis 试点一：场景管线）、`demos/mountain.py`（已完成）、`recordings/mountain_100s.mp4`（已录制）
+> 关联：`docs/cordis集成.md`（Cordis 集成：配置树 + 服务宿主）、`demos/mountain.py`（已完成）、`recordings/mountain_100s.mp4`（已录制）
 
 ---
 
@@ -72,7 +72,7 @@
 
 ## 3. Cordis 的角色：把共同核粘成服务总线
 
-`experiments/cordis/README.md` 的**试点一**已验证（输出 `PIPELINE_OK`）：
+`docs/cordis集成.md`（原试点一）已验证（输出 `PIPELINE_OK`）：
 
 - `checker` 插件 → 提供 `scene_check` 服务（包装 `engine.scene_build.validate`）
 - `loader` 插件 → `inject: scene_check`；装载场景 JSON 并 `provide('scene')`（可逆 effect）
@@ -163,7 +163,7 @@ DeepSeek Harness 的运行时内核。
 **已完成**
 - `demos/mountain.py`：复刻 David O'Reilly 的《山》，已推送远端（commit `e66df0c`，IN_SYNC 核对通过）；
 - `recordings/mountain_100s.mp4`：100s 离线录制（H.264 720p30，11.5MB）已产出并验证；
-- `experiments/cordis` 试点一：场景管线 Cordis 化跑通（`PIPELINE_OK`），验证 inject/可逆副作用/coeffect。
+- `host/pipeline.py`（原 experiments/cordis 试点一，P0-5 转正）：场景管线 Cordis 化跑通（`PIPELINE_OK`），验证 inject/可逆副作用/coeffect。
 
 **P0 状态（已闭环并推送远端，2026-10-09）**
 - `vendor(cordis)`：引入 `geohotstan/cordis-py` v4.0.0 源码（MIT），`.pth` 全局暴露 + `VENDOR.md` 记账；commit `4691df0`（来源 `cordis-py-main.zip`，源码 ZIP 留作本地 provenance，不入库）。
@@ -248,7 +248,7 @@ DeepSeek Harness 的运行时内核。
 
 ### 9.4 落地架构（两阶段）
 - **阶段 A（本内核先做）直连引擎切片**：`demos/tower_defense.py` 作为 `DemoApp` 子类，直接复用上面各核；系统类（`Grid`/`EnemySystem`/`TowerSystem`/`Economy`/`Rules`/`Waves`）先内联或放 `games/tower_defense/` 子包。**先交付可运行 + 可录制 demo**，证明玩法与引擎复用。
-- **阶段 B（pilot-2 跟进项）Cordis 服务化**：先按 cordis v4.0.0 **fiber 属性式 API** 重写 `experiments/cordis/scene_pipeline.py`，再把本内核的系统抽成 Cordis 插件（`provide` 各核服务 + `effect` 回收 GL 资源），用 Cordis 重新驱动 demo，验证「共同核 + 内核」范式与 GL 回滚。这才是 P0「Cordis 转正」的终验。
+- **阶段 B（pilot-2 跟进项）Cordis 服务化**：先按 cordis v4.0.0 **fiber 属性式 API** 重写场景管线（现 `host/pipeline.py`），再把本内核的系统抽成 Cordis 插件（`provide` 各核服务 + `effect` 回收 GL 资源），用 Cordis 重新驱动 demo，验证「共同核 + 内核」范式与 GL 回滚。这才是 P0「Cordis 转正」的终验。
 
 > 为什么阶段 A 不直接上 Cordis：v4.0.0 的 API 与试点一不兼容，pilot-2 尚未做；先切片可最快拿到可玩结果，Cordis 化作为独立跟进项，互不阻塞。
 
@@ -321,7 +321,7 @@ DeepSeek Harness 的运行时内核。
 ### 10.5 落地架构（Phase D 范式，无两套接线）
 - `games/fps/kernel.py`：`MazeService` + `FpsKernel`（含 headless 验证入口）
 - `experiments/cordis/services/{fps_kernel,maze}.py`：`default=` 适配层（配置树经 importlib 解析）（**P0-4 起由 `host/registry.py` 的 `fps` / `maze` 两条短名替代**）
-- `experiments/cordis/cordis.fps.yml`：声明本次挂载（render / economy / entity / rules / maze / fps）
+- `configs/cordis.fps.yml`：声明本次挂载（render / economy / entity / rules / maze / fps）
 - `host.tree.py`：新增 `WANT_FPS`；`config_boot.py`：新增 `fps` 项（headless：auto-pilot 通关 + 弹药/击杀断言 + GL 回滚）
 - `demos/rayhold.py`：DemoApp 子类（SDF shader + FlyCamera + HUD + auto 驾驶）；`_mount_kernel` 经 `mount_tree(config_path('cordis.fps.yml'), want=WANT_FPS)`
 - `scripts/record_all.py`：新增 `rayhold_60s` 录制入口 + SHOTS 截图时刻（复用 720p 规格）
@@ -487,7 +487,7 @@ DeepSeek Harness 的运行时内核。
 - **demo**：`demos/boxward.py`——正交 45° 视角（`OrbitCamera` 复用，Q/E 90° 步进），
   WASD 方向随相机映射（`cam_move_dirs` 纯函数 + 单测）；静态墙一次贪心建网（换关重建），
   箱/玩家/目标动态小 cube；目标金色呼吸光、箱入仓变绿；编辑器（M 摆格 / X 试解 /
-  E 导出 `experiments/cordis/levels/*.json` / C 清内墙）；音效 6 合成；
+  E 导出 `levels/*.json` / C 清内墙）；音效 6 合成；
   `--flag auto / seedN / level=路径`；record 入口 `boxward_60s`。
 - **验收（§11.6 全过）**：
   1. `config_boot all` 四内核全绿（td/godhand/fps/puzzle）；

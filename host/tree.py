@@ -85,7 +85,6 @@ ALLOWED_NAME_PREFIXES = (
     f'{SYNTH_PREFIX}.',      # 服务短名（host/registry.py 的封闭表，P0-4 起为主）
     'core.',                 # 共同核实现模块
     'games.',                # 玩法内核实现模块
-    'experiments.cordis.',   # 兼容一版：老路径手写配置树仍可用（P2 移除）
 )
 ALLOWED_NAME_EXACT = ('@cordisjs/plugin-group',)
 

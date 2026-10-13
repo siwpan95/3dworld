@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""固定步长 vs 变步长：两个对照实验。
+"""固定步长 vs 变步长：回归基准（原 `experiments/fixed_timestep/compare.py`，P0-5 转正）。
 
 A. 帧率无关性：同一段物理，30fps 与 144fps 下的「落地时刻与落地位置」差异——
    测试指标选**对步长敏感**的事件（落地判定时刻受 dt 量化影响；若只比
@@ -7,12 +7,12 @@ A. 帧率无关性：同一段物理，30fps 与 144fps 下的「落地时刻与
 B. 卡帧稳健性：0.5s 卡帧**发生在撞墙之前** + 薄墙 → 检验高速穿透。
 
 运行：
-    <项目 .venv python> experiments/fixed_timestep/compare.py
+    python -m tests.bench_fixedstep        # 手工跑的基准，不在 138 项常规套件内
 """
 import os
 import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from engine.fixedstep import FixedStepper              # noqa: E402
@@ -125,7 +125,21 @@ def main():
     print(f'  固定步长: 终点 x={pf[0]:8.3f}  → {wall_result(pf)}'
           f'  （钳制 {sf.clamps} 次，固定步数 {sf.fixed_steps}）')
     print()
-    print('COMPARE_OK')
+
+    # ---- 断言（P0-5 转正：从"打印对照"变成**回归基准**）------------------
+    # A：固定步长必须**帧率无关**（逐位相等）；变步长必须可测地不同
+    #    —— 后者是"这个实验有意义"的前提：若两者都相等，说明指标没选对。
+    assert ft30 == ft144 and fx30 == fx144, (
+        f'固定步长应帧率无关，实测 Δt={abs(ft30 - ft144)} Δx={abs(fx30 - fx144)}')
+    dv = (abs(vt30 - vt144), abs(vx30 - vx144))
+    assert dv[0] > 1e-3 or dv[1] > 1e-3, (
+        f'变步长本应帧率相关（否则测的不是步长敏感事件）：Δ={dv}')
+    # B：同样的一次 0.5s 卡帧，变步长穿墙、固定步长拦住
+    assert '穿墙' in wall_result(pv), f'变步长预期穿墙，实测 {wall_result(pv)}'
+    assert '拦住' in wall_result(pf), f'固定步长预期拦住，实测 {wall_result(pf)}'
+    assert sf.clamps >= 1 and sf.fixed_steps > 0
+    print(f'BENCH_OK  A: 固定步长帧率无关(Δx=0) 而变步长 Δ={dv[1]:.4f}m；'
+          f'B: 0.5s 卡帧下 变步长穿墙 / 固定步长拦住({sf.clamps} 次钳制)')
 
 
 if __name__ == '__main__':

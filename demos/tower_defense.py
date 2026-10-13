@@ -75,7 +75,7 @@ LANE = [
 ]
 BASE = LANE[-1]
 # 平衡常量统一由内核 / 配置树定义，demo 不再复制（避免两处漂移）：
-#   开局金 300、波数 5 -> experiments/cordis/cordis.td.yml
+#   开局金 300、波数 5 -> configs/cordis.td.yml
 #   备战时长 / 基地 HP -> games/tower_defense/kernel.py
 
 # 塔（展示用：渲染查 TOWER_TYPES[type] 取高度/颜色；逻辑全在内核）

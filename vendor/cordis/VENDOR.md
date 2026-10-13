@@ -5,7 +5,7 @@
 ## 来源（Source）
 
 - **上游仓库**：`github.com/geohotstan/cordis-py`（pure Python port of cordiverse/cordis v4）
-- **import 名**：`cordis`（与现有 `experiments/cordis/scene_pipeline.py` 一致：`from cordis import Context`）
+- **import 名**：`cordis`（与现有 `host/pipeline.py` 一致：`from cordis import Context`）
 - **获取方式**：GitHub「Download ZIP」of `main` 分支 → 文件 `cordis-py-main.zip`
   （落于 `G:/repos/3dworld/cordis-py-main.zip`，**请勿删除**，留作溯源）
 - **版本 / 提交锁定**：
@@ -48,7 +48,7 @@ v4.0.0 的 `Context` 采用 **fiber 属性式 API**：`provide` / `inject` / `ef
 `cannot get property "..." without inject` / `cannot set property "..." without provide`），
 **而非** `ctx.provide(...)` / `ctx.get(...)` / `ctx.effect(...)` 方法式调用。
 
-现有 `experiments/cordis/scene_pipeline.py`（试点一，跑通 `PIPELINE_OK`）是按
+现有 `host/pipeline.py`（原试点一，跑通 `PIPELINE_OK`）是按
 `ctx.provide(...)` 写法写的——与 v4.0.0 不一致。试点二接线时必须先按 v4.0.0 实际 API
 重写该 pilot（读 `src/cordis/context.py` + `fiber.py` 确认 `provide`/`get`/`effect` 的
 真实入口），不可照搬旧写法。

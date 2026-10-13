@@ -3,6 +3,70 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [未发布] — 引擎化改造 P0：`experiments/` 全量转正
+
+依据 `docs/5_引擎化改造规划.md`（全哥立项）。目标：把仓库从"演示合集"改造为
+**3D 引擎项目**——本批（P0）先把 `experiments/` 里的试点（6516 行 / 45 个文件）
+全部**转正或退役**，做到"**没有试点目录，只有正式层**"。
+
+### ⚠️ 破坏性变更（Breaking）
+
+| 旧 | 新 |
+|----|----|
+| `experiments/cordis/<x>_kernel.py` | **`games/<x>/kernel.py`**（8 个玩法内核） |
+| `experiments/cordis/tree_boot.py` | **`host/tree.py`** |
+| `experiments/cordis/config_boot.py` | **`cli/config_boot.py`**，调用方式改 `python -m cli.config_boot <kind>` |
+| `experiments/cordis/cordis.*.yml` | **`configs/*.yml`**（9 棵） |
+| `experiments/cordis/services/*.py`（24 个 5 行壳） | **删除** → `host/registry.py` 的服务短名表（yml 里写 `- name: economy`） |
+| `experiments/cordis/scene_pipeline.py` | **`host/pipeline.py`**（`python -m host.pipeline`） |
+| `experiments/fixed_timestep/compare.py` | **`tests/bench_fixedstep.py`**（从对照脚本变**带断言的回归基准**） |
+| `experiments/cordis/levels/`（boxward 关卡编辑器导出目录） | 仓库顶层 **`levels/`**（已加 `.gitignore`） |
+
+`import experiments.*` 一律失效；本仓库内已全部改完（`grep` 复查无活引用）。
+
+### 新增
+
+- **`engine/fsm.py`**：确定性有限状态机（时间窗 + 事件转移 + 进出钩子 + 轨迹）。
+  自研替代 `experiments/allin_decision/`（原依赖外部仓库 allin_engine，其源码本机已离线）。
+- **`engine/orchestration.py`**：事件总线 + 声明式 `when→then` 级联 + 环检测。
+  自研替代 `experiments/zhuangtaiji_orchestration/`（同上，源库已离线）。
+- **`engine/baked_mesh.py`**：`unit_cube` / `unit_sphere`（烘焙明暗三角汤）
+  —— 原先住在塔防内核里被**六个内核横向 import**，上提后消除"游戏依赖游戏"。
+- **`engine/greedy_mesh.py`**（P0-1）：单层体素贪心合批，从内核上提。
+- **`host/registry.py`**：服务短名 → 实现类（23 条 = 13 共同核 + 10 内核）。
+- **`docs/cordis集成.md`**：Cordis 集成的正式文档（前身是试点目录里的 README）。
+- 测试：`tests/test_engine.py` +2 项（FSM / 事件总线）→ 全套 **140 项**。
+
+### 试点去向（18 项，逐项交代）
+
+| 试点 | 处置 | 依据 |
+|------|------|------|
+| 8 个玩法内核（4381 行） | **转正** → `games/<名>/kernel.py` | 早被 8 个 demo 正式依赖，"试点"身份名不副实 |
+| 20 个服务壳 + 宿主 + 9 棵 yml | **转正** → `host/` + `configs/` + `cli/` | 见上表 |
+| `greedy_mesh.py` | **转正** → `engine/greedy_mesh.py` | 零依赖纯函数，属引擎算法件 |
+| `scene_pipeline.py` | **转正** → `host/pipeline.py` | Cordis 三服务流水线（checker→loader→reporter），`PIPELINE_OK` |
+| `fixed_timestep/compare.py` | **转正** → `tests/bench_fixedstep.py` | 两组对照结论加断言，成回归基准 |
+| `allin_decision/`（FSM 决策） | **能力自研**（`engine/fsm.py`），试点退役 | 依赖外部仓库；本机 G 盘已移除，不可复现 |
+| `zhuangtaiji_orchestration/`（编排） | **能力自研**（`engine/orchestration.py`），试点退役 | 同上 |
+| `bloodmusic_ost/remake_act6.py` | **退役**（能力已有） | 原生 OST 已在 `logic/kkrieger_audio.py`（第六幕） |
+| `scene_walker/walk.py` | **退役**（被取代） | 正式版 `demos/scene_walker.py`（652 行）⊃ 试点（422 行），且多出热重载/限时挑战/结算 |
+| `scene_walker/bgm.py`、`gen_sfx.py` | **退役**（被取代） | 已转正为 `engine/adaptive_music.py` 与 `scripts/gen_sfx.py` |
+
+### 顺手修掉的两个真缺陷
+
+1. **玩法内核之间的横向依赖**（见 `docs/引擎设计.md` §三.12）：共享几何上提 engine。
+2. **配置树挂载失败的误导性报错**：cordis 的 Loader 会吞掉插件构造期异常，
+   只表现为"服务不就绪"。已在 `host/tree.py` 的超时错误里加定位提示。
+
+### 验收（全部实测，且刻意不设 `CORDIS_SRC`）
+
+- `scripts/run_all_tests.py` → 7/7 模块 / **140 项** / `ALL_TESTS_PASSED`；
+- `python -m cli.config_boot all` → **9 个 OK 标记**（TD/GODHAND/FPS/BOXWARD/STORM/HALL/VOID/PULSE/CORES）；
+- `python -m host.pipeline` → `PIPELINE_OK`（含卸载回滚与 coeffect 断言）；
+- `python -m tests.bench_fixedstep` → `BENCH_OK`（固定步长帧率无关 Δx=0；变步长 Δ=0.0333m；
+  0.5s 卡帧下 变步长穿墙 / 固定步长拦住）；
+- `scripts/verify_demos.py`（31 个 demo 全量冒烟 + 截图）→ `ALL_DEMOS_OK`。
+
 ## [2026.10.13] — 上线前全检修复
 
 首个显式发布版本。本次以「上线前全检」（代码审查 + 安全审计 + QA 测试）的发现为准绳，

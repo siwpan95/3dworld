@@ -313,7 +313,7 @@ class BoxwardDemo(DemoApp):
         name = f'editor-{time.strftime("%H%M%S")}'
         data = self.grid.to_dict(name=name)
         data['meta']['par'] = sol.pushes
-        out_dir = os.path.join(ROOT, 'experiments', 'cordis', 'levels')
+        out_dir = os.path.join(ROOT, 'levels')
         os.makedirs(out_dir, exist_ok=True)
         path = level_to_json(data, os.path.join(out_dir, name + '.json'))
         self._edit_msg = (f'已导出 {os.path.relpath(path, ROOT)} '

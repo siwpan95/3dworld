@@ -574,6 +574,78 @@ def test_gl_multimesh_frame_stability():
     print(f'  ok: 多网格静止场景 连续 3 帧逐字节一致（均值 {sum(f1[0::4]) / (96 * 96):.1f}）')
 
 
+def test_fsm_timeline_and_events():
+    """FSM（`engine/fsm.py`，P0-5 自研）：时间驱动 + 事件驱动 + 钩子 + 轨迹。
+
+    重点盯一个易错点：**同一状态的非相邻段**必须是"多个时间窗"而不是一个大窗 ——
+    否则中间的别的状态会被 `at()` 错判。
+    """
+    from engine.fsm import Machine, machine_from_keys
+
+    m = machine_from_keys([(0, 'a'), (5, 'b'), (10, 'a')])
+    assert m.windows('a') == ((0.0, 5.0), (10.0, float('inf'))), m.windows('a')
+    assert m.at(-1.0) is None, '窗口覆盖之外应保持原状态（刚建时是 None）'
+    assert m.at(2.0) == 'a'
+    assert m.at(7.0) == 'b', '非相邻段被并成大窗 → 中间段错判'
+    assert m.at(12.0) == 'a'
+    assert m.at(3.0) == 'a', '窗口外（同一状态内回退）仍保持当前状态'
+
+    log = []
+    m2 = Machine('act')
+    m2.state('idle', time=(0, 2), on_enter=lambda s, d, t: log.append(f'enter:{d}'))
+    m2.state('run', time=(2, 5), on_exit=lambda s, d, t: log.append(f'exit:{s}'))
+    m2.state('done')
+    m2.transition('interrupt', 'run', 'done')
+    m2.transition('reset', '*', 'idle')
+    assert m2.at(1.0) == 'idle' and log == ['enter:idle'], log
+    assert m2.at(3.0) == 'run' and log == ['enter:idle'], ("'run' 没声明 on_enter，不该有日志", log)
+    assert m2.fire('interrupt', t=3.5) == 'done'
+    assert log == ['enter:idle', 'exit:run'], ("离开 run 应触发它的 on_exit", log)
+    assert m2.fire('reset', t=4.0) == 'idle'              # '*' 通配
+    assert [h[3] for h in m2.history] == ['idle', 'run', 'done', 'idle']
+    try:
+        m2.fire('nope')
+    except KeyError:
+        pass
+    else:
+        raise AssertionError('未声明的事件应报错（不静默）')
+    print(f'  ok: FSM 时间窗（含非相邻段）与事件转移/hook/轨迹；events={m2.events()}')
+
+
+def test_orchestration_bus():
+    """事件总线（`engine/orchestration.py`，P0-5 自研）：顺序确定 + 级联 + 环检测。"""
+    from engine.orchestration import Bus
+
+    seen = []
+    bus = Bus('demo')
+    bus.on('state_enter', lambda e, p: seen.append(('a', p.get('state'))))
+    bus.on('state_enter', lambda e, p: seen.append(('b', p.get('state'))))
+    bus.bind('state_enter', 'ember_step')
+    bus.bind('ember_step', 'flicker')
+    out = bus.emit('state_enter', state='orbit')
+    assert [e for e, _ in out] == ['state_enter', 'ember_step', 'flicker'], out
+    assert seen == [('a', 'orbit'), ('b', 'orbit')], '订阅者顺序必须等于注册顺序'
+    assert [e for _, e in bus.log] == ['state_enter', 'ember_step', 'flicker']
+    # 确定性的另一个含义：同序列 → 同结果（不藏随机）
+    bus2 = Bus('demo')
+    got = []
+    bus2.on('x', lambda e, p: got.append(p['v']))
+    bus2.emit('x', v=1)
+    bus2.emit('x', v=1)
+    assert got == [1, 1]
+    # 环 → 报错（不静默截断）
+    cyc = Bus('cycle')
+    cyc.bind('a', 'b')
+    cyc.bind('b', 'a')
+    try:
+        cyc.emit('a')
+    except RecursionError as e:
+        assert '级联' in str(e)
+    else:
+        raise AssertionError('a→b→a 应触发环检测')
+    print(f'  ok: 事件总线 级联顺序/订阅顺序/日志/环检测；events={bus.events()}')
+
+
 def test_audio_track_and_render():
     """Track 合成 + WAV 写盘：确定性、时长精确、归一化不削波。"""
     import tempfile
@@ -799,6 +871,8 @@ def main():
         test_audio_track_and_render, test_audio_timeline_player,
         test_kkrieger_ost_structure,
         test_model_uniform_is_program_scoped,
+        test_fsm_timeline_and_events,
+        test_orchestration_bus,
         test_gl_pipeline,
         test_gl_multimesh_frame_stability,
     ]

@@ -4,7 +4,7 @@
 # 「12 核中的所有共同核都能经配置树挂载且可达」。这是 P0-4「配置树统一」的落点：
 # 各内核的 cordis.*.yml 只挂自己 inject 的核；本文件挂全量，作为共同核的冒烟面。
 #
-# 运行（headless 验证）：python experiments/cordis/config_boot.py cores
+# 运行（headless 验证）：python -m cli.config_boot cores
 - name: render
   id: render
 - name: economy

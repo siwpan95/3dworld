@@ -14,7 +14,7 @@
 - 音频：`sounddevice.OutputStream` 回调内 `update()+process_frame()`
   —— **引擎只在回调线程被触碰**（单线程无锁）；主线程仅更新语义标量（GIL 原子）。
 
-记账：完整试点记录见 `experiments/scene_walker/`（v3.2）。
+记账：本模块是 scene_walker 自适应 BGM 的**正式实现**；原先并列的 bloodmusic 适配试点（`experiments/scene_walker/bgm.py`）已在 P0-5 退役（能力已被本模块覆盖）。
 """
 from __future__ import annotations
 

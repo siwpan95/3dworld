@@ -120,5 +120,5 @@ def ensure(strict: bool = True) -> bool:
         return False
     raise ImportError(
         f'[cordis] 未找到 cordis 包。已尝试 CORDIS_SRC={os.environ.get("CORDIS_SRC")!r} '
-        f'与仓库内 {vendor_dir()}。安装方式见 experiments/cordis/README.md。'
+        f'与仓库内 {vendor_dir()}。安装方式见 docs/cordis集成.md。'
     )

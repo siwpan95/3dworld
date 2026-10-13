@@ -15,7 +15,7 @@
 # 本文件同时是 demos/rayhold.py 的实际挂载声明（host.tree.mount_tree 加载本文件）——
 # 「demo 怎么挂的 = headless 验证怎么挂的」，接线只有这一份。
 #
-# 运行（headless 验证）：python experiments/cordis/config_boot.py fps
+# 运行（headless 验证）：python -m cli.config_boot fps
 - name: render
   id: render
 - name: economy

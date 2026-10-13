@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""场景管线的 Cordis 化试点（试点一 · v4.0.0 fiber 属性式重写）。
+"""场景校验流水线（Cordis 化 · 原「试点一」，P0-5 转正）。
 
 用 Cordis v4.0.0（geohotstan/cordis-py，忠实移植 cordiverse/cordis v4）的
 **fiber 属性式 API** 组织 3dworld 的场景管线：
@@ -21,11 +21,11 @@ v4.0.0 相对旧式 functional 写法的重要变化：
   2. 卸载即回滚（loader 卸载 -> scene 服务撤回）
   3. coeffect 级联（依赖消失 -> reporter 自动停用）
 
-依赖：cordis 的 Python 移植（安装见 experiments/cordis/README.md）。
+依赖：cordis 的 Python 移植（见 `docs/cordis集成.md`）。
 运行::
 
-    python experiments/cordis/scene_pipeline.py
-    python experiments/cordis/scene_pipeline.py --scene docs/llm_scene_demo.json
+    python -m host.pipeline
+    python -m host.pipeline --scene docs/llm_scene_demo.json
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ import asyncio
 import os
 import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 # ---- cordis 定位：优先已安装；其次 CORDIS_SRC 指向的源码目录 ----
