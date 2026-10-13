@@ -88,6 +88,7 @@ links = [{'from': (r, c), 'to': (r, c), 'mode': 'open'}]   # 按钮/拉杆 → �
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 
@@ -108,6 +109,9 @@ __all__ = ['BrickwardKernel', 'ELEMENTS', 'LEVELS', 'LEVEL_ART', 'DEMO_SEEDS',
            'WALL', 'FLOOR', 'BOMB', 'FIREBALL', 'ROCK', 'SLIME', 'FUSE',
            'SLIME_PERIOD', 'BLAST_SHAPE', 'PUSHABLE',
            'parse_level', 'validate_level', 'generate',
+           'level_to_json', 'level_from_json', 'LEVEL_JSON_KEYS',
+           'level_set_cell', 'level_add_link', 'level_clear_links',
+           'level_blank', 'prune_links',
            'solve_level', 'make_offline', 'DIRS', 'KIND_NAME']
 
 # ---- 元素码 ----
@@ -767,6 +771,7 @@ class BrickwardKernel(Service):
                     keys_ground=sorted(self.keys), keys_held=self.keys_held,
                     lever_cells=sorted(self.lever_cells), levers_on=sorted(self.levers),
                     button_cells=sorted(self.button_cells),
+                    buttons_pressed=sorted(self._pressed_sources() & self.button_cells),
                     spikes=sorted(self.spikes), spikes_dead=sorted(self.spike_dead),
                     bombs=sorted(self.bombs), fuses=sorted(self.fuses.items()),
                     fireballs=sorted(self.fireballs.items()),
@@ -1075,3 +1080,171 @@ def solve_level(level) -> tuple:
         return False, ''
     path = make_offline(level).solve()
     return (path is not None), (''.join(path) if path else '')
+
+
+# ====================================================================== 关卡 IO
+#: 关卡 JSON 的字段（**这就是 schema**：编辑器导出的 = 生成器产出的 = 内核吃的）
+LEVEL_JSON_KEYS = ('name', 'h', 'w', 'rows', 'links', 'par')
+
+
+def level_to_json(level, path=None, indent: int = 2) -> dict:
+    """关卡 dict → 可序列化 dict（可选写文件）。
+
+    做两件 JSON 必须做的事：
+
+    1. **坐标元组 → 列表**（JSON 没有 tuple）；
+    2. **矩形性检查**：`rows` 每行必须等长。不等长时 `parse_level` 会用 `.` 补齐 ——
+       那是"静默改关卡"，导出侧必须**当场报错**而不是让它悄悄发生。
+    """
+    rows = list(level['rows'])
+    if len({len(r) for r in rows}) > 1:
+        raise ValueError(f'rows 不是矩形（各行列数 {sorted(len(r) for r in rows)}）——'
+                         f'不要导出会被补齐的关卡')
+    data = {
+        'name': level.get('name') or '',
+        'h': len(rows),
+        'w': len(rows[0]) if rows else 0,
+        'rows': rows,
+        'links': [{'from': list(lk['from']), 'to': list(lk['to']),
+                   'mode': lk.get('mode', 'open')}
+                  for lk in level.get('links') or []],
+        'par': level.get('par'),
+    }
+    if path is not None:
+        d = os.path.dirname(os.path.abspath(path))
+        os.makedirs(d, exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=indent)
+            fh.write('\n')
+    return data
+
+
+def level_from_json(src) -> dict:
+    """可序列化 dict（或 JSON 文件路径）→ 关卡 dict。**不合法就抛 `ValueError`**。
+
+    ⚠ 两个必做的还原：坐标列表 → **元组**（`validate_level` 用集合成员判定，
+    JSON 读回来的 `[1, 4]` 永远不等于 `(1, 4)`，不还原就会"每一关都不合法"）；
+    以及拒绝非矩形 `rows`（理由同 `level_to_json`）。
+    """
+    if isinstance(src, (str, bytes, os.PathLike)):
+        with open(src, 'r', encoding='utf-8') as fh:
+            data = json.load(fh)
+    elif isinstance(src, dict):
+        data = src
+    else:
+        raise ValueError(f'level_from_json 只吃 dict 或路径，收到 {type(src).__name__}')
+    rows = [str(r) for r in (data.get('rows') or [])]
+    if not rows:
+        raise ValueError('关卡 JSON 缺 rows')
+    if len({len(r) for r in rows}) > 1:
+        raise ValueError(f'rows 不是矩形（各行列数 {sorted(len(r) for r in rows)}）')
+    links = [{'from': tuple(lk['from']), 'to': tuple(lk['to']),
+              'mode': lk.get('mode', 'open')}
+             for lk in data.get('links') or []]
+    level = parse_level('\n'.join(rows), str(data.get('name') or 'imported'),
+                        links, par=data.get('par'))
+    ok, why = validate_level(level)
+    if not ok:
+        raise ValueError(f'关卡不合法：{why}')
+    return level
+
+
+# ====================================================================== 编辑器
+def prune_links(level) -> list:
+    """丢掉两端已经不成立的连接（返回新 list）。
+
+    编辑器里改一格（比如把门擦成地板）不该把整关判成"不合法" —— 该做的是
+    **把失效的连接一并撤掉**。同理，"玩家"与"出口"全局唯一（摆新的先擦旧的）。
+    """
+    at = {}
+    for i, row in enumerate(level['rows']):
+        for j, ch in enumerate(row):
+            at[(i, j)] = ch
+    keep = []
+    for lk in level.get('links') or []:
+        src, dst = tuple(lk['from']), tuple(lk['to'])
+        if at.get(src) in (BUTTON, LEVER) and at.get(dst) == DOOR:
+            keep.append({'from': src, 'to': dst, 'mode': lk.get('mode', 'open')})
+    return keep
+
+
+def level_set_cell(level, cell, ch) -> dict:
+    """编辑器摆一格：返回**新**关卡 dict（原关卡不动）。结构性错误抛 `ValueError`。
+
+    这里的**只拦结构性错误**（未知元素 / 越界 / 边框锁死 / 玩家与出口的唯一性），
+    **不要求关卡此刻完整**：
+
+    > 早先这里摆放后立刻 `validate_level`，结果**从空白板造关一步都摆不下去** ——
+    > 摆第一格时必然"既没有 P 也没有 E"。
+    > 完整性（有玩家、有出口、连接合法）是**试解 / 导出**那一步的门槛，不是摆放的。
+
+    另外顺手把失效的连接撤掉（`prune_links`）：改一格不该把整关判成"不合法"。
+    """
+    if ch not in ELEMENTS:
+        raise ValueError(f'未知元素 {ch!r}')
+    rows = [list(r) for r in level['rows']]
+    i, j = cell
+    if not (0 <= i < len(rows) and 0 <= j < len(rows[0])):
+        raise ValueError(f'格 {cell} 越界')
+    if i in (0, len(rows) - 1) or j in (0, len(rows[0]) - 1):
+        raise ValueError('边框格锁死（那圈必须是墙）')
+    if ch in (PLAYER, EXIT):                 # 全局唯一：摆新的先把旧的擦成地板
+        for ii, r in enumerate(rows):
+            for jj, c in enumerate(r):
+                if c == ch:
+                    rows[ii][jj] = FLOOR
+    rows[i][j] = ch
+    new = dict(level, rows=[''.join(r) for r in rows])
+    new['links'] = prune_links(new)
+    return new
+
+
+def level_blank(w: int = 11, h: int = 9, name: str = '新关卡') -> dict:
+    """空白关：四周围墙 + 内部全地板（**还没有玩家与出口** —— 编辑器自己去摆）。
+
+    有了它，编辑器才能"新建一关"；而 `level_set_cell` 不做完整性校验正是为了让
+    这个空白关**能一格一格摆起来**（见其 docstring）。
+    """
+    if w < 3 or h < 3:
+        raise ValueError(f'关卡至少 3×3，收到 {w}×{h}')
+    rows = [WALL * w]
+    rows += [WALL + FLOOR * (w - 2) + WALL for _ in range(h - 2)]
+    rows.append(WALL * w)
+    return parse_level('\n'.join(rows), name)
+
+
+def level_add_link(level, src, dst, mode: str = 'open') -> dict:
+    """编辑器连一条「开关 → 门」：返回**新**关卡 dict。不合法就抛 `ValueError`。
+
+    同一个 (源, 目标) 只保留一条：重复连 = **换模式**（不是在列表里堆两条）。
+    """
+    src, dst = tuple(src), tuple(dst)
+    if mode not in ('open', 'toggle', 'close'):
+        raise ValueError(f'未知连接模式 {mode!r}')
+    rows = level['rows']
+
+    def ch_at(p):
+        i, j = p
+        if 0 <= i < len(rows) and 0 <= j < len(rows[0]):
+            return rows[i][j]
+        return None
+
+    if ch_at(src) not in (BUTTON, LEVER):
+        raise ValueError(f'连接源 {src} 必须是按钮 `o` 或拉杆 `L`')
+    if ch_at(dst) == GOLD_DOOR:
+        raise ValueError(f'连接目标 {dst} 是金门 —— 金门只认钥匙，开关只能连普通门')
+    if ch_at(dst) != DOOR:
+        raise ValueError(f'连接目标 {dst} 必须是普通门 `D`')
+    links = [lk for lk in prune_links(level)
+             if not (tuple(lk['from']) == src and tuple(lk['to']) == dst)]
+    links.append({'from': src, 'to': dst, 'mode': mode})
+    new = dict(level, links=links)
+    ok, why = validate_level(new)
+    if not ok:
+        raise ValueError(why)
+    return new
+
+
+def level_clear_links(level) -> dict:
+    """清空全部连接（返回**新**关卡 dict）。"""
+    return dict(level, links=[])

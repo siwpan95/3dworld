@@ -29,7 +29,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from games.brickward.kernel import (  # noqa: E402
     BrickwardKernel, DEMO_SEEDS, ELEMENTS, LEVELS, LEVEL_ART, WALL, FLOOR,
     CRATE, SPIKE, PLAYER, EXIT, BOMB, FIREBALL, FUSE, ROCK, SLIME,
-    SLIME_PERIOD,
+    SLIME_PERIOD, BUTTON, DOOR, GOLD_DOOR, KEY,
+    level_add_link, level_blank, level_clear_links, level_from_json,
+    level_set_cell, level_to_json,
     generate, make_offline, parse_level, solve_level, validate_level,
 )
 
@@ -1001,7 +1003,221 @@ def test_slime_cannot_be_pushed():
     print('  ok: 史莱姆 pushable=False（推不动）；想清它只能靠爆炸/火球/滚石/尖刺')
 
 
-# ================================================================ 12. 内核装载
+# ================================================================ 12. 编辑器与关卡 IO（B3）
+def test_json_roundtrip_for_all_shipped_levels():
+    """7 关全部**往返一致且仍可解** —— 「编辑器导出的 = 内核吃的」这条必须成立。"""
+    for lv in LEVELS:
+        data = level_to_json(lv)
+        back = level_from_json(data)
+        assert back['rows'] == lv['rows'], lv['name']
+        assert back['links'] == lv['links'], f"{lv['name']}: {back['links']} != {lv['links']}"
+        assert back['par'] == lv.get('par')
+        ok, path = solve_level(back)
+        assert ok and path, f'{lv["name"]} 读回后不可解'
+        assert path == solve_level(lv)[1], '读回后解变了（schema 往返丢了东西）'
+    print(f'  ok: {len(LEVELS)} 关 JSON 往返逐字一致，解也逐字一致')
+
+
+def test_json_roundtrip_through_a_real_file(tmp_path=None):
+    """走一次真文件（含子目录自动创建）—— 内存 dict 往返看不出"路径/编码"这类问题。"""
+    import json
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, 'sub', 'lv.json')
+        lv = _lv('直推教学')          # 这一关有连接（引怪入瓮没有）
+        assert lv['links'], '取材不对：这一关要有连接才能验 links 的序列化'
+        level_to_json(lv, p)
+        assert os.path.exists(p)
+        raw = json.load(open(p, encoding='utf-8'))
+        assert raw['links'][0]['from'] == [1, 7], f"坐标该是 JSON 列表：{raw['links']}"
+        assert raw['links'][0]['to'] == [4, 4]
+        back = level_from_json(p)
+        assert back['rows'] == lv['rows'] and back['links'] == lv['links']
+        assert solve_level(back) == solve_level(lv)
+    print('  ok: 文件往返一致；JSON 里坐标是列表，读回后是元组')
+
+
+def test_level_from_json_restores_tuples_regression():
+    """**回归守卫**：坐标必须从 JSON 列表还原成**元组**。
+
+    反例（把 `tuple(lk['from'])` 去掉立即报红）：`validate_level` 用集合成员判定
+    （`lk['from'] in (buttons | levers)`），而 `[1, 4] != (1, 4)` ⇒ 每一关都被判
+    "连接源不是按钮/拉杆"，编辑器/CLI 全线读不进任何带连接的关卡。
+    """
+    lv = _lv('拉杆切门')
+    back = level_from_json(level_to_json(lv))
+    src = back['links'][0]['from']
+    assert isinstance(src, tuple), f'连接源没还原成元组：{type(src).__name__}'
+    assert isinstance(back['links'][0]['to'], tuple)
+    assert validate_level(back)[0], '带连接的关卡读回后应合法'
+    print('  ok: 连接坐标列表 → 元组（否则集合成员判定永远不成立）')
+
+
+def test_json_rejects_ragged_and_incomplete_levels():
+    """坏数据一律抛 `ValueError`，且理由要说清（别静默补齐/静默跑假关卡）。"""
+    lv = _lv('直推教学')
+    good = level_to_json(lv)
+    cases = [
+        ({**good, 'rows': ['###', '#####']}, '不是矩形'),
+        ({**good, 'rows': []}, '缺 rows'),
+        ({**good, 'rows': ['#####', '#P..#', '#####']}, '缺出口'),
+        ({**good, 'rows': ['#####', '#...#', '#####']}, '缺玩家'),
+        ({**good, 'links': [{'from': [0, 0], 'to': [0, 2]}]}, '连接源'),
+        ({**good, 'links': [{'from': [1, 7], 'to': [4, 4], 'mode': 'nope'}]}, '模式'),
+    ]
+    for bad, label in cases:
+        try:
+            level_from_json(bad)
+        except ValueError as e:
+            assert label in str(e) or 'rows' in str(e), f'{label}: 理由不对 {e}'
+        else:
+            raise AssertionError(f'{label} 的坏数据竟然通过')
+    try:
+        level_to_json({**lv, 'rows': ['###', '#####']})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('导出非矩形竟然通过')
+    try:
+        level_from_json(12345)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('非 dict/路径 竟然通过')
+    print(f'  ok: {len(cases)} 类坏数据 + 导出非矩形 + 非 dict 全部被拒（理由明确）')
+
+
+def test_editor_blank_board_is_buildable_step_by_step():
+    """**回归守卫**：空白关必须能一格一格摆起来。
+
+    反例（在 `level_set_cell` 末尾加回 `validate_level` 立即报红）：摆第一格时
+    必然"既没有 P 也没有 E" ⇒ 整块空白板一步都放不下东西，编辑器等于废掉。
+    """
+    lv = level_blank(9, 7)
+    assert validate_level(lv)[0] is False and '玩家' in validate_level(lv)[1]
+    seq = [((1, 1), PLAYER), ((5, 7), EXIT), ((3, 3), CRATE), ((3, 4), SPIKE),
+           ((1, 4), BUTTON), ((1, 6), DOOR)]
+    for cell, ch in seq:                     # 中间态都不完整，但都必须能摆
+        lv = level_set_cell(lv, cell, ch)
+    assert validate_level(lv)[0], validate_level(lv)[1]
+    ok, path = solve_level(lv)
+    assert ok and path, '一步步摆出来的关应该可解'
+    rows = lv['rows']
+    assert sum(r.count(PLAYER) for r in rows) == 1 and sum(r.count(EXIT) for r in rows) == 1
+    print(f'  ok: 空白板逐格摆出可解关（{len(seq)} 次摆放，解 {path}）')
+
+
+def test_editor_set_cell_structural_rules():
+    """摆放只拦**结构性**错误：未知元素 / 越界 / 边框锁死。"""
+    lv = _lv('直推教学')
+    for args, label in ((((0, 3), CRATE), '边框'),
+                        (((3, 0), CRATE), '左边框'),
+                        (((99, 3), CRATE), '越界行'),
+                        (((3, 99), CRATE), '越界列'),
+                        (((3, 3), '?'), '未知元素')):
+        try:
+            level_set_cell(lv, *args)
+        except ValueError as e:
+            assert label[:2] in str(e) or '锁死' in str(e) or '越界' in str(e) \
+                or '未知' in str(e), f'{label}: {e}'
+        else:
+            raise AssertionError(f'{label} 竟然通过')
+    # 唯一性：摆第二个玩家，旧的应被擦掉
+    n = level_set_cell(lv, (2, 2), PLAYER)
+    assert sum(r.count(PLAYER) for r in n['rows']) == 1
+    assert lv['rows'][1][1] == PLAYER and n['rows'][1][1] == FLOOR, '原关卡该保持不变'
+    print('  ok: 边框/越界/未知元素被拒；玩家全局唯一；原关卡不被就地改动')
+
+
+def test_editor_prunes_dead_links_when_cell_changed():
+    """改一格把门擦掉 → 挂在它上面的连接**自动撤掉**（而不是让整关变不合法）。"""
+    lv = _lv('直推教学')
+    assert lv['links'], '这一关本来该有连接'
+    door = tuple(lv['links'][0]['to'])
+    n = level_set_cell(lv, door, FLOOR)
+    assert n['links'] == [], f'门被擦掉后连接应失效：{n["links"]}'
+    assert validate_level(n)[0], '撤掉失效连接后仍是合法关'
+    # 擦掉开关（按钮）同理
+    btn = tuple(lv['links'][0]['from'])
+    n2 = level_set_cell(lv, btn, FLOOR)
+    assert n2['links'] == [], f'开关被擦掉后连接应失效：{n2["links"]}'
+    print('  ok: 擦门/擦开关都会自动撤掉失效连接，且关卡仍合法')
+
+
+def test_editor_add_link_rules():
+    """连接编辑的四条规矩：源要是开关、目标要是**普通门**、金门不许连、重复连=换模式。"""
+    lv = _lv('直推教学')
+    door = tuple(lv['links'][0]['to'])
+    btn = tuple(lv['links'][0]['from'])
+    # 重复连 = 换模式（不在列表里堆两条）
+    n = level_add_link(lv, btn, door, 'toggle')
+    same = [lk for lk in n['links']
+            if tuple(lk['from']) == btn and tuple(lk['to']) == door]
+    assert len(same) == 1 and same[0]['mode'] == 'toggle', n['links']
+    # 目标不是门
+    for target, label in (((1, 2), '地板'), (btn, '开关自己')):
+        try:
+            level_add_link(lv, btn, target)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f'连到{label} 竟然通过')
+    # 源不是开关
+    try:
+        level_add_link(lv, door, door)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('源是门 竟然通过')
+    # 金门不许连
+    gold = tuple(sorted(make_offline(_lv('钥匙金门')).gold)[0])
+    try:
+        level_add_link(_lv('钥匙金门'), btn, gold)
+    except ValueError as e:
+        assert '金门' in str(e), e
+    else:
+        raise AssertionError('连到金门 竟然通过')
+    # 未知模式
+    try:
+        level_add_link(lv, btn, door, 'nope')
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('未知模式 竟然通过')
+    assert level_clear_links(lv)['links'] == []
+    print('  ok: 源/目标/金门/未知模式 全部把住；重复连是换模式；清空可用')
+
+
+def test_editor_export_import_solve_closed_loop():
+    """**B3 的验收点**：编辑 → 试解 → 导出 → 读回 → 再解，**闭环结果一致**。"""
+    import tempfile
+    lv = level_blank(11, 9, '闭环测试')
+    layout = [((1, 1), PLAYER), ((3, 3), CRATE), ((1, 4), BUTTON), ((1, 7), DOOR),
+              ((7, 9), EXIT), ((5, 5), SPIKE), ((2, 6), KEY), ((6, 6), GOLD_DOOR)]
+    for cell, ch in layout:
+        lv = level_set_cell(lv, cell, ch)
+    lv = level_add_link(lv, (1, 4), (1, 7), 'open')
+    ok, why = validate_level(lv)
+    assert ok, why
+    sol, path = solve_level(lv)
+    assert sol and path, '闭环关应可解'
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, 'closed-loop.json')
+        level_to_json(dict(lv, par=len(path)), p)
+        back = level_from_json(p)
+        assert back['par'] == len(path)
+        assert back['rows'] == lv['rows'] and back['links'] == lv['links']
+        sol2, path2 = solve_level(back)
+        assert sol2 and path2 == path, f'闭环解不一致：{path} != {path2}'
+        k = make_offline(back)
+        for d in path:
+            k.step(d)
+        assert k.status() == 'won', f'闭环回放未胜：{k.status()}'
+    print(f'  ok: 摆 {len(layout)} 格 + 1 连接 → 解 {path} → 导出 → 读回 → '
+          f'同解且回放到胜')
+
+
+# ================================================================ 13. 内核装载
 def test_load_level_rejects_bad_and_keeps_old():
     """`load_level` 校验失败必须返回 False 并给出原因，且**不炸掉现有状态**。"""
     k = make_offline(_lv('直推教学'))
@@ -1128,6 +1344,23 @@ def main() -> int:
          test_fireball_burns_slime_and_keeps_rolling),
         ('test_blast_kills_slime', test_blast_kills_slime),
         ('test_slime_cannot_be_pushed', test_slime_cannot_be_pushed),
+        ('test_json_roundtrip_for_all_shipped_levels',
+         test_json_roundtrip_for_all_shipped_levels),
+        ('test_json_roundtrip_through_a_real_file',
+         test_json_roundtrip_through_a_real_file),
+        ('test_level_from_json_restores_tuples_regression',
+         test_level_from_json_restores_tuples_regression),
+        ('test_json_rejects_ragged_and_incomplete_levels',
+         test_json_rejects_ragged_and_incomplete_levels),
+        ('test_editor_blank_board_is_buildable_step_by_step',
+         test_editor_blank_board_is_buildable_step_by_step),
+        ('test_editor_set_cell_structural_rules',
+         test_editor_set_cell_structural_rules),
+        ('test_editor_prunes_dead_links_when_cell_changed',
+         test_editor_prunes_dead_links_when_cell_changed),
+        ('test_editor_add_link_rules', test_editor_add_link_rules),
+        ('test_editor_export_import_solve_closed_loop',
+         test_editor_export_import_solve_closed_loop),
         ('test_every_shipped_level_solvable_and_replays_to_win',
          test_every_shipped_level_solvable_and_replays_to_win),
         ('test_solver_is_deterministic', test_solver_is_deterministic),

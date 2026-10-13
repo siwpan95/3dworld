@@ -3,6 +3,60 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [未发布] — 《砖境 / Brickward》B3：谜题编辑器 + 可玩 demo
+
+B1/B2 把内核立住了（11 类元素、连接绑定、BFS 求解器、13/13 可解），但**只有 headless
+断言，没人能真的玩**。B3 补两件：**关卡 IO**（编辑器/CLI/内核同一个 schema）与
+**可玩 + 可编辑的 demo**。至此这条线才算"有产品形态"。
+
+### 新增
+
+- **关卡 IO（`games/brickward/kernel.py`）**：`level_to_json` / `level_from_json` /
+  `LEVEL_JSON_KEYS`。schema 就是内核吃的那个 dict（`name/h/w/rows/links/par`）。
+  * 导出侧拒绝**非矩形** `rows` —— `parse_level` 会用 `.` 补齐，那是"静默改关卡"；
+  * 导入侧把坐标**列表还原成元组**，并且导入即校验（不合法抛 `ValueError`）。
+- **编辑器纯函数（同文件）**：`level_set_cell` / `level_add_link` /
+  `level_clear_links` / `level_blank` / `prune_links`。
+  **规则全在内核**、全部可 headless 测 —— demo 只负责把 `ValueError` 变成屏幕提示。
+- **`examples/brickward.py`**（交互 demo，32 个示例之一）：
+  * 渲染：墙走 `engine.greedy_mesh.layer_mesh` 一次建网（与 boxward 同一套地基），
+    其余元素用共享小网格（cube / sphere / quad / 自建 pyramid）逐个 batch；
+    **正交等距视角**（偏航 +45°，与 boxward 同一套看的），`Q/E` 切 90° 档、`P` 循环俯角；
+  * 游玩：WASD/方向键走·推·点火，`Z` 重开、`N` 下一关、`R` 种子关；`--flag auto`
+    = **求解器回放**（与 `config_boot brickward` 的 headless 验收同源）；
+  * **编辑器**（`M`）：左键摆当前道具、右键擦成地板、`[`/`]`/滚轮换道具（15 格道具栏，
+    HUD 高亮当前项 + 光标处道具预览）、`C` **连接模式**（先点开关、再点门）、
+    `T` 换连接模式（open/toggle/close）、`SHIFT+C` 清空连接、`V` 校验+试解、
+    `E` 导出 JSON 到 `levels/`、`I` 载入 `levels/*.json`、`B` 新建空白关；
+  * 表现：程序化 SFX（走/推/点火/滚动/开锁/爆炸/失败/胜利）+ 通关/失败叠层 +
+    **引信越短闪得越快**的炸弹 + 本步爆炸火光 + 编辑模式的连接虚线示意。
+- **配置树**：`cordis.brickward.yml` 增加 `render`（demo 要用 `ctx.render` 记账），
+  `WANT_BRICKWARD = ('brickward', 'render')`；`config_boot` 对 brickward 传
+  `require_gl=False`（内核从不取 GL 句柄，否则那套"等 `live_count() > 0`"永远超时）。
+- **9 项新单测**（`tests/test_brickward.py` 56 → **65 项**），其中 2 项是回归守卫。
+- 剧照 `docs/brickward_a.png` / `b.png`（auto 回放的两个不同关卡中段）；
+  `README.md` / `examples/README.md` 同步（31 → 32 个示例）。
+
+### 修复 / 决策
+
+| # | 内容 | 说明 |
+|---|------|------|
+| 11 | **导入必须把坐标列表还原成元组** | `validate_level` 用集合成员判定（`lk['from'] in (buttons \| levers)`），而 JSON 读回来的 `[1, 4] != (1, 4)` ⇒ 不还原的话**每一关都被判"连接源不是按钮/拉杆"**，带连接的关卡一个都读不进来。守护：`test_level_from_json_restores_tuples_regression` |
+| 12 | **摆放不能做完整性校验** | 第一版 `level_set_cell` 末尾直接 `validate_level` ⇒ 空白板上摆第一格时"必然既没有 P 也没有 E" ⇒ **一步都摆不下去**，编辑器等于废掉。改成"摆放只拦结构性错误（越界/边框锁死/未知元素/唯一性），完整性是试解与导出的门槛"。守护：`test_editor_blank_board_is_buildable_step_by_step` |
+| 13 | **剧照两张逐像素一样** | `--shot` 靠 auto 回放取两个时刻，而 auto 的"计划"只在换关路径里算 —— **不给任何 flag 时一次换关都不会发生**，计划恒为空、一步不动。这不是剧照机制坏了，是计划没算。守护：**两张剧照的 md5 必须不同**（渲染本身有像素级噪声，所以不引具体 hash，只引"两张不同"这个事实） |
+
+### 验收（实测）
+
+| 门禁 | 结果 |
+|------|------|
+| `python -m tests.test_brickward` | **65/65** → `ALL_BRICKWARD_TESTS_PASSED` |
+| `scripts/run_all_tests.py` | 8/8 模块 / **205 项** / `ALL_TESTS_PASSED`（上一批 196 项） |
+| `python -m cli.config_boot brickward` | 7 手工关 + 6 种子 = **13/13** 可解且回放到胜 → `BRICKWARD_OK` |
+| `python -m cli.config_boot all` | **10 个** OK 标记（零回归） |
+| `python examples/brickward.py --smoke 3` | `EXIT_OK` |
+| `python examples/brickward.py --shot` | `[shot] OK 2 files`（**两张 md5 不同** —— 同一张图重复输出会被这条抓住） |
+| `scripts/verify_demos.py` 全量 | `ALL_DEMOS_OK (32 demos)` |
+
 ## [未发布] — 《砖境 / Brickward》B2b：滚石与史莱姆
 
 机关内核的**第三个扩展包**，也是 B2 的最后一块。B2a 加的是"会自己炸"的元件，

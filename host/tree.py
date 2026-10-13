@@ -63,10 +63,11 @@ WANT_STORM = ('storm', 'render', 'rules', 'economy', 'entity', 'particles', 'pat
 WANT_HALL = ('hall', 'render', 'rules')
 WANT_VOID = ('void', 'render', 'rules', 'economy', 'entity')
 WANT_PULSE = ('pulse', 'render', 'rules', 'economy', 'audio')
-# BQM 机制致敬 · B1：内核 `inject = []`（纯逻辑、零 GL），所以**不列 render** ——
-# `await_ready` 的 GL 就绪检查只在 want 里有 'render' 时才生效，列了反而要求
-# 一个它根本不用的服务。B4 接渲染时再把 render/particles 加进来。
-WANT_BRICKWARD = ('brickward',)
+# BQM 机制致敬 · B1/B2/B3：内核 `inject = []`（纯逻辑、零 GL），但 B3 的 demo 要用
+# `ctx.render` 记账 GL 资源 ⇒ 配置树把 render 一起挂上（「demo 怎么挂的 = 验证怎么挂的」）。
+# ⚠ 内核自己**不取** GL 句柄，所以 `cli/config_boot` 对 brickward 要传 `require_gl=False`：
+# 否则 `await_ready` 的"等 live_count() > 0"永远等不到东西（见 config_boot.run_one）。
+WANT_BRICKWARD = ('brickward', 'render')
 # 全共同核（P0-4 配置树统一）：cordis.cores.yml 声明挂载的全部核
 WANT_CORES = ('render', 'economy', 'entity', 'rules', 'terrain',
               'pathing', 'particles', 'sdf', 'audio', 'timeline',

@@ -577,9 +577,11 @@ async def run_pulse(ctx, seeds=None):
 
 async def run_one(kind, seeds=None):
     name, want = CONFIGS[kind]
-    # 纯共同核配置树（cores）无内核取 GL 句柄 -> 不要求 GL 就绪
+    # 纯共同核配置树（cores）无内核取 GL 句柄 -> 不要求 GL 就绪；
+    # brickward 内核也是纯逻辑（`inject = []`）、从不取 GL 句柄 —— 它的 `render`
+    # 是给 demo 用的，所以同样不能等 `live_count() > 0`。
     ctx = await mount_tree(config_path(name), want=want,
-                           require_gl=(kind != 'cores'))
+                           require_gl=(kind not in ('cores', 'brickward')))
     if kind == 'td':
         await run_td(ctx)
     elif kind == 'godhand':
