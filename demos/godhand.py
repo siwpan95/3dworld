@@ -5,7 +5,7 @@
 实时修改高度场，淹没或掩埋敌方聚落即胜。原创美术 / 命名 / 世界观，不碰任何原 IP。
 
 阶段 A（demos/godhand.py 初版）：直连 engine，自管地形与聚落状态。
-阶段 B（experiments/cordis/godhand_kernel.py）：把玩法拆成「共同核（Render/Economy/
+阶段 B（games/godhand/kernel.py）：把玩法拆成「共同核（Render/Economy/
          Entity/Rules/Terrain）+ 内核（GodHandKernel）」，用 cordis v4.0.0 fiber 属性式
          API 接线，并验证 GL 资源随内核 fiber dispose 可逆回滚（headless 模拟淹没通关 + 回滚断言）。
 阶段 C（本文件）：demo 不再自管玩法，而是**委托 Cordis 内核**——挂载则由
@@ -23,7 +23,7 @@
 pyglet 直接绘制（内核的 RenderService 仅做 headless 记账与回滚语义）。
 
 复用：demos/_harness.DemoApp/run、logic.camera.OrbitCamera、engine.picking、
-engine.audio（SfxPlayer/Track），以及 experiments/cordis/godhand_kernel
+engine.audio（SfxPlayer/Track），以及 games/godhand/kernel
 （共同核 + 神之手内核，12 核契约见 core/contracts.py）。
 
 操作：右键拖拽 转视角   滚轮 缩放   左键涂抹 抬山/挖海（R/F 切换神手）   A 切换自动驾驶
@@ -54,7 +54,7 @@ if ROOT not in sys.path:
 # 试点三：挂载由 cordis.godhand.yml 配置树声明（host.tree 共享引导）；
 # 绘制所需几何常量从内核「包路径」取（单一模块身份，不再走顶层名双副本）
 from host.tree import WANT_GODHAND, config_path, mount_tree  # noqa: E402
-from experiments.cordis.godhand_kernel import HALF_T, SEA  # noqa: E402
+from games.godhand.kernel import HALF_T, SEA  # noqa: E402
 
 SKY = (0.60, 0.72, 0.86)
 

@@ -10,12 +10,12 @@ P1-④「归仓 / Boxward」的渲染地基：关卡墙体是单层（y ∈ [0,1
 - 底面（−y）永远被地板挡住，不生成。
 
 纯函数、零依赖（不 import cordis / pyglet），可独立单测；输出与
-``tower_defense_kernel._unit_cube`` 同约定（position + shade 三角汤，
+``engine/baked_mesh.unit_cube`` 同约定（position + shade 三角汤，
 GL_TRIANGLES，每面烘焙固定明暗）。§11.4「自建」列的唯一算法件。
 """
 from __future__ import annotations
 
-# 面明暗（与 _unit_cube 的"顶亮/侧中"惯例一致，免法线着色）
+# 面明暗（与 baked_mesh 的"面烘焙明暗"惯例同族，免法线着色；具体数值各自独立）
 SHADE_TOP = 1.00
 SHADE_Z = 0.82          # ±z 朝向的侧面
 SHADE_X = 0.72          # ±x 朝向的侧面

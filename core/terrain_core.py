@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """地形共同核 ``terrain``（实现 ``core.contracts.TerrainCore``）。
 
-自 ``experiments/cordis/godhand_kernel`` 上提的**跨内核共享实现**（P0-1 去重）：
+自 ``games/godhand/kernel`` 上提的**跨内核共享实现**（P0-1 去重）：
 可编辑高度场（抬山 + / 挖海 −）。headless 安全：纯数值网格，无 GL / 无随机依赖；
 ``rebuild_mesh`` 仅生成顶点数组，供 demo 渲染与 GL 记账使用。
 

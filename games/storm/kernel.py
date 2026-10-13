@@ -27,7 +27,8 @@ import random
 import sys
 
 # ---- cordis 定位（与 td/godhand/fps/puzzle 内核一致）----
-_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# P0-3：本文件由 experiments/cordis/ 移到 games/<名>/，层级少一层
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 import _cordis_locate  # noqa: E402
@@ -35,7 +36,7 @@ import _cordis_locate  # noqa: E402
 _cordis_locate.ensure()
 
 from cordis import Service  # noqa: E402
-from experiments.cordis.tower_defense_kernel import _unit_cube  # noqa: E402
+from engine.baked_mesh import unit_cube  # noqa: E402
 
 # ===================================================================== 平衡常量
 DEFAULT_SEED = 20261011
@@ -266,8 +267,8 @@ class StormKernel(Service):
     def _acquire_gl(self):
         render = self.ctx.render
         h_prog = render.compile_program('storm')
-        h_cube = render.upload_mesh('storm_cube', *_unit_cube())
-        h_dot = render.upload_mesh('storm_dot', *_unit_cube())
+        h_cube = render.upload_mesh('storm_cube', *unit_cube())
+        h_dot = render.upload_mesh('storm_dot', *unit_cube())
         self._gl_handles.extend([h_prog, h_cube, h_dot])
         for h in self._gl_handles:
             def release(h=h):

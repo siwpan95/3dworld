@@ -24,9 +24,19 @@ import collections
 import math
 import random
 
+# P0-3：本文件由 experiments/cordis/ 移到 games/fps/。补齐自举——
+# 此前它依赖调用方先把项目根塞进 sys.path（迁移后要 import engine/core，
+# 不该再依赖调用方的 cwd/路径设置）。
+import os
+import sys
+
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
 from cordis import Service  # noqa: E402
 from core.contracts import EntityCore, EconomyCore, RulesCore  # noqa: F401,E402
-from experiments.cordis.tower_defense_kernel import _unit_cube, _unit_sphere  # noqa: E402
+from engine.baked_mesh import unit_cube, unit_sphere  # noqa: E402
 
 # ===================================================================== 平衡常量
 CELLS = 15                  # 迷宫格数（奇数：1..n-2 为通道单元）
@@ -378,8 +388,8 @@ class FpsKernel(Service):
     def _acquire_gl(self):
         render = self.ctx.render
         h_prog = render.compile_program('fps_ray')
-        h_enemy = render.upload_mesh('fps_enemy', *_unit_sphere(8, 6))
-        h_pick = render.upload_mesh('fps_pickup', *_unit_cube())
+        h_enemy = render.upload_mesh('fps_enemy', *unit_sphere(8, 6))
+        h_pick = render.upload_mesh('fps_pickup', *unit_cube())
         self._gl_handles.extend([h_prog, h_enemy, h_pick])
         # 每个句柄的释放都绑到「内核 fiber」——内核 dispose 时统一回滚
         for h in self._gl_handles:

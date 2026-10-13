@@ -34,12 +34,12 @@ from host.tree import (  # noqa: E402
     WANT_STORM, WANT_TD, WANT_VOID,
     config_path, mount_tree,
 )
-from experiments.cordis.godhand_kernel import START_MANA  # noqa: E402
-from experiments.cordis.fps_kernel import START_AMMO  # noqa: E402
-from experiments.cordis.puzzle_kernel import (  # noqa: E402
+from games.godhand.kernel import START_MANA  # noqa: E402
+from games.fps.kernel import START_AMMO  # noqa: E402
+from games.puzzle.kernel import (  # noqa: E402
     DEMO_SEEDS, HANDMADE_LEVELS,
 )
-from experiments.cordis.tower_defense_kernel import (  # noqa: E402
+from games.tower_defense.kernel import (  # noqa: E402
     START_GOLD, WAVES as TD_WAVES,
 )
 
@@ -317,7 +317,7 @@ async def run_hall(ctx, seeds=None):
     import json as _json
     import tempfile
 
-    from experiments.cordis.hall_kernel import (DEFAULT_SCENE, graph_reachable,
+    from games.hall.kernel import (DEFAULT_SCENE, graph_reachable,
                                                 validate_scene)
     kernel = ctx.hall
     render = ctx.render
@@ -378,7 +378,7 @@ async def run_hall(ctx, seeds=None):
 
 async def run_void(ctx, seeds=None):
     """星阑：市场确定性/事件冲击/均值回归 + 贸易脚本达标 won（含海盗战胜利）（§15.6）。"""
-    from experiments.cordis.void_kernel import (GOOD_BASE, GOODS, mean_reversion_gap,
+    from games.void.kernel import (GOOD_BASE, GOODS, mean_reversion_gap,
                                                 shock_at, shock_table, station_price)
     kernel = ctx.void
     render = ctx.render
@@ -451,7 +451,7 @@ async def run_pulse(ctx, seeds=None):
     """落音：3 谱面自动演奏全连 won + 可打性/时长/判定窗/音频合成（§16.6）。"""
     import os as _os
 
-    from experiments.cordis.pulse_kernel import (BARS, BPM_LIST, GOOD_MS, N_TRACKS,
+    from games.pulse.kernel import (BARS, BPM_LIST, GOOD_MS, N_TRACKS,
                                                  PERFECT_MS, accuracy, chart, judge)
     kernel = ctx.pulse
     render = ctx.render

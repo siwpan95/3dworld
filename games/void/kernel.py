@@ -20,7 +20,8 @@ import math
 import os
 import sys
 
-_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# P0-3：本文件由 experiments/cordis/ 移到 games/<名>/，层级少一层
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 import _cordis_locate  # noqa: E402
@@ -189,9 +190,9 @@ class VoidKernel(Service):
 
     def _acquire_gl(self):
         render = self.ctx.render
-        from experiments.cordis.tower_defense_kernel import _unit_cube
+        from engine.baked_mesh import unit_cube
         h_prog = render.compile_program('void')
-        h_mesh = render.upload_mesh('void_cube', *_unit_cube())
+        h_mesh = render.upload_mesh('void_cube', *unit_cube())
         self._gl_handles.extend([h_prog, h_mesh])
         for h in self._gl_handles:
             def release(h=h):

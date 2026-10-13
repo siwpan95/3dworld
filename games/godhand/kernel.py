@@ -29,7 +29,7 @@
 
 运行（无需显示器 / 不依赖 GL 窗口）::
 
-    python experiments/cordis/godhand_kernel.py
+    python games/godhand/kernel.py
 """
 from __future__ import annotations
 
@@ -38,7 +38,8 @@ import math
 import os
 import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# P0-3：本文件由 experiments/cordis/ 移到 games/<名>/，层级少一层
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 # ---- cordis 定位 ----

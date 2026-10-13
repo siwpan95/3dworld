@@ -34,7 +34,7 @@ from pyglet.graphics.shader import Shader, ShaderProgram        # noqa: E402
 from pyglet.math import Mat4, Vec3                               # noqa: E402
 
 from engine.app import EngineApp, run                            # noqa: E402
-from experiments.cordis.pulse_kernel import (BPM_LIST, GOOD_MS,  # noqa: E402
+from games.pulse.kernel import (BPM_LIST, GOOD_MS,  # noqa: E402
                                              N_TRACKS)
 from host.tree import (WANT_PULSE, config_path,  # noqa: E402
                                           mount_tree)

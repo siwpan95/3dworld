@@ -28,7 +28,7 @@
 
 运行（无需显示器 / 不依赖 GL 窗口）::
 
-    python experiments/cordis/tower_defense_kernel.py
+    python games/tower_defense/kernel.py
 """
 from __future__ import annotations
 
@@ -37,7 +37,8 @@ import math
 import os
 import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# P0-3：本文件由 experiments/cordis/ 移到 games/<名>/，层级少一层
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 # ---- cordis 定位 ----
@@ -130,41 +131,9 @@ def cell_center(i, j):
     return (-HALF + (i + 0.5) * CELL, -HALF + (j + 0.5) * CELL)
 
 
-def _unit_cube():
-    faces = [
-        ([(-.5, -.5, +.5), (+.5, -.5, +.5), (+.5, +.5, +.5), (-.5, +.5, +.5)], 1.00),
-        ([(-.5, -.5, -.5), (+.5, -.5, -.5), (+.5, +.5, -.5), (-.5, +.5, -.5)], 0.50),
-        ([(-.5, -.5, +.5), (+.5, -.5, +.5), (+.5, -.5, -.5), (-.5, -.5, -.5)], 0.82),
-        ([(-.5, +.5, +.5), (+.5, +.5, +.5), (+.5, +.5, -.5), (-.5, +.5, -.5)], 0.82),
-        ([(+.5, -.5, +.5), (+.5, -.5, -.5), (+.5, +.5, -.5), (+.5, +.5, +.5)], 0.75),
-        ([(-.5, -.5, +.5), (-.5, -.5, -.5), (-.5, +.5, -.5), (-.5, +.5, +.5)], 0.75),
-    ]
-    pos, shade = [], []
-    for quad, s in faces:
-        a, b, c, d = quad
-        for p in (a, b, c, a, c, d):
-            pos.extend(p)
-            shade.extend((s, s, s))
-    return pos, shade
-
-
-def _unit_sphere(seg=10, rings=8):
-    pos, shade = [], []
-    for i in range(rings):
-        lat0 = (i / rings - 0.5) * math.pi
-        lat1 = ((i + 1) / rings - 0.5) * math.pi
-        for j in range(seg):
-            lon0 = (j / seg) * 2 * math.pi
-            lon1 = ((j + 1) / seg) * 2 * math.pi
-            a = (math.cos(lat0) * math.cos(lon0), math.sin(lat0), math.cos(lat0) * math.sin(lon0))
-            b = (math.cos(lat0) * math.cos(lon1), math.sin(lat0), math.cos(lat0) * math.sin(lon1))
-            c = (math.cos(lat1) * math.cos(lon1), math.sin(lat1), math.cos(lat1) * math.sin(lon1))
-            d = (math.cos(lat1) * math.cos(lon0), math.sin(lat1), math.cos(lat1) * math.sin(lon0))
-            for (v, lat) in ((a, lat0), (b, lat0), (c, lat1), (a, lat0), (c, lat1), (d, lat1)):
-                pos.extend(v)
-                sh = 0.6 + 0.4 * (math.sin(lat) * 0.5 + 0.5)
-                shade.extend((sh, sh, sh))
-    return pos, shade
+# P0-3：`unit_cube` / `unit_sphere` 已上提 `engine/baked_mesh.py`——
+# 本内核与 fps/puzzle/storm/hall/pulse/void 此前都从本模块横向 import，
+# 属"游戏之间互相依赖"，违反"依赖只允许向下"。共享几何一律走引擎层。
 
 
 # 极简向量工具（headless，不依赖 pyglet）
@@ -187,7 +156,10 @@ def _vscale(a, s):
 # ===================================================================== 共同核
 # P0-1（2026-10-10）：共同核实现已**上提至 core/**（跨内核复用，去重）。
 # 此处 re-export 保持向后兼容——旧路径仍可用：
-#     from experiments.cordis.tower_defense_kernel import RenderService
+#     from games.tower_defense.kernel import RenderService
+# P0-3：`unit_cube` / `unit_sphere` 上提到 engine/baked_mesh（原先本内核自己定义，
+# 另外 6 个内核横向 import 它 → 游戏互相依赖）。
+from engine.baked_mesh import unit_cube, unit_sphere  # noqa: E402
 from core.render_core import RenderService      # noqa: E402,F401
 from core.economy_core import EconomyService    # noqa: E402,F401
 from core.entity_core import EntityService      # noqa: E402,F401
@@ -221,8 +193,8 @@ class TowerDefenseKernel(Service):
         h_ground = render.upload_mesh('td_ground', *self._build_ground())
         self._gl_handles.append(h_ground)
         # 塔 / 敌体单元
-        h_cube = render.upload_mesh('td_cube', *_unit_cube())
-        h_sphere = render.upload_mesh('td_sphere', *_unit_sphere())
+        h_cube = render.upload_mesh('td_cube', *unit_cube())
+        h_sphere = render.upload_mesh('td_sphere', *unit_sphere())
         self._gl_handles.extend([h_cube, h_sphere])
         # 主着色器程序
         h_prog = render.compile_program('td_main')

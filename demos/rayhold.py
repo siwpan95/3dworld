@@ -42,7 +42,7 @@ if ROOT not in sys.path:
 
 # 试点三：挂载由 cordis.fps.yml 声明（与 config_boot 的 headless 验证同一入口）
 from host.tree import WANT_FPS, config_path, mount_tree  # noqa: E402
-from experiments.cordis.fps_kernel import CELL, DEATH_T, EYE, WALL_H  # noqa: E402
+from games.fps.kernel import CELL, DEATH_T, EYE, WALL_H  # noqa: E402
 
 GRID_N = 15          # 必须与 cordis.fps.yml 的 cells 一致（着色器数组长度）
 

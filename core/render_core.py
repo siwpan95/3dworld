@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """渲染共同核 ``render``（实现 ``core.contracts.RenderCore``）。
 
-自 ``experiments/cordis/tower_defense_kernel`` 上提的**跨内核共享实现**（P0-1 去重）：
+自 ``games/tower_defense/kernel`` 上提的**跨内核共享实现**（P0-1 去重）：
 只提供 GL 资源的**原语**（上传 / 编译 / 释放）与绘制入口；不持有任何游戏状态。
 headless 下不真正开 GL 上下文，但资源记账与回滚语义完整执行。
 

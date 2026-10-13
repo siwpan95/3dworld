@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """经济共同核 ``economy``（实现 ``core.contracts.EconomyCore``）。
 
-自 ``experiments/cordis/tower_defense_kernel`` 上提的**跨内核共享实现**（P0-1 去重）：
+自 ``games/tower_defense/kernel`` 上提的**跨内核共享实现**（P0-1 去重）：
 资源存量 + 花费校验（金币 / 神力通用）。采集与生产队列为占位（内核按需覆写/扩展）。
 
 > 依赖：仅 ``cordis``（vendored）。

@@ -143,7 +143,12 @@ async def await_ready(ctx, loader, want=(), timeout: float = 8.0,
     render = getattr(ctx, 'render', None)
     if check_gl and render is not None and render.live_count() == 0:
         extra = '（服务已就绪，但内核尚未取得 GL 句柄）'
-    raise RuntimeError(f"配置树未在 {timeout}s 内就绪；缺失服务: {missing}{extra}")
+    raise RuntimeError(
+        f"配置树未在 {timeout}s 内就绪；缺失服务: {missing}{extra}\n"
+        '  提示：cordis 的 Loader 会**吞掉插件构造期异常** —— 某个 entry 的模块 import 成功、'
+        '但 Service.__init__ / setup 抛错时，这里只能看到"服务不就绪"。\n'
+        '  定位办法：手工 `import <该 entry 的 name>` 一次，看真实异常。'
+        '（P0-3 实踩：kernel 里少了一行 import，NameError 被吞成"服务不就绪"，查了半天。）')
 
 
 async def mount_tree(path: str, want=(), timeout: float = 8.0,

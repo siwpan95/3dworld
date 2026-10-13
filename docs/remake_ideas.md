@@ -319,7 +319,7 @@ DeepSeek Harness 的运行时内核。
 | **fps**（新内核） | **from-scratch** | 玩家/武器/敌人 AI/拾取/胜负编排；`inject=[render, entity, rules, economy, maze]` |
 
 ### 10.5 落地架构（Phase D 范式，无两套接线）
-- `experiments/cordis/fps_kernel.py`：`MazeService` + `FpsKernel`（含 headless 验证入口）
+- `games/fps/kernel.py`：`MazeService` + `FpsKernel`（含 headless 验证入口）
 - `experiments/cordis/services/{fps_kernel,maze}.py`：`default=` 适配层（配置树经 importlib 解析）
 - `experiments/cordis/cordis.fps.yml`：声明本次挂载（render / economy / entity / rules / maze / fps）
 - `host.tree.py`：新增 `WANT_FPS`；`config_boot.py`：新增 `fps` 项（headless：auto-pilot 通关 + 弹药/击杀断言 + GL 回滚）
@@ -728,7 +728,7 @@ LLM 场景 JSON ↔ hall schema 映射层工作量 → 先手写一份样例场�
 
 ### 14.8 执行结果（2026-10-11 ✅ 已交付）
 
-**落地**：`experiments/cordis/hall_kernel.py`（服务名 `hall`）—— 节点图 + 热点表 +
+**落地**：`games/hall/kernel.py`（服务名 `hall`）—— 节点图 + 热点表 +
 物品栏 + **谜题状态机**（顺序解锁链）+ **`click(hotspot_id)` API**（headless 与 demo 同入口）+
 场景 JSON **加载/热重载**（坏 JSON **拒绝并保留旧场景**）；`services/hall.py` + `cordis.hall.yml`
 + `host.tree.WANT_HALL` + `config_boot hall`；`demos/stillhall.py`（固定机位示意渲染 +
@@ -803,7 +803,7 @@ LLM 场景 JSON ↔ hall schema 映射层工作量 → 先手写一份样例场�
 
 ### 15.8 执行结果（2026-10-12 ✅ 已交付）
 
-**落地**：`experiments/cordis/void_kernel.py`（服务名 `void`）—— 4 站点星系
+**落地**：`games/void/kernel.py`（服务名 `void`）—— 4 站点星系
 （1 空间站 + 3 行星，各带 goods bias）+ 5 种货 + **确定性市场**
 （`station_price`：`base × (1 + bias + 0.42·sin(t/period + φ) + shock)`，φ 由
 `(seed, station, good)` 派生）+ **事件冲击表**（`shock_table`/`shock_at`，种子驱动）
@@ -875,7 +875,7 @@ LLM 场景 JSON ↔ hall schema 映射层工作量 → 先手写一份样例场�
 
 ### 16.8 执行结果（2026-10-12 ✅ 已交付）
 
-**落地**：`experiments/cordis/pulse_kernel.py`（服务名 `pulse`）—— `chart(seed, bpm, bars)`
+**落地**：`games/pulse/kernel.py`（服务名 `pulse`）—— `chart(seed, bpm, bars)`
 **同源产出 notes + synth_events**（一一对应、同 t；内置可打性约束：同轨 ≥1/8 拍、
 密度 ≤8/s、时长精确）+ 判定窗（`judge`/`accuracy`）+ 血量/连击/得分 + 结算 +
 **offset 校准**（F4 ±20ms）+ `hit(track, t_now)` API（headless 自动演奏同源）；

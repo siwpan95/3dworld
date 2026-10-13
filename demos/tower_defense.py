@@ -5,7 +5,7 @@
 不碰任何原 IP 名称与素材（合规见 docs/remake_ideas.md §7 / §9）。
 
 阶段 A（demos/tower_defense.py 初版）：直连 engine，自管全部游戏状态与逻辑。
-阶段 B（experiments/cordis/tower_defense_kernel.py）：把玩法拆成「共同核（Service）
+阶段 B（games/tower_defense/kernel.py）：把玩法拆成「共同核（Service）
 + 内核（TowerDefenseKernel）」两层，用 cordis v4.0.0 fiber 属性式 API 接线，
 并验证 GL 资源随内核 fiber dispose 可逆回滚（headless 模拟通关 + 回滚断言）。
 
@@ -24,7 +24,7 @@
 pyglet 直接绘制（内核的 RenderService 仅做 headless 记账与回滚语义）。
 
 复用：demos/_harness.DemoApp/run、logic.camera.OrbitCamera、engine.picking、
-engine.audio（SfxPlayer/Track），以及 experiments/cordis/tower_defense_kernel
+engine.audio（SfxPlayer/Track），以及 games/tower_defense/kernel
 （共同核 + 塔防内核，12 核契约见 core/contracts.py）。
 
 玩法：地图 20×20 格，敌人沿车道从入口走向基地；玩家在空地建箭/炮/冰三种塔拦截；
@@ -76,7 +76,7 @@ LANE = [
 BASE = LANE[-1]
 # 平衡常量统一由内核 / 配置树定义，demo 不再复制（避免两处漂移）：
 #   开局金 300、波数 5 -> experiments/cordis/cordis.td.yml
-#   备战时长 / 基地 HP -> experiments/cordis/tower_defense_kernel.py
+#   备战时长 / 基地 HP -> games/tower_defense/kernel.py
 
 # 塔（展示用：渲染查 TOWER_TYPES[type] 取高度/颜色；逻辑全在内核）
 TOWER_TYPES = {
@@ -95,7 +95,7 @@ ENEMY_TYPES = {
     'bruiser': dict(hp=180, speed=2.0, reward=30, radius=1.0, leak=3, color=(0.55, 0.30, 0.55)),
 }
 
-# 波次构成见 experiments/cordis/tower_defense_kernel.py（WAVES）；
+# 波次构成见 games/tower_defense/kernel.py（WAVES）；
 # HUD 波数直接读 ctx.rules.total_waves（yaml: 5），demo 不再复制一份。
 
 # 开局自动布防（键=(i,j) 格，值=塔类型键）——在内核 __cordis_init__ 里免费建造

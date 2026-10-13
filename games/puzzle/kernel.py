@@ -31,7 +31,8 @@ import sys
 from collections import namedtuple
 
 # ---- cordis 定位（与 td/godhand/fps 三个内核一致：vendored 源码可经 CORDIS_SRC 暴露）----
-_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# P0-3：本文件由 experiments/cordis/ 移到 games/<名>/，层级少一层
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 import _cordis_locate  # noqa: E402
@@ -40,7 +41,7 @@ _cordis_locate.ensure()
 
 from cordis import Service  # noqa: E402
 from engine import greedy_mesh  # noqa: E402
-from experiments.cordis.tower_defense_kernel import _unit_cube  # noqa: E402
+from engine.baked_mesh import unit_cube  # noqa: E402
 
 # ===================================================================== 平衡常量
 DEFAULT_SEED = 20261010
@@ -503,7 +504,7 @@ class PuzzleKernel(Service):
     def _acquire_gl(self):
         render = self.ctx.render
         h_prog = render.compile_program('boxward')
-        h_cube = render.upload_mesh('boxward_cube', *_unit_cube())
+        h_cube = render.upload_mesh('boxward_cube', *unit_cube())
         h_goal = render.upload_mesh('boxward_goal', *_goal_plate())
         self._gl_handles.extend([h_prog, h_cube, h_goal])
         for h in self._gl_handles:

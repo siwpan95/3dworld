@@ -39,7 +39,7 @@ if ROOT not in sys.path:
 
 from host.tree import WANT_STORM, config_path, mount_tree  # noqa: E402
 from engine.camera import look_at_matrix  # noqa: E402
-from experiments.cordis.storm_kernel import (  # noqa: E402
+from games.storm.kernel import (  # noqa: E402
     ARENA_H, ARENA_W, BOSS_R, PLAYER_R,
 )
 

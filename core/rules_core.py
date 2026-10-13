@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """规则共同核 ``rules``（实现 ``core.contracts.RulesCore``）。
 
-自 ``experiments/cordis/tower_defense_kernel`` 上提的**跨内核共享实现**（P0-1 去重）：
+自 ``games/tower_defense/kernel`` 上提的**跨内核共享实现**（P0-1 去重）：
 波次 / 胜负状态机。事件驱动（``on_event``），覆盖四类内核的胜负口径：
 
 * 塔防：``leak``（漏怪扣基地血）/ ``wave_cleared``（过波）

@@ -1153,7 +1153,7 @@ def test_kid_a_doors_connected():
 # ============================================================ P1-④ 归仓 / Boxward ==
 def _bare_grid(seed=1, n=13, boxes=4):
     """绕开 cordis Service 构造（不需 ctx）的 GridService（solve/generate 均 ctx-free）。"""
-    from experiments.cordis import puzzle_kernel as pk
+    from games.puzzle import kernel as pk
     g = object.__new__(pk.GridService)
     g.seed, g.n, g.box_total = seed, n, boxes
     return g
@@ -1225,7 +1225,7 @@ def test_solver_unsolvable():
 
 def test_generate_solvable_by_construction():
     g = _bare_grid(seed=20261010)
-    from experiments.cordis.puzzle_kernel import MIN_PUSHES
+    from games.puzzle.kernel import MIN_PUSHES
     for seed in (20261010, 11, 22):
         data = g.generate(seed)
         sol = g.solve(data)
@@ -1237,7 +1237,7 @@ def test_generate_solvable_by_construction():
 
 
 def test_cam_move_dirs_mapping():
-    from experiments.cordis.puzzle_kernel import cam_move_dirs
+    from games.puzzle.kernel import cam_move_dirs
     d0 = cam_move_dirs(0)                      # 相机在 +x 看 -x
     assert d0['W'] == (0, -1) and d0['S'] == (0, 1)
     assert d0['D'] == (-1, 0) and d0['A'] == (1, 0)
@@ -1253,7 +1253,7 @@ def test_cam_move_dirs_mapping():
 # ============================================== P1-⑤ 弹潮 / Swarmward ==
 def test_pulse_chart_constraints():
     """§16 谱面：时长精确、同轨最小间隔 ≥ 1/8 拍、密度上限、种子复现。"""
-    from experiments.cordis.pulse_kernel import BARS, BPM_LIST, N_TRACKS, chart
+    from games.pulse.kernel import BARS, BPM_LIST, N_TRACKS, chart
     for bpm in BPM_LIST:
         notes, synth, meta = chart(20261012, bpm, BARS)
         assert abs(meta['duration'] - BARS * 4 * 60.0 / bpm) < 1e-6, '时长不准'
@@ -1274,7 +1274,7 @@ def test_pulse_chart_constraints():
 
 def test_pulse_judge_windows():
     """§16 判定窗与准确率口径。"""
-    from experiments.cordis.pulse_kernel import (GOOD_MS, PERFECT_MS, accuracy, judge)
+    from games.pulse.kernel import (GOOD_MS, PERFECT_MS, accuracy, judge)
     assert judge(0.0) == 'PERFECT' and judge(-PERFECT_MS) == 'PERFECT'
     assert judge(PERFECT_MS + 0.1) == 'GOOD' and judge(-GOOD_MS) == 'GOOD'
     assert judge(GOOD_MS + 0.1) == 'MISS' and judge(-999.0) == 'MISS'
@@ -1286,7 +1286,7 @@ def test_pulse_judge_windows():
 
 def test_void_market_deterministic():
     """§15 市场：价格确定性（同参一致、换种子变化、站间有价差）。"""
-    from experiments.cordis.void_kernel import STATIONS, station_price
+    from games.void.kernel import STATIONS, station_price
     st = STATIONS[1]
     a = station_price('chips', st, 88.0, 20261012, {})
     assert a == station_price('chips', st, 88.0, 20261012, {}), '同参价格不一致'
@@ -1302,7 +1302,7 @@ def test_void_market_deterministic():
 
 def test_void_shock_and_reversion():
     """§15 事件冲击方向 + 均值回归（长期围绕基准波动）。"""
-    from experiments.cordis.void_kernel import (GOODS, STATIONS, mean_reversion_gap,
+    from games.void.kernel import (GOODS, STATIONS, mean_reversion_gap,
                                                 shock_at, shock_table, station_price)
     p0 = station_price('meds', STATIONS[3], 40.0, 7, {})
     p1 = station_price('meds', STATIONS[3], 40.0, 7, {('lumen', 'meds'): 0.30})
@@ -1319,7 +1319,7 @@ def test_void_shock_and_reversion():
 
 def test_void_station_geometry():
     """§15 星系几何：4 站点、最近站点查询、停靠半径。"""
-    from experiments.cordis.void_kernel import DOCK_R, STATIONS, nearest_station
+    from games.void.kernel import DOCK_R, STATIONS, nearest_station
     assert len(STATIONS) == 4, len(STATIONS)
     kinds = {s['kind'] for s in STATIONS}
     assert kinds == {'station', 'planet'}, kinds
@@ -1333,7 +1333,7 @@ def test_void_station_geometry():
 
 def test_hall_hit_test():
     """§14 热点命中：矩形内/外/边界。"""
-    from experiments.cordis.hall_kernel import hit_test
+    from games.hall.kernel import hit_test
     a = [0.2, 0.3, 0.4, 0.2]                     # x∈[0.2,0.6] y∈[0.3,0.5]
     assert hit_test(a, 0.2, 0.3) and hit_test(a, 0.6, 0.5), '边界应算命中'
     assert hit_test(a, 0.4, 0.4), '中心应命中'
@@ -1343,7 +1343,7 @@ def test_hall_hit_test():
 
 def test_hall_graph_connectivity():
     """§14 节点图：邻接查询 + BFS 可达（3 景连通，断边后收缩）。"""
-    from experiments.cordis.hall_kernel import (DEFAULT_SCENE, graph_neighbors,
+    from games.hall.kernel import (DEFAULT_SCENE, graph_neighbors,
                                                 graph_reachable)
     edges = DEFAULT_SCENE['edges']
     assert set(graph_neighbors(edges, 'hall')) == {'atrium', 'vault'}
@@ -1355,7 +1355,7 @@ def test_hall_graph_connectivity():
 
 def test_hall_puzzle_state_machine():
     """§14 谜题状态机：顺序解锁（flag 逐个点亮，全亮返回 None；乱序不跳步）。"""
-    from experiments.cordis.hall_kernel import DEFAULT_SCENE, next_step
+    from games.hall.kernel import DEFAULT_SCENE, next_step
     steps = DEFAULT_SCENE['puzzle']['steps']
     flags, order = set(), []
     for _ in range(len(steps) + 1):
@@ -1372,7 +1372,7 @@ def test_hall_puzzle_state_machine():
 
 def test_hall_scene_validate():
     """§14 场景校验：6 类坏结构必须被拒（热重载要能挡住坏 JSON）。"""
-    from experiments.cordis.hall_kernel import DEFAULT_SCENE, validate_scene
+    from games.hall.kernel import DEFAULT_SCENE, validate_scene
     ok, err = validate_scene(DEFAULT_SCENE)
     assert ok, err
     for bad in (
@@ -1389,7 +1389,7 @@ def test_hall_scene_validate():
 
 def test_storm_emit_plan():
     """§13 弹幕图案生成器：确定性 + 五图案非空 + 密度可预期 + 环爆角度覆盖。"""
-    from experiments.cordis.storm_kernel import emit_plan
+    from games.storm.kernel import emit_plan
     # 确定性（同参数同计划）——headless 与实机看到的弹幕必须一致
     for p in ('spiral', 'flower', 'fan', 'ring_burst', 'sweep'):
         a = emit_plan(p, 1.234, phase=0.5, count=12, aim=0.3)
@@ -1409,7 +1409,7 @@ def test_storm_emit_plan():
 
 def test_storm_boss_phase():
     """§13 boss 三阶段：阈值 66%/50% 切换，单调不回头；血量随波号递增。"""
-    from experiments.cordis.storm_kernel import (boss_hp_for_wave, boss_phase,
+    from games.storm.kernel import (boss_hp_for_wave, boss_phase,
                                                  is_boss_wave)
     # 阈值是严格大于：66% 落 P2，50% 落 P3
     assert [boss_phase(h, 100) for h in (100, 80, 67, 66, 51, 50, 34)] == [1, 1, 1, 2, 2, 3, 3]
@@ -1423,7 +1423,7 @@ def test_storm_boss_phase():
 
 def test_storm_boss_wave_plan():
     """§13 boss 波：wave_plan 标出 is_boss 且小兵减量（boss 是主角）。"""
-    from experiments.cordis.storm_kernel import wave_plan
+    from games.storm.kernel import wave_plan
     w5 = wave_plan(20261011, 4)      # 0 基 4 -> 1 基 5
     w9 = wave_plan(20261011, 8)      # 1 基 9（非 boss）
     w10 = wave_plan(20261011, 9)     # 1 基 10
@@ -1435,7 +1435,7 @@ def test_storm_boss_wave_plan():
 
 
 def test_wave_plan_monotonic():
-    from experiments.cordis.storm_kernel import wave_plan
+    from games.storm.kernel import wave_plan
     plans = [wave_plan(20261011, i) for i in range(10)]
     # v1.1：boss 波（1 基 5/10）的小兵数**故意减量**（boss 是主角）——
     # 敌数单调性只在非 boss 波之间成立。
@@ -1451,7 +1451,7 @@ def test_wave_plan_monotonic():
 
 def test_formation_layout():
     from core.pathing_core import PathingService
-    from experiments.cordis.storm_kernel import _layout_points
+    from games.storm.kernel import _layout_points
     # line：5 点共线等距
     pts = _layout_points('line', (0.0, 0.0), 5, 1.3)
     assert len(pts) == 5
@@ -1476,7 +1476,7 @@ def test_formation_layout():
 
 
 def test_circle_hit():
-    from experiments.cordis.storm_kernel import _circle_hit
+    from games.storm.kernel import _circle_hit
     assert _circle_hit(0, 0, 0.5, 0.8, 0, 0.5) is True        # 距离 0.8 < r+r=1.0
     assert _circle_hit(0, 0, 0.5, 2.0, 0, 0.5) is False       # 距离 2.0 > 1.0
     assert _circle_hit(0, 0, 0.5, 1.0, 0, 0.5) is True        # 相切算命中
@@ -1484,7 +1484,7 @@ def test_circle_hit():
 
 
 def test_combo_window():
-    from experiments.cordis.storm_kernel import StormKernel, COMBO_WINDOW
+    from games.storm.kernel import StormKernel, COMBO_WINDOW
     bump = StormKernel._bump_combo                             # 裸方法调用
     assert bump(None, 2, 1.0, 2.0) == 3                        # 窗口内累积（now-combo_t=1）
     assert bump(None, 5, 0.0, 10.0) == 1                       # 超窗重计（now-combo_t=10）
@@ -1493,7 +1493,7 @@ def test_combo_window():
 
 
 def pk_level(art, name):
-    from experiments.cordis.puzzle_kernel import parse_level
+    from games.puzzle.kernel import parse_level
     return parse_level(art, name)
 
 

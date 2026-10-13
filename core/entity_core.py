@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """实体共同核 ``entity``（实现 ``core.contracts.EntityCore``）。
 
-自 ``experiments/cordis/tower_defense_kernel`` 上提的**跨内核共享实现**（P0-1 去重）：
+自 ``games/tower_defense/kernel`` 上提的**跨内核共享实现**（P0-1 去重）：
 通用实体注册表——内核把塔 / 敌人 / 弹道都登记为实体；具体行为与状态机由内核驱动
 （实体核心是「存储」，不是「行为」）。
 

@@ -43,7 +43,7 @@ if ROOT not in sys.path:
 
 # 试点三：挂载由 cordis.puzzle.yml 声明（与 config_boot 的 headless 验证同一入口）
 from host.tree import WANT_PUZZLE, config_path, mount_tree  # noqa: E402
-from experiments.cordis.puzzle_kernel import (  # noqa: E402
+from games.puzzle.kernel import (  # noqa: E402
     _goal_plate, cam_move_dirs, level_from_json, level_to_json,
 )
 from logic.camera import OrbitCamera  # noqa: E402
