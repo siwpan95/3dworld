@@ -3,6 +3,36 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [未发布] — 《砖境 / Brickward》B4：成片（已录、**未挂**）
+
+BQM 致敬线的收尾。等距视角与程序化 SFX 其实在 B3 就顺手做完了，B4 只剩**录制**
+与**攒批**两件事 —— 而"攒批"是硬约束：Gitee 的 release 附件**只能追加、不能单独替换**，
+所以要替换 `boxward_60s.mp4`（视角改造后旧片已过时）就必然要删整个 release 重传 362MB。
+
+### 新增
+
+- **`recordings/brickward_60s.mp4`**（60.00s / 1800 帧 / 1280×720 / 0.7MB / h264@30fps）：
+  求解器 auto 连闯 7 关（直推教学 → 钥匙金门 → 拉杆切门 → 炸药开路 → 火球烧箱 →
+  滚石垫路 → 引怪入瓮）。
+- **`record_all.py` 新条目 `brickward_60s`**，`flags='auto,pace=0.45'`；
+  demo 新增 `--flag pace=<秒>` 调 auto 回放步长（默认 0.30s 是给剧照/验收用的，
+  录成片要放慢到能看清机关）。
+- `docs/分发指南.md` §3.0 的**待重建清单**更新：`boxward_60s.mp4`（替换）+ 
+  `brickward_60s.mp4`（新增）—— 后者本可直接追加，凑一趟是因为前者**必须重建**。
+
+### 验收（实测）
+
+| 门禁 | 结果 |
+|------|------|
+| `scripts/record_all.py --only brickward` | `[ok] brickward_60s: 1800 帧 / 60s / 1280x720 / 0.7MB` → `ALL_RECORDED (1 files)` |
+| `ffmpeg -i` | `Duration: 00:01:00.00` / `1280x720` / `h264 yuv420p 30fps`（**无 ffprobe，用 ffmpeg 本身读**） |
+| `ffmpeg -f null -` 全片解码 | 零错误（不是"能读头但中间是坏帧"） |
+| 抽帧 4 张（t=4/20/40/55s） | md5 两两不同；肉眼核对：t=20s 是「拉杆切门」、t=40s 是「滚石垫路」（状态行与棋盘一致） |
+| `python examples/brickward.py --smoke 2 --flag auto,pace=0.45` | `EXIT_OK` |
+
+> **未做**：挂到 Gitee release。按 §3.0 攒批铁律，等发布节点与 `boxward_60s.mp4`
+> 的替换一起处理。`recordings/` 在 `.gitignore` 里，成片不入库。
+
 ## [未发布] — 《砖境 / Brickward》B3：谜题编辑器 + 可玩 demo
 
 B1/B2 把内核立住了（11 类元素、连接绑定、BFS 求解器、13/13 可解），但**只有 headless

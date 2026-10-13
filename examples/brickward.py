@@ -229,6 +229,10 @@ class BrickwardDemo(DemoApp):
                     print(f'[brickward] level import failed: {e}', flush=True)
             elif f.startswith('play='):
                 self._play_by_name(f[5:])
+            elif f.startswith('pace=') and f[5:].replace('.', '', 1).isdigit():
+                # auto 回放每步间隔（秒）。录制成片要放慢，让观众看清机关；
+                # 剧照与验收用默认值（快，能在 16s 里走到第三关）。
+                self.AUTO_DT = max(0.05, float(f[5:]))
 
         # ---- 共享网格 ----
         cp, cs = unit_cube()

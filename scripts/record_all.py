@@ -64,6 +64,10 @@ ENTRIES = [
          flags='auto'),                            # 求解器 auto-play
     dict(name='swarmward_60s',       mod='examples/swarmward.py',      cls=None,          dur=60.0, size=DEMO_SIZE,
          flags='auto'),                            # 闪避 AI 与 headless 验收同源
+    dict(name='brickward_60s',       mod='examples/brickward.py',      cls=None,          dur=60.0, size=DEMO_SIZE,
+         flags='auto,pace=0.45'),                  # 机关解谜：求解器 auto 连闯 7 关
+         # pace 把每步放慢到 0.45s（默认 0.3s 是给剧照/验收用的）——
+         # 7 关共约 90 步 + 每关停留 1s ≈ 47s，60s 的片长连着"回到第一关"的循环也录进去
     dict(name='voxel_terrain_36s',   mod='examples/voxel_terrain.py', cls=None,          dur=36.0, size=DEMO_SIZE),
     dict(name='water_waves_40s',     mod='examples/water_waves.py',   cls=None,          dur=40.0, size=DEMO_SIZE),
     dict(name='engine_showcase_24s', mod='examples/engine_showcase.py', cls='ShowcaseApp', dur=24.0, size=DEMO_SIZE),
