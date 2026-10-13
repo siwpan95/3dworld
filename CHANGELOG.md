@@ -3,6 +3,55 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [未发布] — ④-2：体积雾与光轴（god rays）
+
+「雾」最容易写成"沿射线采几步、每步乘 exp(-ρ·dt）" —— 能跑，但有两个硬问题：
+**高度雾的密度随高度指数衰减时，逐步矩形求和会出层状条纹、而且改步数会让整幅雾变浓变淡**；
+以及**各向同性散射看不见光柱**（雾的强前向散射才是"太阳在柱子后面出现光柱"的成因）。
+这一批把这两件事都做对，并且把"对"做成了**可以在屏幕上并排看出来的对照**。
+
+### 新增
+
+- **`engine/volumetrics.py`**（纯数学 + 可注入 GLSL，全部可 headless 断言）：
+  * `height_fog_segment` —— 高度雾**闭式积分**（`∫ρ·e^(−k(y−base))dt`），与步长无关；
+  * `height_fog_column`  —— **数值参考实现**，只用来给闭式当对照（测试里两者差 < 1e-9）；
+  * `henyey_greenstein`  —— HG 相函数（已除 4π 归一化，球面积分 = 1）；
+  * `step_weights` / `dither_offset` —— 步长分布（linear/exp）与交错梯度噪声抖动；
+  * `volumetric_glsl`    —— 沿射线推进 + 每步查阴影图求单次散射 + 同一个闭式积分；
+    **`u_fog_analytic` 开关**让"闭式 vs 逐步矩形"可以并排对照。
+- **`examples/volumetric_fog.py`**（第 34 个示例）：柱廊场景，四趟渲染
+  （深度 → 阴影 → 场景 → 合成）。`F` 雾开关 · `S` 光轴开关 · `A` 闭式⇄逐步矩形 ·
+  `↑/↓` 密度 · `G` 相函数 · `PGUP/PGDN` 步数。**阴影走 `engine/csm` 的单级**，
+  于是"光轴"= 每步问一次"这点被柱子挡住没" —— 两个模块被证明可以拼在一个片段里。
+- **`tests/test_volumetrics.py`（12 项）**，其中 4 项是硬不变量 / 回归守卫：
+  ① 闭式 vs 4096 段数值积分（5 种形状，相对差 < 1e-9）；
+  ② **可加性**（拆 2/7/64 段之和 == 整段），并断言"逐步矩形"在同一拆分下**明显漂移**
+     （≈ 4%，正是条纹与整体亮度漂移的来源）；
+  ③ HG 的**球面积分 = 1**（数值 + 原函数 `2/(1−g²)` 两路验证）；
+  ④ GLSL **只声明一个采样器且必须真采样**（本轮实踩，见下）+ **阴影因子必须取反**。
+- `scripts/run_all_tests.py` 注册第 10 个模块；README / examples/README 计数 33 → 34。
+
+### 修复（本轮踩到四个）
+
+| # | 症状 | 根因 |
+|---|------|------|
+| 18 | 画面**上下各出现一份一模一样的内容**（HUD 正常） | 全屏大三角的 `uv` 我直接当 NDC 用了（应为 `ndc*0.5+0.5`）⇒ 屏幕上的 uv 范围是 [−1,1]，采样 `u_scene` 时四周平铺/镜像。很容易误判成"场景画了两遍" |
+| 19 | 光轴**完全看不见**，画面只是"雾很平" | `csm_shadow` 的约定是 **1 = 在阴影里**，我在雾里当成"照度"直接用 ⇒ 光轴画反（被挡住的空气反而发亮）。实测：光轴开关切换只差 **1.5/255**，符号修好后是 **9.9/255** |
+| 20 | `prog['u_csm_split'] = [0.5]` 抛 `TypeError: must be real number` | **单元素**数组 uniform 在 pyglet 里退化成标量（GL 报 size=1 ⇒ 走标量 setter）—— 与 `mat4[]` 那条坑同源（pyglet 对"数组尺寸"的边界处理） |
+| 21 | `ShaderException: A Uniform with the name 'u_fog_shadow' was not found` | 声明了一个"光轴委托给 `shadow_fn`"时**根本不会采样**的采样器 ⇒ 被驱动优化掉 ⇒ pyglet 赋值即崩。**改成根本不声明**（现在只声明 `u_fog_depth`，并有一个 `_scene_dist` 真的采样它） |
+
+### 验收（实测）
+
+| 门禁 | 结果 |
+|------|------|
+| `python -m tests.test_volumetrics` | **12/12** → `ALL_VOLUMETRICS_TESTS_PASSED`（含真驱动编译 + CSM 组合） |
+| `scripts/run_all_tests.py` | **10/10 模块 / 237 项** / `ALL_TESTS_PASSED`（上一批 225 项） |
+| `python examples/volumetric_fog.py --smoke 4` | `EXIT_OK` |
+| `python examples/volumetric_fog.py --shot` | `[shot] OK 2 files` |
+| 光轴贡献（像素均值，画面中央走廊） | **有光轴 88.31 / 只雾 78.45 / 无雾 77.11** |
+| `python -m cli.config_boot all` | **10 个** OK 标记（零回归） |
+| `scripts/verify_demos.py` 全量 | `ALL_DEMOS_OK (34 demos)` |
+
 ## [未发布] — ④-1：级联阴影（CSM）—— 把一张阴影图切成 N 级
 
 「单张阴影图精度固定」这件事的正面解法：按视距分区，**第 0 级只罩最近一段**
