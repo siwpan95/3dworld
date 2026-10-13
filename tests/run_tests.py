@@ -1160,7 +1160,7 @@ def _bare_grid(seed=1, n=13, boxes=4):
 
 
 def test_greedy_merge_rects():
-    from experiments.cordis import greedy_mesh as gm
+    from engine import greedy_mesh as gm
     mask = [[True, True], [True, True]]
     assert gm.merge_rects(mask, 2, 2) == [(0, 0, 2, 2)]
     mask = [[True, True, False], [True, False, False]]
@@ -1171,7 +1171,7 @@ def test_greedy_merge_rects():
 
 
 def test_greedy_mesh_layer_counts():
-    from experiments.cordis import greedy_mesh as gm
+    from engine import greedy_mesh as gm
     walls = {(i, j) for i in range(1, 4) for j in range(1, 4)}   # 7x7 场地中央 3x3 墙块
     pos, shade = gm.layer_mesh(walls, 7, 7)
     assert len(pos) % 18 == 0, '三角汤必须是整 quad（18 float）'

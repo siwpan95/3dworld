@@ -37,6 +37,7 @@ from engine.timeline import (     # noqa: E402
     Sampler, Channel, Timeline, PlaybackController,
 )
 from engine.frustum import Frustum, AABB, Sphere   # noqa: E402
+from engine.greedy_mesh import layer_mesh, merge_rects   # noqa: E402  纯函数，无 GL
 
 __all__ = [
     '__version__',
@@ -46,4 +47,5 @@ __all__ = [
     'normal_matrix', 'trs_decompose',
     'Sampler', 'Channel', 'Timeline', 'PlaybackController',
     'Frustum', 'AABB', 'Sphere',
+    'layer_mesh', 'merge_rects',
 ]

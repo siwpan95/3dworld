@@ -4,7 +4,7 @@
 设计 note 见 ``docs/remake_ideas.md`` §11；先问结论（全哥 2026-10-10 定）：
 
 - 谜题：推箱入仓（机制致敬 Sokoban 1982，**不碰原 IP 名称与素材**）+ **关卡编辑器**
-- 渲染：光栅贪心合批（``SdfVoxelCore.world_mesh`` 的留白由 ``greedy_mesh`` 补齐）
+- 渲染：光栅贪心合批（``SdfVoxelCore.world_mesh`` 的留白由 ``engine/greedy_mesh`` 补齐）
 - 切片：最小可玩 + **程序化关卡**（生成器 + 求解器验证 + 种子复现）
 
 与 fps/td/godhand 内核同一范式：
@@ -39,7 +39,7 @@ import _cordis_locate  # noqa: E402
 _cordis_locate.ensure()
 
 from cordis import Service  # noqa: E402
-from experiments.cordis import greedy_mesh  # noqa: E402
+from engine import greedy_mesh  # noqa: E402
 from experiments.cordis.tower_defense_kernel import _unit_cube  # noqa: E402
 
 # ===================================================================== 平衡常量

@@ -190,7 +190,7 @@ DeepSeek Harness 的运行时内核。
 - **P1-④「归仓 / Boxward」已执行完毕**（设计 note `0db37cc` → 全哥放行「按 note 执行」→ 执行，§11.9）：
   内核 `puzzle_kernel.py`（GridService + PuzzleKernel + 反向拉箱生成器 + BFS 求解器 +
   贪心网格化补齐 `world_mesh`）、`cordis.puzzle.yml`、`demos/boxward.py`（编辑器 + auto-play）、
-  `greedy_mesh.py`（共同核算法件）+ 6 项单测；`config_boot all` **五内核**全绿、
+  `engine/greedy_mesh.py`（共同核算法件，P0-1 已从 experiments 转正）+ 6 项单测；`config_boot all` **五内核**全绿、
   10/10 生成种子回放全胜（`BOXWARD_OK`，GL 3→0）；与全哥 P0 共同核抽离线
   rebase 对齐后推送，最终 commit `0d22d04`（IN_SYNC=0 0）。
 
@@ -430,7 +430,7 @@ DeepSeek Harness 的运行时内核。
 ### 11.4 复用 vs 自建
 | 复用 | 自建 |
 | --- | --- |
-| `SdfVoxelCore` 契约（block_at/voxel_get/**world_mesh 留白本次补齐**） | **贪心网格化** `experiments/cordis/greedy_mesh.py`（纯函数：同色共面格合并成大矩形，可单测） |
+| `SdfVoxelCore` 契约（block_at/voxel_get/**world_mesh 留白本次补齐**） | **贪心网格化** `engine/greedy_mesh.py`（纯函数：同色共面格合并成大矩形，可单测） |
 | Cordis 范式（配置树挂载 / inject 排序 / `ctx.effect` GL 回滚） | **GridService**（服务名 `grid`）：关卡体素 + JSON schema + 生成器 + **BFS 求解器** |
 | `RulesService` 事件流（加 `puzzle_solved` → won） | **PuzzleKernel**（服务名 `puzzle`）：step/undo/reset/auto_play/步数，事件 push/solved/blocked |
 | `RenderService` GL 记账、`EntityCore`、合成音效（SfxPlayer） | **编辑器**（demo 层）：鼠标格子拾取 + 摆放 + 导出 |
@@ -448,7 +448,7 @@ DeepSeek Harness 的运行时内核。
 - 渲染：静态墙 → 贪心合并**单个网格**（一次 upload_mesh）；动态（箱/玩家）小 cube 逐个
   batch；目标 = 地板色块；尽量复用引擎既有 voxel 着色器（执行时勘查 blockworld 路径）。
 - GL 资源照旧 `ctx.effect` 绑内核 fiber，dispose 回滚断言 live→0。
-- 文件清单：`greedy_mesh.py`、`puzzle_kernel.py`（GridService+PuzzleKernel）、
+- 文件清单：`engine/greedy_mesh.py`、`puzzle_kernel.py`（GridService+PuzzleKernel）、
   `services/puzzle.py` 适配、`cordis.puzzle.yml`、`tree_boot.WANT_PUZZLE`、
   `config_boot.py puzzle 分支（+all 四项）`、`demos/boxward.py`、
   `record_all.py boxward_60s`、tests 单测、README 清单 19→20。
