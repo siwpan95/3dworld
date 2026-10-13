@@ -30,14 +30,18 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from host.tree import (  # noqa: E402
-    WANT_CORES, WANT_FPS, WANT_GODHAND, WANT_HALL, WANT_PULSE, WANT_PUZZLE,
-    WANT_STORM, WANT_TD, WANT_VOID,
+    WANT_BRICKWARD, WANT_CORES, WANT_FPS, WANT_GODHAND, WANT_HALL, WANT_PULSE,
+    WANT_PUZZLE, WANT_STORM, WANT_TD, WANT_VOID,
     config_path, mount_tree,
 )
 from games.godhand.kernel import START_MANA  # noqa: E402
 from games.fps.kernel import START_AMMO  # noqa: E402
 from games.puzzle.kernel import (  # noqa: E402
     DEMO_SEEDS, HANDMADE_LEVELS,
+)
+from games.brickward.kernel import (  # noqa: E402
+    DEMO_SEEDS as BW_SEEDS, LEVELS as BW_LEVELS, generate as bw_generate,
+    make_offline as bw_offline, solve_level as bw_solve_level,
 )
 from games.tower_defense.kernel import (  # noqa: E402
     START_GOLD, WAVES as TD_WAVES,
@@ -53,6 +57,7 @@ CONFIGS = {
     'hall': ('cordis.hall.yml', WANT_HALL),
     'void': ('cordis.void.yml', WANT_VOID),
     'pulse': ('cordis.pulse.yml', WANT_PULSE),
+    'brickward': ('cordis.brickward.yml', WANT_BRICKWARD),
 }
 
 
@@ -224,6 +229,64 @@ async def run_puzzle(ctx, seeds=None):
         print(f"[seeds] {len(results)}/{len(results)} 通关  "
               f"解长 {min(mv)}~{max(mv)} 步")
     await _rollback(ctx, kernel, render, 'BOXWARD')
+
+
+async def run_brickward(ctx, seeds=None):
+    """《砖境》B1（BQM 机制致敬）：手工关 + 生成关「求解器解出 → 回放到胜」全绿。
+
+    这是个**纯逻辑内核**（`inject = []`，配置树只挂它自己），所以这里一个 GL 调用
+    都没有。验收点两条，都是"能被反例打穿"的硬点：
+
+    1. **可解性**：每关都被 BFS 求解器解出来，且解**回放真的走到胜**（不是"求解器说
+       能赢"就算数 —— 求解器与 `step` 若各有一套物理，回放就会输）；
+    2. **确定性**：同一关连解两次，方向串**一字不差**（`DIR_ORDER` 固定）。录制/断言
+       全靠这条，漂了就说明搜索里混进了集合迭代序之类的非确定量。
+    """
+    kernel = ctx.brickward
+    seed_list = list(seeds) if seeds else list(BW_SEEDS)
+    print(f"[config] levels={len(BW_LEVELS)} gen_seeds={len(seed_list)} "
+          f"start_level={kernel.start_level} seed={kernel.seed}")
+    assert kernel is not None, '服务短名 brickward 未挂载'
+    # 行为自检（而非 isinstance）：`ctx.<服务>` 每次访问返回的是**代理**，
+    # 用 `is` 比对必然不等 —— 早先在这里断言恒假。验"它真能用"才对。
+    assert kernel.level is not None and kernel.status() == 'playing', \
+        f'内核未按配置树初始化：level={kernel.level!r} status={kernel.status()!r}'
+
+    results = []
+    for i, lv in enumerate(BW_LEVELS):
+        ok, path = bw_solve_level(lv)
+        assert ok, f"手工关 {i}（{lv['name']}）不可解"
+        assert path, f"手工关 {i}（{lv['name']}）解为空（起点即终点？）"
+        k = bw_offline(lv)
+        for d in path:
+            k.step(d)
+        assert k.status() == 'won', f"手工关 {i}（{lv['name']}）回放未胜：{k.status()}"
+        ok2, path2 = bw_solve_level(lv)          # 确定性：再解一次必须一字不差
+        assert path2 == path, f"手工关 {i} 两次求解不一致：{path} != {path2}"
+        print(f"RESULT handmade[{i}] name={lv['name']} moves={len(path)} "
+              f"pushes={k.pushes} steps={k.steps} path={path}")
+        results.append((lv['name'], len(path), k.pushes))
+
+    for sd in seed_list:
+        lv = bw_generate(int(sd))
+        ok, path = bw_solve_level(lv)
+        assert ok, f"种子 {sd} 生成关不可解（生成器/求解器不一致！）"
+        k = bw_offline(lv)
+        for d in path:
+            k.step(d)
+        assert k.status() == 'won', f"种子 {sd} 回放未胜：{k.status()}"
+        assert k.steps > 0, f"种子 {sd} 回放零步（平凡关，生成器没起作用）"
+        print(f"RESULT seed={sd} name={lv['name']} moves={len(path)} "
+              f"pushes={k.pushes} spikes={len(k.spikes)}")
+        results.append((lv['name'], len(path), k.pushes))
+
+    mv = [m for _, m, _ in results]
+    print(f"[seeds] {len(results)}/{len(results)} 全部可解并回放到胜  "
+          f"解长 {min(mv)}~{max(mv)} 步")
+
+    await kernel.ctx.fiber.dispose()
+    assert getattr(ctx, 'brickward', None) is None, 'dispose 后服务仍可达（回滚不彻底）'
+    print("== BRICKWARD_OK ==")
 
 
 async def run_cores(ctx):
@@ -533,6 +596,8 @@ async def run_one(kind, seeds=None):
         await run_pulse(ctx, seeds)
     elif kind == 'fps':
         await run_fps(ctx, seeds)
+    elif kind == 'brickward':
+        await run_brickward(ctx, seeds)
     else:
         await run_puzzle(ctx, seeds)
 
@@ -541,18 +606,18 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="试点三 cordis.yml 配置树引导")
     ap.add_argument('kind', nargs='?', default='all',
                     choices=['td', 'godhand', 'fps', 'puzzle', 'storm', 'hall', 'void', 'pulse',
-                             'cores', 'all'],
+                             'brickward', 'cores', 'all'],
                     help='运行哪个配置树（默认 all；cores = 全共同核自检）')
     ap.add_argument('--seeds', default=None,
-                    help='fps/puzzle/storm 专属：逗号分隔多种子回归（如 --seeds 20261010,11,22）'
+                    help='fps/puzzle/storm/brickward 专属：逗号分隔多种子回归（如 --seeds 20261010,11,22）'
                          '——每种子各跑一局，全部须通关')
     args = ap.parse_args(argv)
-    if args.seeds and args.kind not in ('fps', 'puzzle', 'storm'):
-        ap.error('--seeds 仅支持 fps / puzzle / storm')
+    if args.seeds and args.kind not in ('fps', 'puzzle', 'storm', 'brickward'):
+        ap.error('--seeds 仅支持 fps / puzzle / storm / brickward')
     seeds = ([int(s) for s in args.seeds.split(',') if s.strip()]
              if args.seeds else None)
     kinds = (['td', 'godhand', 'fps', 'puzzle', 'storm', 'hall', 'void', 'pulse',
-              'cores']
+              'brickward', 'cores']
              if args.kind == 'all' else [args.kind])
     for k in kinds:
         print(f"\n########## 配置树：{k} ##########")

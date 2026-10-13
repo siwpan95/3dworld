@@ -51,11 +51,11 @@ presentation/        表现层：装配窗口事件 → 逻辑层 → 渲染
   timeline_ui.py       底部时间轴面板（播放/循环/拖动/幕标记）
   shot.py              离屏抓帧（glReadPixels，DPI 无关）
 examples/               31 个单文件示例与工具 + 公共骨架 _harness.py（详见 examples/README.md）
-games/               玩法内核层（P0-3 起）：games/<名>/kernel.py，8 个 Cordis 内核 + 各自的子包说明
-host/                宿主层：tree.py（配置树挂载/就绪等待/entry 白名单）· registry.py（服务短名表 23 条）
+games/               玩法内核层（P0-3 起）：games/<名>/kernel.py，9 个 Cordis 内核 + 各自的子包说明
+host/                宿主层：tree.py（配置树挂载/就绪等待/entry 白名单）· registry.py（服务短名表 24 条）
                       pipeline.py（场景校验流水线，Cordis 化：checker→loader→reporter）
 cli/                 引擎 CLI：config_boot.py（每棵配置树的 headless 验收，与 demo 共用 host.tree）
-configs/             9 棵配置树（cordis.*.yml）：声明"本次挂哪些服务、各带什么 config"
+configs/             10 棵配置树（cordis.*.yml）：声明"本次挂哪些服务、各带什么 config"
 world3d/             库入口（发行名 3dworld / 导入名 world3d）：薄门面 + py.typed
   platform/app.py     **平台层骨架**（P2-1）：窗口/DPI/命令行/HUD/截图/主循环 + 7 个工具
                      32 个 demo 与脚本统一 `from world3d.platform.app import ...`
@@ -252,12 +252,12 @@ python scripts\verify_demos.py               批量验收（冒烟 + 截图 + �
 ```bat
 python -m tests.run_tests           逻辑层无窗口单测（62 项）
 python -m tests.test_cores          共同核契约（17 项，含 P1-⑤ 玩法模块）
-python -m tests.test_engine         引擎层无窗口单测（26 项）
+python -m tests.test_engine         引擎层无窗口单测（30 项，含 model uniform 作用域 + 多网格连续三帧逐字节一致）
 python -m tests.test_skin           蒙皮骨骼动画（8 项）
 python -m tests.test_gpu_cull       GPU 驱动渲染（7 项，含"GPU 剔除 == CPU 剔除"逐实例比对）
 python -m tests.test_p2_render      PCSS / WBOIT / 点云+EDL（7 项）
-python -m tests.test_engine         引擎套件（含 model uniform 作用域 + 多网格连续三帧逐字节一致）
-python -m cli.config_boot all   8 个内核 + 13 共同核全部 headless 验收（逐项 OK 标记）
+python -m tests.test_brickward      《砖境》机关内核：BQM 致敬 B1（30 项，零 GL）
+python -m cli.config_boot all   9 个内核 + 13 共同核全部 headless 验收（10 棵树，逐项 OK 标记）
 python main.py --shot               主线演出渲染验证（4 张）
 python kkrieger_demo.py --shot      漫游渲染验证（9 张）
 python scripts\verify_demos.py      31 个 demo 逐个冒烟 + 截图

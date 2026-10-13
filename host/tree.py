@@ -63,6 +63,10 @@ WANT_STORM = ('storm', 'render', 'rules', 'economy', 'entity', 'particles', 'pat
 WANT_HALL = ('hall', 'render', 'rules')
 WANT_VOID = ('void', 'render', 'rules', 'economy', 'entity')
 WANT_PULSE = ('pulse', 'render', 'rules', 'economy', 'audio')
+# BQM 机制致敬 · B1：内核 `inject = []`（纯逻辑、零 GL），所以**不列 render** ——
+# `await_ready` 的 GL 就绪检查只在 want 里有 'render' 时才生效，列了反而要求
+# 一个它根本不用的服务。B4 接渲染时再把 render/particles 加进来。
+WANT_BRICKWARD = ('brickward',)
 # 全共同核（P0-4 配置树统一）：cordis.cores.yml 声明挂载的全部核
 WANT_CORES = ('render', 'economy', 'entity', 'rules', 'terrain',
               'pathing', 'particles', 'sdf', 'audio', 'timeline',
@@ -207,5 +211,6 @@ async def mount_tree(path: str, want=(), timeout: float = 8.0,
 __all__ = [
     'CONFIG_DIR', 'WANT_TD', 'WANT_GODHAND', 'WANT_FPS', 'WANT_PUZZLE',
     'WANT_STORM', 'WANT_HALL', 'WANT_VOID', 'WANT_PULSE', 'WANT_CORES',
+    'WANT_BRICKWARD',
     'config_path', 'load_tree', 'await_ready', 'mount_tree',
 ]

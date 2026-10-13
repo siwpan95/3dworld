@@ -50,7 +50,7 @@ SERVICES = {
     'inventory': 'core.inventory_core:InventoryService',
     'skills': 'core.skills_core:SkillsService',
     'loot': 'core.loot_core:LootService',
-    # ---- 10 个玩法内核服务（实现住 games/）----
+    # ---- 11 个玩法内核服务（实现住 games/）----
     'storm': 'games.storm.kernel:StormKernel',
     'fps': 'games.fps.kernel:FpsKernel',
     'maze': 'games.fps.kernel:MazeService',
@@ -61,6 +61,7 @@ SERVICES = {
     'void': 'games.void.kernel:VoidKernel',
     'pulse': 'games.pulse.kernel:PulseKernel',
     'godhand': 'games.godhand.kernel:GodHandKernel',
+    'brickward': 'games.brickward.kernel:BrickwardKernel',   # BQM 机制致敬 · B1
 }
 
 

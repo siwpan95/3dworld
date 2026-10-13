@@ -3,6 +3,63 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [未发布] — 《砖境 / Brickward》B1：机关内核 + 连接绑定 + 求解器
+
+BQM（《砖块迷宫建造者》）**机制致敬**的第二阶段落地。合规边界见
+`docs/BQM机制致敬_复刻可行性.md` §2 —— 名称/美术/音效/关卡/联网经济一律自创或不做，
+只吸收玩法机制（方块地牢 + 一格一步 + 机关组合 + 编辑器）。
+
+### 新增
+
+- **`games/brickward/kernel.py`**（纯逻辑，`inject = []`，零 GL、零外部依赖）：
+  - **元素表 11 类**：`#` 墙 / `.` 地板 / `P` 玩家 / `C` 箱子 / `o` 按钮 / `L` 拉杆 /
+    `D` 门 / `g` 金门 / `k` 钥匙 / `^` 尖刺 / `E` 出口；`ELEMENTS` 表带
+    `block` / `pushable` 标志，供编辑器（B3）与渲染（B4）共用；
+  - **一格一步的确定性模拟**：同关卡 + 同输入 ⇒ 同结果（可回放、可断言）；
+  - **「连接」绑定**（BQM 编辑器的核心机制）：用 P0-5 自研的
+    `engine.orchestration.Bus` 做级联，`mode = open | close | toggle`，
+    事件 `src_on` / `src_off` / `src_flip`；
+  - **BFS 最短解求解器**：状态指纹去重 + `DIR_ORDER` 固定 ⇒ **同关同解**
+    （方向串可直接当断言用）；`make_offline(level)` 是 headless 求解/试解的唯一入口；
+  - **`validate_level`**：装载前拒绝缺 `P` / 缺 `E` / 坏连接源 / 坏连接目标 /
+    连到金门 / 未知模式 —— 全部给**明确原因**（编辑器要用）；
+  - **3 个手工教学关**（直推教学 / 钥匙金门 / 拉杆切门）+ **`generate(seed)`**
+    种子生成器（模板 + 换手 + 撒尖刺，**由求解器把关可解**，同种子 byte 级一致）；
+  - **越界即挡**：`step` 不再假设"画图的人写了边框"（此前会走出地图）。
+- **`configs/cordis.brickward.yml`** + `host/registry.py` 注册短名 `brickward`
+  + `host/tree.py` 的 `WANT_BRICKWARD`（**不列 `render`** —— B1 压根不用 GL）。
+- **`cli/config_boot.py`** 新增 `run_brickward`：手工关 + 6 个种子全部
+  「求解器解出 → **回放到胜** → 再解一次逐字一致」；`--seeds` 对
+  `brickward` 生效。
+- **`tests/test_brickward.py`**（**30 项**，零 GL）：元素表完备性、校验器正反例、
+  墙/边界、门与拉杆、三种连接模式真值表、金门与钥匙、箱子/按钮/尖刺、
+  状态指纹完备性、克隆独立性、求解器最短性/确定性/不可解、生成器、服务面与快照。
+
+### 修复（都是"静默失效"，不报错、测试还是绿的）
+
+| # | 症状 | 根因 |
+|---|------|------|
+| 1 | 三关全报"可解"，回放却全是**穿模** | `doors` 一个集合既表示"哪里有门"又表示"哪扇门开着" ⇒ 关着的门能穿、开着的门挡人 |
+| 2 | 拉杆关是纯装饰 | `_settle` 查 `self.levers`（本意是"on 的集合"，装载后恒为空）⇒ 拉杆从不翻转 |
+| 3 | BFS 解全是错的 | `clone_from` 里带 `_settle` ⇒ "人正站在拉杆上"的节点被克隆时把拉杆**扳回去** |
+| 4 | 拉杆关"能用"纯属巧合 | `_bind_links` 三种事件全绑，flip 处理函数**写死 `mode='toggle'`**、无视连接声明的 mode ⇒ `open` 连接每步"先开再翻回"、靠回调顺序抵销 |
+| 5 | `mode='close'` 的门永远堵死 | `src_on`/`src_off` 只在**变化**时发，"装载时本来就没触发"不算变化 ⇒ 等不到第一发 `src_off`（新增 `_resync_links` 装载后算到位） |
+| 6 | 求解器回溯 `KeyError` | 终态从不入队，父指针表里没有它的条目 ⇒ 发现胜利时**先补写父指针**再回溯 |
+
+现在门/金门各有两套数据（`*_cells` = "哪里有"、`doors`/`gold_open` = "此刻是否开着"），
+`_bind_links` **按 mode 只订阅一类事件**；`_settle` 三类事件一次算清并**排序**后遍历
+（集合迭代序不进玩法语义）。这六条已全部写成回归守卫。
+
+### 验收（实测）
+
+| 门禁 | 结果 |
+|------|------|
+| `python -m tests.test_brickward` | **30/30** → `ALL_BRICKWARD_TESTS_PASSED` |
+| `scripts/run_all_tests.py` | 8/8 模块 / **170 项** / `ALL_TESTS_PASSED`（原 140 项 +30） |
+| `python -m cli.config_boot brickward` | 3 手工关 + 6 种子 = 9/9 可解且回放到胜 → `BRICKWARD_OK` |
+| `python -m cli.config_boot all` | **10 个** OK 标记（新增 brickward） |
+| `scripts/verify_demos.py` 全量 | `ALL_DEMOS_OK`（零回归） |
+
 ## [未发布] — 引擎化改造 P2-3：`demos/` → `examples/`
 
 引擎项目里那些单文件示例与仓库工具是**示例**，不是产品本体；目录名改回它该有的语义。

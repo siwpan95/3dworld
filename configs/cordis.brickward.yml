@@ -1,0 +1,15 @@
+# 《砖境 / Brickward》 · cordis.yml 配置树（BQM 机制致敬 · B1）
+#
+# 本文件同时是 examples/brickward.py 的**实际挂载声明**：demo 的 _mount_kernel 经
+# host.tree.mount_tree(config_path('cordis.brickward.yml'), want=WANT_BRICKWARD) 加载
+# 本文件 —— 「demo 怎么挂的 = headless 验证怎么挂的」，接线只有这一份。
+#
+# B1 只挂**一个**服务：内核自身（`inject = []`，纯逻辑、零 GL、零外部依赖）。
+# 这不是漏写：B1 的验收目标是「同关卡 + 同输入 ⇒ 同结果，且求解器能证明每关可解」，
+# 在 headless 下不需要任何渲染/音频资源。B2 接 particles（炸药/火球/史莱姆）、
+# B4 接 render（体素地块 + 剧照/成片）时再往这张表里加 —— 加的时候只改本文件 +
+# host/tree.py 的 WANT_BRICKWARD，内核代码不动。
+#
+# 运行（headless 验证）：python -m cli.config_boot brickward
+- name: brickward
+  id: brickward_kernel
