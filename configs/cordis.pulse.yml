@@ -14,20 +14,20 @@
 #   offset_ms  —— 实机音画 offset 校准（F4 ±20ms）
 #
 # 运行（headless 验证）：python experiments/cordis/config_boot.py pulse
-- name: experiments.cordis.services.render
+- name: render
   id: render
-- name: experiments.cordis.services.economy
+- name: economy
   id: economy
   config:
     score: 0                  # 计分（判定得分累加）
-- name: experiments.cordis.services.rules
+- name: rules
   id: rules
   config:
     base_hp: 10               # 血量（MISS 扣 1 -> lost）
     total_waves: 1            # 谱面走完 = wave_cleared -> won（单"波"）
-- name: experiments.cordis.services.audio
+- name: audio
   id: audio
-- name: experiments.cordis.services.pulse
+- name: pulse
   id: pulse
   config:
     seed: 20261012

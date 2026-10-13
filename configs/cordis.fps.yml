@@ -16,26 +16,26 @@
 # 「demo 怎么挂的 = headless 验证怎么挂的」，接线只有这一份。
 #
 # 运行（headless 验证）：python experiments/cordis/config_boot.py fps
-- name: experiments.cordis.services.render
+- name: render
   id: render
-- name: experiments.cordis.services.economy
+- name: economy
   id: economy
   config:
     gold: 0                  # 本内核不用金币；弹药由内核开局注入 economy.add('ammo')
-- name: experiments.cordis.services.entity
+- name: entity
   id: entity
-- name: experiments.cordis.services.rules
+- name: rules
   id: rules
   config:
     base_hp: 100
-- name: experiments.cordis.services.maze
+- name: maze
   id: maze
   config:
     seed: 20261010
     cells: 15
     cell_size: 3.0
     braid: 0.12
-- name: experiments.cordis.services.fps_kernel
+- name: fps
   id: fps_kernel
   config:
     seed: 20261010

@@ -14,21 +14,21 @@
 # 「demo 怎么挂的 = headless 验证怎么挂的」，接线只有这一份。
 #
 # 运行（headless 验证）：python experiments/cordis/config_boot.py puzzle
-- name: experiments.cordis.services.render
+- name: render
   id: render
-- name: experiments.cordis.services.entity
+- name: entity
   id: entity
-- name: experiments.cordis.services.rules
+- name: rules
   id: rules
   config:
     base_hp: 100              # 本内核不用血量；字段保持契约默认
-- name: experiments.cordis.services.grid
+- name: grid
   id: grid
   config:
     seed: 20261010
     cells: 13
     boxes: 4
-- name: experiments.cordis.services.puzzle
+- name: puzzle
   id: puzzle
   config:
     seed: 20261010

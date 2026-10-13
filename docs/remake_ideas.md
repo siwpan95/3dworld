@@ -172,7 +172,7 @@ DeepSeek Harness 的运行时内核。
 
 **P0 收尾 + P1-①/② 状态（2026-10-09 晚）**
 - 试点二（共同核 + 内核 Cordis 化 + GL 回滚）：`tower_defense_kernel.py`，commit `0887185`。
-- 试点三（`cordis.yml` 配置树）：`experiments/cordis/services/*` 适配层 + `cordis.td.yml` / `cordis.godhand.yml`；`host.tree.mount_tree` 为唯一挂载入口——`demos/tower_defense.py`、`demos/godhand.py` 的 `_mount_kernel` 与 `config_boot.py` 的 headless 验证**走同一函数、同一 `WANT_*` 列表**（验证输出 `TDKERNEL_OK` / `GODHAND_OK` + 配置传递断言 + GL 回滚 `4→0` / `3→0`）。
+- 试点三（`cordis.yml` 配置树）：`experiments/cordis/services/*` 适配层（**P0-4 起已删除**，服务短名表在 `host/registry.py`） + `cordis.td.yml` / `cordis.godhand.yml`；`host.tree.mount_tree` 为唯一挂载入口——`demos/tower_defense.py`、`demos/godhand.py` 的 `_mount_kernel` 与 `config_boot.py` 的 headless 验证**走同一函数、同一 `WANT_*` 列表**（验证输出 `TDKERNEL_OK` / `GODHAND_OK` + 配置传递断言 + GL 回滚 `4→0` / `3→0`）。
 - Cordis 转正：`vendor/cordis.lock` 锁定上游 commit `a3d0c171571c6bbb465d04c06eab2de53d270814`（zip SHA-256 `b216a2b8…2a31616`）；`VENDOR.md` 记账同步，commit `47a7336`。
 - P1-① 神之手：`godhand_kernel.py` + `demos/godhand.py` 交互 demo（`godhand_40s` 录制入口就位；本沙箱 pyglet 原生 GL 受限，实录待本机补跑）。
 - P1-② 塔防切片：commit `f0ad2c2`（直连）→ `4642aa1`（委托内核）。
@@ -320,7 +320,7 @@ DeepSeek Harness 的运行时内核。
 
 ### 10.5 落地架构（Phase D 范式，无两套接线）
 - `games/fps/kernel.py`：`MazeService` + `FpsKernel`（含 headless 验证入口）
-- `experiments/cordis/services/{fps_kernel,maze}.py`：`default=` 适配层（配置树经 importlib 解析）
+- `experiments/cordis/services/{fps_kernel,maze}.py`：`default=` 适配层（配置树经 importlib 解析）（**P0-4 起由 `host/registry.py` 的 `fps` / `maze` 两条短名替代**）
 - `experiments/cordis/cordis.fps.yml`：声明本次挂载（render / economy / entity / rules / maze / fps）
 - `host.tree.py`：新增 `WANT_FPS`；`config_boot.py`：新增 `fps` 项（headless：auto-pilot 通关 + 弹药/击杀断言 + GL 回滚）
 - `demos/rayhold.py`：DemoApp 子类（SDF shader + FlyCamera + HUD + auto 驾驶）；`_mount_kernel` 经 `mount_tree(config_path('cordis.fps.yml'), want=WANT_FPS)`

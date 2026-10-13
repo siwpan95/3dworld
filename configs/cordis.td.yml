@@ -13,17 +13,17 @@
 # 「demo 怎么挂的 = headless 验证怎么挂的」，接线只有这一份。
 #
 # 运行（headless 验证）：python experiments/cordis/config_boot.py td
-- name: experiments.cordis.services.render
+- name: render
   id: render
-- name: experiments.cordis.services.economy
+- name: economy
   id: economy
   config:
     gold: 300
-- name: experiments.cordis.services.entity
+- name: entity
   id: entity
-- name: experiments.cordis.services.rules
+- name: rules
   id: rules
   config:
     total_waves: 5
-- name: experiments.cordis.services.td_kernel
+- name: tower_defense
   id: td_kernel

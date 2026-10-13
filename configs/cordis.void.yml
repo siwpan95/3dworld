@@ -12,19 +12,19 @@
 #   pirates      —— 海盗数量（2~3，§15.3 范围）
 #
 # 运行（headless 验证）：python experiments/cordis/config_boot.py void
-- name: experiments.cordis.services.render
+- name: render
   id: render
-- name: experiments.cordis.services.economy
+- name: economy
   id: economy
   config:
     score: 0                  # 计分资源（本内核不用）
-- name: experiments.cordis.services.entity
+- name: entity
   id: entity
-- name: experiments.cordis.services.rules
+- name: rules
   id: rules
   config:
     base_hp: 6                # 船体（player_hit 复用为船体耐久）
-- name: experiments.cordis.services.void
+- name: void
   id: void
   config:
     seed: 20261012

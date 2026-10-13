@@ -11,13 +11,13 @@
 #            与 scene_viewer / 「LLM 场景生成工作流」同 schema（nodes/edges/puzzle）
 #
 # 运行（headless 验证）：python experiments/cordis/config_boot.py hall
-- name: experiments.cordis.services.render
+- name: render
   id: render
-- name: experiments.cordis.services.rules
+- name: rules
   id: rules
   config:
     base_hp: 100              # 本内核不用血量；字段保持契约默认
-- name: experiments.cordis.services.hall
+- name: hall
   id: hall
   config:
     scene: ''                 # 空 = 内置样例场景

@@ -14,31 +14,31 @@
 # 「demo 怎么挂的 = headless 验证怎么挂的」，接线只有这一份。
 #
 # 运行（headless 验证）：python experiments/cordis/config_boot.py storm
-- name: experiments.cordis.services.render
+- name: render
   id: render
-- name: experiments.cordis.services.economy
+- name: economy
   id: economy
   config:
     score: 0                  # 计分资源（连击倍率加成后累加）
-- name: experiments.cordis.services.entity
+- name: entity
   id: entity
-- name: experiments.cordis.services.rules
+- name: rules
   id: rules
   config:
     base_hp: 3                # 玩家命数（base_hp 复用为 lives）
     total_waves: 10           # 通关波数
-- name: experiments.cordis.services.particles
+- name: particles
   id: particles
   config:
     max: 20000
     seed: 7
-- name: experiments.cordis.services.pathing
+- name: pathing
   id: pathing
   config:
     count: 8                  # boids 懒建参数（本内核只用 formation）
     bounds: 12.0
     seed: 7
-- name: experiments.cordis.services.storm
+- name: storm
   id: storm
   config:
     seed: 20261011

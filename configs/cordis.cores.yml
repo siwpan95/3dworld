@@ -5,35 +5,35 @@
 # 各内核的 cordis.*.yml 只挂自己 inject 的核；本文件挂全量，作为共同核的冒烟面。
 #
 # 运行（headless 验证）：python experiments/cordis/config_boot.py cores
-- name: experiments.cordis.services.render
+- name: render
   id: render
-- name: experiments.cordis.services.economy
+- name: economy
   id: economy
-- name: experiments.cordis.services.entity
+- name: entity
   id: entity
-- name: experiments.cordis.services.rules
+- name: rules
   id: rules
-- name: experiments.cordis.services.terrain
+- name: terrain
   id: terrain
-- name: experiments.cordis.services.pathing
+- name: pathing
   id: pathing
-- name: experiments.cordis.services.particles
+- name: particles
   id: particles
-- name: experiments.cordis.services.sdf
+- name: sdf
   id: sdf
-- name: experiments.cordis.services.audio
+- name: audio
   id: audio
-- name: experiments.cordis.services.timeline
+- name: timeline
   id: timeline
-- name: experiments.cordis.services.inventory
+- name: inventory
   id: inventory
   config:
     capacity: 20
-- name: experiments.cordis.services.skills
+- name: skills
   id: skills
   config:
     points: 0
-- name: experiments.cordis.services.loot
+- name: loot
   id: loot
   config:
     seed: 20261012

@@ -5,22 +5,23 @@
 9 棵配置树 → 顶层 `configs/`。见 `docs/5_引擎化改造规划.md`。）
 
 在 Cordis v4.0.0 原生 ``Loader`` / ``EntryTree`` 之上封装三件小事，让
-``config_boot.py``（headless 验证）与 ``demos/*.py``（真实应用）走**同一条**挂载路径——
+``cli/config_boot.py``（headless 验证）与 ``demos/*.py``（真实应用）走**同一条**挂载路径——
 「本次挂哪些插件、各带什么配置」只由 yaml 声明一次（单一事实来源）::
 
-    - name: experiments.cordis.services.economy
+    - name: economy          # <- 服务短名，表在 host/registry.py
       id: economy
       config: { gold: 300 }
 
-每个 entry 的 ``name`` 经 ``importlib`` 解析为模块，取其 ``default``（Service 类），
-``config`` 透传给构造；Cordis 按 ``inject`` 依赖图自动排序挂载，无需手工编排。
+每个 entry 的 ``name``：**命中 `host.registry.SERVICES` 的短名**会被解析成实现类
+（P0-4 起；此前是 23 个 5 行样板壳），也仍接受**模块路径**（取其 ``default``）以兼容
+手写配置树。``config`` 透传给构造；Cordis 按 ``inject`` 依赖图自动排序挂载，无需手工编排。
 
 - ``load_tree(ctx, path)``    挂载配置树（内含 Loader 子插件就绪所需的 drain 循环）。
 - ``await_ready(ctx, ...)``   等待「服务可达 + 内核 GL 句柄已取得」。
 - ``mount_tree(path, want)``  一行式：新建 Context → 挂树 → 等就绪 → 返回 ctx。
 
 demos/tower_defense.py / demos/godhand.py 的 ``_mount_kernel`` 即调用 ``mount_tree``；
-config_boot.py 的 headless 验证复用同一函数与同一 ``WANT_*`` 列表——
+`cli/config_boot.py` 的 headless 验证复用同一函数与同一 ``WANT_*`` 列表——
 「demo 怎么挂的」= 「验证怎么挂的」，不存在两套接线。
 """
 from __future__ import annotations
@@ -31,7 +32,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
-    # 供配置树条目的 name（experiments.cordis.services.*）经 importlib 解析
+    # 供配置树条目的 name（服务短名的实现模块 / 手写模块路径）经 importlib 解析
     sys.path.insert(0, ROOT)
 
 # ---- cordis 定位（vendored 源码经 .pth 暴露；换环境时可设 CORDIS_SRC） ----
@@ -41,6 +42,9 @@ _cordis_locate.ensure()
 
 import yaml  # noqa: E402
 from cordis import Context, Loader  # noqa: E402
+
+from host import registry                        # noqa: E402  P0-4：服务短名 → 实现类
+from host.registry import SYNTH_PREFIX           # noqa: E402
 
 # 配置树住顶层 configs/（P0-2 起；此前散在 experiments/cordis/）
 CONFIG_DIR = os.path.join(ROOT, 'configs')
@@ -72,8 +76,37 @@ def config_path(name: str) -> str:
 # 代码执行，属典型的"评审绕过"（在 cordis.puzzle.yml 里加一行 ``- name: os`` 即可）。
 # 信任边界虽已收敛在"仓库内容"（用了 yaml.safe_load，且 CLI 的 kind 走白名单词典
 # 查表、外部无法指定 YAML 路径），仍在此处强制白名单，把这条原语钉死。
-ALLOWED_NAME_PREFIXES = ('experiments.cordis.',)
+#
+# P0-4：白名单**只在校验"解析之后"的 name**（见 `_resolve_service_names`）——
+# 服务短名先被 `host.registry.bind()` 换成 `_3dwsrv.<短名>` 这类**合成宿主模块**，
+# 而短名必须命中 `registry.SERVICES`（封闭表）才可能走到这里；手写模块路径则仍受
+# 下面的前缀白名单约束。两条路都不可任意 import。
+ALLOWED_NAME_PREFIXES = (
+    f'{SYNTH_PREFIX}.',      # 服务短名（host/registry.py 的封闭表，P0-4 起为主）
+    'core.',                 # 共同核实现模块
+    'games.',                # 玩法内核实现模块
+    'experiments.cordis.',   # 兼容一版：老路径手写配置树仍可用（P2 移除）
+)
 ALLOWED_NAME_EXACT = ('@cordisjs/plugin-group',)
+
+
+def _resolve_service_names(data, path: str) -> int:
+    """把 entry 里的**服务短名**解析成 cordis 能加载的模块路径，返回替换条数。
+
+    ``- name: economy`` → ``- name: _3dwsrv.economy``（合成宿主模块，只含 ``default``）。
+    非短名（含 ``.`` 的模块路径）原样保留，交给后面的白名单校验。
+    """
+    if not isinstance(data, list):
+        return 0
+    n = 0
+    for entry in data:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get('name')
+        if registry.is_service(name):
+            entry['name'] = registry.bind(name)
+            n += 1
+    return n
 
 
 def _validate_entry_names(data, path: str) -> None:
@@ -91,7 +124,8 @@ def _validate_entry_names(data, path: str) -> None:
         raise ValueError(
             f'配置树 {path} 第 {i} 条 entry 的 name={name!r} 不在白名单内 —— '
             f'entry name 会被 cordis 直接 import，等同于执行代码。'
-            f'允许前缀：{ALLOWED_NAME_PREFIXES}；允许精确值：{ALLOWED_NAME_EXACT}。'
+            f'允许前缀：{ALLOWED_NAME_PREFIXES}；允许精确值：{ALLOWED_NAME_EXACT}；'
+            f'或使用 host/registry.py 里的服务短名（{len(registry.SERVICES)} 个）。'
         )
 
 
@@ -111,6 +145,7 @@ async def load_tree(ctx, path: str):
         await asyncio.sleep(0)                     # drain：等 isolate 等子插件初始化完毕
     with open(path, 'r', encoding='utf-8') as f:
         data = yaml.safe_load(f)
+    _resolve_service_names(data, path)             # P0-4：短名（host/registry.py）→ 模块路径
     _validate_entry_names(data, path)              # 白名单：name 会被当模块名导入
     await loader.root.update(data)                 # 配置驱动：声明即挂载
     return loader
