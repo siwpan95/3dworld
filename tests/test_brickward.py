@@ -28,7 +28,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from games.brickward.kernel import (  # noqa: E402
     BrickwardKernel, DEMO_SEEDS, ELEMENTS, LEVELS, LEVEL_ART, WALL, FLOOR,
-    CRATE, SPIKE, PLAYER, EXIT, BOMB, FIREBALL, FUSE,
+    CRATE, SPIKE, PLAYER, EXIT, BOMB, FIREBALL, FUSE, ROCK, SLIME,
+    SLIME_PERIOD,
     generate, make_offline, parse_level, solve_level, validate_level,
 )
 
@@ -55,7 +56,7 @@ ALL_ELEMENTS_ART = """
 ###########
 #P.C.o.L.D#
 #.........#
-#k^bf..gD#
+#k^bfsrgD#
 #........E#
 ###########
 """
@@ -390,6 +391,8 @@ def test_state_key_covers_every_dynamic_field():
     assert differs(fuses={(3, 3): 2}), 'fuses（引信剩余步数）未进指纹'
     # ⚠ 火球的方向必须进指纹：两个"火球在同一格"的局面，朝上/朝下往后完全不同
     assert differs(fireballs={(3, 5): 'R'}), 'fireballs 的**方向**未进指纹'
+    assert differs(rocks=set()), 'rocks 未进指纹'
+    assert differs(slimes=set()), 'slimes 未进指纹'
 
     # 反向：与"往后怎么演化"无关的量**不能**进指纹（进了就白烧内存/白建节点）
     k = make_offline(lv)
@@ -398,8 +401,17 @@ def test_state_key_covers_every_dynamic_field():
     k.blasts.add((0, 0))          # 本步的火光：纯渲染用，不参与后续演化
     k._ignited.add((0, 0))        # "本步刚被推动"：瞬态
     assert k.key() == k0, 'steps/pushes/deaths/log/blasts/_ignited 不该进指纹'
-    print('  ok: 指纹含全部 12 项动态量（含引信与火球**方向**）、'
-          '不含 6 项瞬态/无关量（漏/多都算错）')
+
+    # `tick` 只许进**相位**：同相位必须同指纹，异相位必须不同（否则要么剪错、要么白烧内存）
+    same = make_offline(lv)
+    same.tick = SLIME_PERIOD * 7
+    assert same.key() == k0, 'tick 进了绝对值（应只进 `tick % SLIME_PERIOD`）'
+    if SLIME_PERIOD > 1:
+        off = make_offline(lv)
+        off.tick = 1
+        assert off.key() != k0, 'tick 相位没进指纹（史莱姆的行动时刻会算错）'
+    print(f'  ok: 指纹含全部 15 项动态量（含引信、火球**方向**、滚石/史莱姆、'
+          f'`tick % {SLIME_PERIOD}` 相位）、不含 6 项瞬态/无关量（漏/多都算错）')
 
 
 def test_clone_does_not_retoggle_standing_lever():
@@ -520,7 +532,7 @@ def test_kernel_service_surface():
     for name in ('player', 'crates', 'door_cells', 'doors_open', 'gold_cells',
                  'gold_open', 'keys_ground', 'keys_held', 'lever_cells',
                  'levers_on', 'button_cells', 'spikes', 'spikes_dead', 'exit',
-                 'bombs', 'fuses', 'fireballs', 'blasts',
+                 'bombs', 'fuses', 'fireballs', 'rocks', 'slimes', 'tick', 'blasts',
                  'rows', 'links', 'status', 'steps', 'pushes', 'deaths'):
         assert name in snap, f'snapshot 缺字段 {name}（渲染层要按它建几何）'
     assert snap['player'] == k.player
@@ -531,8 +543,11 @@ def test_kernel_service_surface():
     assert snap['spikes_dead'] == sorted(k.spike_dead)
     assert snap['bombs'] == sorted(k.bombs)
     assert snap['fireballs'] == sorted(k.fireballs.items())
+    assert snap['rocks'] == sorted(k.rocks)
+    assert snap['slimes'] == sorted(k.slimes)
     assert snap['fuses'] == sorted(k.fuses.items()) == []
     assert snap['keys_held'] == k.keys_held == 0
+    assert snap['tick'] == k.tick == 0
     assert snap['status'] == k.status() == 'playing'
     assert snap['links'] is k.level['links'], 'links 该是引用（纯数据，别每帧深拷）'
     print(f'  ok: inject=[] ；snapshot {len(snap)} 字段齐全且与内核状态逐项一致')
@@ -766,7 +781,227 @@ def test_fireballs_colliding_cancel_out():
 
 
 
-# ================================================================ 11. 内核装载
+# ================================================================ 11. 滚石与史莱姆（B2b）
+def test_rock_rolls_to_the_end_in_one_push():
+    """滚石与箱子的根本区别：推一下**一直滚到底**（不可停）。"""
+    lv = parse_level('##########\n#P.r.....#\n##########', 'rock-roll')
+    k = make_offline(lv)
+    assert k.rocks == {(1, 3)}
+    assert k.step('R') == 'moved'        # (1,2)
+    assert k.step('R') == 'rolled', '推滚石应返回 rolled（不是 pushed）'
+    assert k.rocks == {(1, 8)}, f'应一路滚到尽头墙边的 (1,8)：{k.rocks}'
+    assert k.player == (1, 3) and k.pushes == 1
+    print('  ok: 一次推动 = 从 (1,3) 滚到 (1,8)（尽头顶墙才停），只计 1 次推')
+
+
+def test_rock_stops_at_hard_obstacles():
+    """滚石被什么挡住：墙 / 箱子 / 炸弹 / 另一块石头 / 关着的门（开着则不挡）。"""
+    cases = [
+        ('#P.r.C..#', {(1, 4)}, '箱子'),
+        ('#P.r.b..#', {(1, 4)}, '炸弹'),
+        ('#P.r..r.#', {(1, 5), (1, 6)}, '另一块滚石（挡住它，两块都在）'),
+        ('#P.r..D.#', {(1, 5)}, '关着的门'),
+    ]
+    for row, want, label in cases:
+        k = make_offline(parse_level(f'#########\n{row}\n#########', f'rock-{label}'))
+        k.step('R')
+        k.step('R')
+        assert k.rocks == want, f'{label}：应停在 {sorted(want)}，实际 {sorted(k.rocks)}'
+        print(f'       {label} 挡住 → {sorted(k.rocks)}')
+    # 开着的门不挡
+    k = make_offline(parse_level('#########\n#P.r..D.#\n#########', 'rock-open-door'))
+    k.doors.add((1, 6))
+    k.step('R'), k.step('R')
+    assert k.rocks == {(1, 7)}, f'门开着就该滚过去（停在 (1,7)，(1,8) 是墙）：{k.rocks}'
+    print(f'  ok: 四类硬障碍都挡得住；**开着的门不挡**（穿过去滚到 (1,7)）')
+
+
+def test_rock_disarms_spikes_along_the_way():
+    """滚石压过尖刺 = 尖刺失效（和箱子一样），而且**不减速**继续滚。"""
+    lv = _lv('滚石垫路')
+    k = make_offline(lv)
+    spikes = sorted(k.spikes)
+    assert len(spikes) >= 3 and k.spike_dead == set()
+    k.step('R')
+    assert k.step('R') == 'rolled'
+    assert k.spike_dead == set(spikes), \
+        f'沿途尖刺应全部失效：{sorted(k.spike_dead)} vs {spikes}'
+    assert k.rocks == {(1, 11)}, f'压过尖刺不减速，应滚到 (1,11)：{k.rocks}'
+    # 玩家随后走完整条走廊都不死
+    for d in 'RRRRRRRDDR':
+        assert k.step(d) != 'died'
+    assert k.status() == 'won', k.status()
+    print(f'  ok: 一次性压失效 {len(spikes)} 个尖刺且不减速；玩家走完全程通关')
+
+
+def test_rock_crushes_slime_and_keeps_rolling():
+    """滚石压死史莱姆后继续滚（不减速），也不会自己消失。"""
+    lv = _lv('引怪入瓮')
+    k = make_offline(lv)
+    assert k.rocks == {(1, 4)} and k.slimes == {(1, 9)}
+    k.step('R')                          # (1,2)
+    k.step('R')                          # (1,3)
+    assert k.slimes == {(1, 8)}, f'第 2 个 tick 史莱姆应朝玩家挪一格：{k.slimes}'
+    assert k.step('R') == 'rolled'
+    assert k.slimes == set(), f'史莱姆应被压死：{k.slimes}'
+    assert k.rocks == {(1, 12)}, f'压死后继续滚到 (1,12)：{k.rocks}'
+    print('  ok: 滚石压死史莱姆后不减速、不消失，继续滚到 (1,12)')
+
+
+def test_lure_level_needs_the_rock():
+    """「引怪入瓮」里的史莱姆**只能靠滚石清掉**：抽掉石头后必须无解。"""
+    lv = _lv('引怪入瓮')
+    ok, path = solve_level(lv)
+    assert ok and path, '引怪入瓮本身应该可解'
+    no_rock = parse_level(LEVEL_ART['引怪入瓮'].replace('r', '.'), 'no-rock')
+    ok2, path2 = solve_level(no_rock)
+    assert not ok2, f'没有滚石竟然也能通关（史莱姆是装饰）：{path2!r}'
+    no_slime = parse_level(LEVEL_ART['引怪入瓮'].replace('s', '.'), 'no-slime')
+    ok3, path3 = solve_level(no_slime)
+    assert ok3, f'把史莱姆拿掉后应可解（否则"无解"另有原因）：{path3!r}'
+    print(f'  ok: 有关卡解 {path}（{len(path)} 步）；抽掉滚石 → 无解；'
+          f'抽掉史莱姆 → 可解 {path3}')
+
+
+def test_slime_moves_on_period_not_every_step():
+    """史莱姆每 `SLIME_PERIOD` 步才动一次（不是每步都动）。"""
+    k = make_offline(parse_level('###########\n#P.......s#\n#.........#\n#.........#\n'
+                                 '###########', 'slime-period'))
+    assert k.slimes == {(1, 9)}
+    assert k.step('D') == 'moved'        # (2,1) —— tick=1，史莱姆不该动
+    assert k.slimes == {(1, 9)}, f'非行动 tick 不该动：{k.slimes}'
+    assert k.step('U') == 'moved'        # (1,1) —— tick=2，该动了
+    assert k.slimes == {(1, 8)}, f'行动 tick 应朝玩家挪一格：{k.slimes}'
+    assert k.step('D') == 'moved'        # tick=3
+    assert k.slimes == {(1, 8)}, k.slimes
+    assert k.step('U') == 'moved'        # tick=4
+    assert k.slimes == {(1, 7)}, k.slimes
+    assert SLIME_PERIOD == 2
+    print(f'  ok: SLIME_PERIOD={SLIME_PERIOD}：tick 1/3 不动、tick 2/4 各挪一格')
+
+
+def test_slime_chases_along_the_dominant_axis():
+    """追人顺序：先走"偏离大的那条轴"，被挡才换轴 —— 纯贪心、无随机。"""
+    # 正下方：竖直偏离大 → 向上走
+    k = make_offline(parse_level('###########\n#....s....#\n#.........#\n'
+                                 '#....P....#\n###########', 'slime-vert'))
+    k.step('L')                          # (3,4)  tick1
+    assert k.step('R') == 'moved'        # (3,5)  tick2
+    assert k.slimes == {(2, 5)}, f'应竖直上移：{k.slimes}'
+    # 正左方：水平偏离大 → 向左走
+    k = make_offline(parse_level('###########\n#P.s......#\n###########', 'slime-horz'))
+    k.step('R')                          # (1,2)  tick1
+    assert k.step('L') == 'moved'        # (1,1)  tick2
+    assert k.slimes == {(1, 2)}, f'应水平左移：{k.slimes}'
+    print('  ok: 竖直对齐时走竖轴、水平对齐时走横轴（贪心贪在最该走的轴上）')
+
+
+def test_slime_blocked_by_rock_and_wall():
+    """被挡时**换轴**，都挡则不动 —— 且不撞坏挡它的东西。"""
+    k = make_offline(parse_level('#############\n#P.......r.s#\n#############',
+                                 'slime-blocked'))
+    k.step('R')                          # (1,2) tick1
+    assert k.step('L') == 'moved'        # (1,1) tick2 → 史莱姆挪到 (1,10)
+    assert k.slimes == {(1, 10)}, k.slimes
+    k.step('R'), k.step('L')             # tick4：前面是滚石 → 换竖轴 → 上面是墙 → 不动
+    assert k.slimes == {(1, 10)}, f'被滚石挡住应原地不动：{k.slimes}'
+    assert k.rocks == {(1, 9)}, '挡路物不该被史莱姆弄坏'
+    print('  ok: 前面是滚石、换轴又是墙 → 原地不动（不撞坏挡路物）')
+
+
+def test_slime_kills_player_both_directions():
+    """接触即败：玩家走上去会死；史莱姆走过来也会死。"""
+    # (a) 玩家主动走进去
+    k = make_offline(parse_level('###########\n#P.s......#\n###########', 'slime-atk'))
+    assert k.step('R') == 'moved'
+    ev = k.step('R')                     # (1,3) 就是史莱姆
+    assert ev == 'died' and k.status() == 'lost' and k.deaths == 1, \
+        f'{ev} {k.status()} {k.deaths}'
+    # (b) 史莱姆主动扑上来（玩家被墙夹在一格宽的首格，只能撞墙耗时间）
+    k = make_offline(parse_level('#########\n#P..s...#\n#########', 'slime-hunt'))
+    for _ in range(SLIME_PERIOD * 3):
+        k.step('L')                      # 左边是墙：blocked，但世界时钟照样走
+    assert k.status() == 'lost', f'史莱姆应扑到玩家身上：{k.status()}'
+    assert k.player in k.slimes, '扑上来时史莱姆应落在玩家格上'
+    print(f'  ok: 玩家走进去 → died；史莱姆扑过来（{SLIME_PERIOD * 3} 步内）→ lost')
+
+
+def test_slime_dies_on_spike_but_spike_is_not_consumed():
+    """把史莱姆引到尖刺上：它自己死，**尖刺却还在**（不是"同归于尽"）。"""
+    k = make_offline(parse_level('###########\n#P..^..s..#\n###########', 'slime-spike'))
+    spike = (1, 4)
+    assert spike in k.spikes and k.slimes == {(1, 7)}
+    for d in ('R', 'L') * (SLIME_PERIOD * 2):
+        k.step(d)
+    assert k.slimes == set(), f'史莱姆应踩尖刺自灭：{k.slimes}'
+    assert k.spike_dead == set(), '尖刺不该被史莱姆"用掉"'
+    assert spike in k.spikes and k._solid_for_player(spike) is False
+    assert k.status() == 'playing' and k.player not in k.spikes
+    print('  ok: 史莱姆踩尖刺自灭；尖刺**仍在**（还挡着后面的人）')
+
+
+def test_slime_stepping_on_bomb_is_mutual_destruction():
+    """史莱姆踩到炸弹 → 炸弹引爆、它自己被炸死 —— "用炸弹引怪"是正经解法。
+
+    步数刚好卡在引爆那一步（`blasts` 是**本步**的瞬态，多走一步就被清空了）。
+    """
+    k = make_offline(parse_level('###########\n#P..b...s.#\n###########', 'slime-bomb'))
+    assert k.bombs == {(1, 4)} and k.slimes == {(1, 8)}
+    for d in ('R', 'L') * (SLIME_PERIOD * 2):    # 8 步 = tick 8 = 史莱姆刚好走到 (1,4)
+        k.step(d)
+    assert k.bombs == set() and k.slimes == set(), \
+        f'炸弹与史莱姆应同归于尽：{k.bombs} {k.slimes}'
+    assert (1, 4) in k.blasts, f'应在 (1,4) 留下火光：{sorted(k.blasts)}'
+    assert k.status() == 'playing', f'玩家在 (1,1) 应安全：{k.status()}'
+    print(f'  ok: 史莱姆踩炸弹 → 同归于尽，火光 {sorted(k.blasts)}，玩家安全')
+
+
+def test_fireball_burns_slime_and_keeps_rolling():
+    """火球烧死史莱姆后**继续滚**（与撞箱子"烧毁即熄"不同）。"""
+    k = make_offline(parse_level('##########\n#P.f.s...#\n##########', 'fb-burn'))
+    assert k.slimes == {(1, 5)}
+    k.step('R')                          # (1,2)
+    assert k.step('R') == 'ignited'      # 火球 (1,3)→(1,4)，玩家 (1,3)
+    k.step('L')                          # 退到 (1,2) → 火球滚一格撞上史莱姆
+    assert k.slimes == set(), f'史莱姆应被烧死：{k.slimes}'
+    assert k.fireballs == {(1, 5): 'R'}, f'火球烧完应**继续滚**（还在 (1,5) 朝右）：{k.fireballs}'
+    k.step('L')                          # (1,1) → 火球再滚一格
+    assert k.fireballs == {(1, 6): 'R'}, k.fireballs
+    print('  ok: 烧死史莱姆后火球继续滚（对比：撞箱子是"烧毁即熄"）')
+
+
+def test_blast_kills_slime():
+    """爆炸波及范围内的史莱姆被炸死。
+
+    这里**直接给炸弹点引信**（跳过"推"这一步）：否则史莱姆会先自己踩上炸弹
+    引爆，测到的就不是"波及"而是"同归于尽"了（那条另有专门用例）。
+    """
+    k = make_offline(parse_level('###########\n#P..bs....#\n###########', 'blast-slime'))
+    bomb, slime = (1, 4), (1, 5)
+    assert k.bombs == {bomb} and k.slimes == {slime}
+    k.fuses[bomb] = 1                    # 引信剩 1 步
+    assert k.step('L') == 'blocked'      # 左边是墙；世界时钟照样走，引信归零
+    assert k.bombs == set() and k.fuses == {}
+    assert k.slimes == set(), f'波及内史莱姆应被炸死：{k.slimes}'
+    assert k.blasts == {bomb, slime, (1, 3), (0, 4), (2, 4)},         f'火光不对（含上下两格的墙 —— 渲染要画整片火光）：{sorted(k.blasts)}'
+    assert k.status() == 'playing' and k.player == (1, 1)
+    print(f'  ok: 十字波及把相邻史莱姆炸死；火光 {sorted(k.blasts)}')
+
+
+def test_slime_cannot_be_pushed():
+    """史莱姆不是可推实体：玩家不能"推"它，只能绕开/引走/杀掉。"""
+    assert SLIME in ELEMENTS and ROCK in ELEMENTS
+    assert ELEMENTS[SLIME]['pushable'] is False, '史莱姆不该是可推实体'
+    assert ELEMENTS[ROCK]['pushable'] is True, '滚石必须可推'
+    k = make_offline(parse_level('#########\n#P.bs...#\n#########', 'slime-push'))
+    # 玩家推不动史莱姆：往右推"炸弹"可以，但史莱姆会自己追过来
+    assert k.slimes == {(1, 4)}
+    k.step('R'), k.step('R')             # 推炸弹到 (1,4)？那格是史莱姆 → 被挡
+    assert k.slimes or k.status() == 'lost', '史莱姆要么还在、要么已经杀了玩家'
+    print('  ok: 史莱姆 pushable=False（推不动）；想清它只能靠爆炸/火球/滚石/尖刺')
+
+
+# ================================================================ 12. 内核装载
 def test_load_level_rejects_bad_and_keeps_old():
     """`load_level` 校验失败必须返回 False 并给出原因，且**不炸掉现有状态**。"""
     k = make_offline(_lv('直推教学'))
@@ -806,8 +1041,8 @@ def test_demo_seeds_and_levels_are_stable_identifiers():
     """种子/关卡名是录制与断言的**外部标识**，改了会让旧剧照/断言全部对不上。"""
     assert DEMO_SEEDS == (20261014, 7, 13, 42, 101, 777), 'DEMO_SEEDS 变了'
     names = tuple(LEVEL_ART)
-    assert names == ('直推教学', '钥匙金门', '拉杆切门', '炸药开路', '火球烧箱'), \
-        f'关卡名变了：{names}'
+    assert names == ('直推教学', '钥匙金门', '拉杆切门', '炸药开路', '火球烧箱',
+                     '滚石垫路', '引怪入瓮'), f'关卡名变了：{names}'
     assert tuple(lv['name'] for lv in LEVELS) == names
     print(f'  ok: {len(DEMO_SEEDS)} 个种子与 {len(names)} 个关卡名原样未动')
 
@@ -869,6 +1104,30 @@ def main() -> int:
          test_fireball_extinguishes_on_hard_obstacle),
         ('test_fireball_detonates_bomb', test_fireball_detonates_bomb),
         ('test_fireballs_colliding_cancel_out', test_fireballs_colliding_cancel_out),
+        ('test_rock_rolls_to_the_end_in_one_push',
+         test_rock_rolls_to_the_end_in_one_push),
+        ('test_rock_stops_at_hard_obstacles', test_rock_stops_at_hard_obstacles),
+        ('test_rock_disarms_spikes_along_the_way',
+         test_rock_disarms_spikes_along_the_way),
+        ('test_rock_crushes_slime_and_keeps_rolling',
+         test_rock_crushes_slime_and_keeps_rolling),
+        ('test_lure_level_needs_the_rock', test_lure_level_needs_the_rock),
+        ('test_slime_moves_on_period_not_every_step',
+         test_slime_moves_on_period_not_every_step),
+        ('test_slime_chases_along_the_dominant_axis',
+         test_slime_chases_along_the_dominant_axis),
+        ('test_slime_blocked_by_rock_and_wall',
+         test_slime_blocked_by_rock_and_wall),
+        ('test_slime_kills_player_both_directions',
+         test_slime_kills_player_both_directions),
+        ('test_slime_dies_on_spike_but_spike_is_not_consumed',
+         test_slime_dies_on_spike_but_spike_is_not_consumed),
+        ('test_slime_stepping_on_bomb_is_mutual_destruction',
+         test_slime_stepping_on_bomb_is_mutual_destruction),
+        ('test_fireball_burns_slime_and_keeps_rolling',
+         test_fireball_burns_slime_and_keeps_rolling),
+        ('test_blast_kills_slime', test_blast_kills_slime),
+        ('test_slime_cannot_be_pushed', test_slime_cannot_be_pushed),
         ('test_every_shipped_level_solvable_and_replays_to_win',
          test_every_shipped_level_solvable_and_replays_to_win),
         ('test_solver_is_deterministic', test_solver_is_deterministic),

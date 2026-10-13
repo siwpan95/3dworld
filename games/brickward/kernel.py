@@ -9,15 +9,15 @@
 ## B1 范围（本文件）
 
 * **一格一步的确定性模拟**（同关卡 + 同输入 ⇒ 同结果，可回放、可断言）；
-* **元素表**：推箱 / 按钮 / 拉杆 / 门 / 金门+钥匙 / 尖刺 / **炸弹** / **火球**；
-  出口为终局；
+* **元素表**：推箱 / 按钮 / 拉杆 / 门 / 金门+钥匙 / 尖刺 / 炸弹 / 火球 /
+  **滚石** / **史莱姆**；出口为终局；
 * **"连接"（开关 → 门）**：BQM 编辑器的核心机制 —— 声明式绑定，用
   `engine.orchestration.Bus` 做级联（P0-5 自研的总线在这里第一次吃到玩法）；
 * **BFS 求解器**（状态空间有界）—— headless 验收靠它证明"每关可解且能回放到胜"；
 * **关卡 = 纯数据**（ASCII 图 + 连接表），与编辑器/生成器/内核同 schema（三端同源）。
 
-B2b（滚石/史莱姆）、B3（编辑器 UI：道具栏 + 连接编辑）、
-B4（渲染/手感/成片）见 `docs/BQM机制致敬_复刻可行性.md` §6。
+B3（编辑器 UI：道具栏 + 连接编辑）、B4（渲染/手感/成片）见
+`docs/BQM机制致敬_复刻可行性.md` §6。
 
 ## 元素表
 
@@ -35,6 +35,8 @@ B4（渲染/手感/成片）见 `docs/BQM机制致敬_复刻可行性.md` §6。
 | `^` | 尖刺 | 玩家踩上即败；箱子压上后失效（经典"用箱垫路"） |
 | `b` | 炸弹 | 可推；**推动即点引信**（`FUSE` 步），归零爆炸 |
 | `f` | 火球 | 可推；**推动即点燃**，此后每步朝该方向滚一格，撞硬障碍熄灭 |
+| `r` | 滚石 | 可推；**推动即朝该方向一直滚到底**（不可停），沿途压死史莱姆/压灭火球/压失效尖刺 |
+| `s` | 史莱姆 | 每 `SLIME_PERIOD` 步朝玩家挪一格（贪心）；接触即败；会被爆炸/火球/滚石杀掉，也会自己踩尖刺/炸弹送死 |
 | `E` | 出口 | 玩家到达即胜 |
 
 ## 炸弹与火球（B2a）
@@ -50,6 +52,24 @@ B4（渲染/手感/成片）见 `docs/BQM机制致敬_复刻可行性.md` §6。
 * 火球滚动：撞墙 / 关着的门 / 未开的金门 → **熄灭**；撞炸弹 → 引爆它并熄灭；
   撞箱子 → 烧毁箱子并熄灭；撞另一个火球 → 两个都熄灭；撞玩家 → 玩家死。
   **火球不烧史莱姆以外的东西还会继续滚**这条留到 B2b 与史莱姆一起定。
+
+## 滚石与史莱姆（B2b）
+
+* **滚石 `r`**：推动 = 朝该方向**一直滚到底**（不可停）。沿途**压死史莱姆、压灭火球、
+  把尖刺压失效**，且**都不减速**。被墙 / 箱子 / 炸弹 / 另一块滚石 / 关着的门挡住，
+  开着的门不挡。
+  **滚石压不到玩家**（这条不需要判定，是可以证明的）：它只会朝"推它的人的反方向"滚，
+  推的人一定在后方，而一次滚动是一条不走回头路的直线 —— 玩家不可能出现在路径前方。
+* **史莱姆 `s`**：每 `SLIME_PERIOD` 步行动一次，朝玩家**贪心**挪一格 ——
+  先走"偏离大的那条轴"，被挡就换另一条轴，都挡则原地不动。纯贪心、无随机。
+  * 玩家走进它的格 → 玩家死（它不是"挡路"，是"送死"）；
+  * 它走进玩家的格 → 玩家死；
+  * 它自己踩尖刺 → 死（**尖刺仍在**，不是同归于尽）；
+  * 它踩到炸弹 → 炸弹引爆、同归于尽（"用炸弹引怪"是正经解法）；
+  * 被爆炸 / 火球 / 滚石 → 死。
+* **世界时钟 `tick`**：每步 +1，只用来判史莱姆的行动时刻。指纹里放的是
+  **`tick % SLIME_PERIOD` 相位**而不是绝对值 —— 绝对步数不影响演化，
+  放绝对值等于把同一个局面拆成 `PERIOD` 份、白烧 `PERIOD` 倍内存。
 
 ## 连接（links）
 
@@ -85,7 +105,8 @@ from cordis import Service  # noqa: E402
 from engine.orchestration import Bus  # noqa: E402
 
 __all__ = ['BrickwardKernel', 'ELEMENTS', 'LEVELS', 'LEVEL_ART', 'DEMO_SEEDS',
-           'WALL', 'FLOOR', 'BOMB', 'FIREBALL', 'FUSE', 'BLAST_SHAPE', 'PUSHABLE',
+           'WALL', 'FLOOR', 'BOMB', 'FIREBALL', 'ROCK', 'SLIME', 'FUSE',
+           'SLIME_PERIOD', 'BLAST_SHAPE', 'PUSHABLE',
            'parse_level', 'validate_level', 'generate',
            'solve_level', 'make_offline', 'DIRS', 'KIND_NAME']
 
@@ -94,6 +115,7 @@ WALL, FLOOR, PLAYER = '#', '.', 'P'
 CRATE, BUTTON, LEVER = 'C', 'o', 'L'
 DOOR, GOLD_DOOR, KEY, SPIKE, EXIT = 'D', 'g', 'k', '^', 'E'
 BOMB, FIREBALL = 'b', 'f'                       # B2a
+ROCK, SLIME = 'r', 's'                          # B2b
 
 #: 元素表（供编辑器/文档/校验共用；`block` = 是否挡人，`pushable` = 能否被推）
 ELEMENTS = {
@@ -110,11 +132,13 @@ ELEMENTS = {
     EXIT:      dict(name='出口',   block=False, pushable=False),
     BOMB:      dict(name='炸弹',   block=False, pushable=True),   # 推动即点引信
     FIREBALL:  dict(name='火球',   block=False, pushable=True),   # 推动即朝该方向滚
+    ROCK:      dict(name='滚石',   block=False, pushable=True),   # 推动即滚到底
+    SLIME:     dict(name='史莱姆', block=False, pushable=False),  # 每 N 步追玩家（撞上即败）
 }
 KIND_NAME = {k: v['name'] for k, v in ELEMENTS.items()}
 
 #: 能推的实体（"推"对它们各有不同后果，见 `_push`）
-PUSHABLE = (CRATE, BOMB, FIREBALL)
+PUSHABLE = (CRATE, BOMB, FIREBALL, ROCK)
 
 #: 炸弹引信（步）。被推动即重置为这个值；世界推进里每步减 1，归零则爆炸。
 #: 取 2 而不是 3：一格宽走廊里玩家必须来得及逃出"十字 1 格"的波及范围。
@@ -122,6 +146,9 @@ FUSE = 2
 #: 爆炸波及形状：自身 + 上下左右（**十字 1 格**，不是 3×3）。
 #: 3×3 在 1 格宽走廊里必然连玩家一起炸，"推完没处躲" ⇒ 关卡设计空间被堵死。
 BLAST_SHAPE = ((0, 0), (-1, 0), (1, 0), (0, -1), (0, 1))
+#: 史莱姆每几步行动一次（`tick % SLIME_PERIOD == 0` 时朝玩家挪一格）。
+#: 取 2 而不是 1：每步都追会让"绕过去"完全不可能，玩家只能硬杀。
+SLIME_PERIOD = 2
 
 #: 四个方向（与 puzzle 内核同约定：di 行、dj 列）
 DIRS = {'U': (-1, 0), 'D': (1, 0), 'L': (0, -1), 'R': (0, 1)}
@@ -147,7 +174,7 @@ def _cells(level):
     """把关卡拆成各类元素的坐标集合（`rows` 是唯一事实来源）。"""
     c = dict(walls=set(), crates=set(), buttons=set(), levers=set(), doors=set(),
              gold=set(), keys=set(), spikes=set(), bombs=set(), fireballs=set(),
-             player=None, exit=None)
+             rocks=set(), slimes=set(), player=None, exit=None)
     for i, row in enumerate(level['rows']):
         for j, ch in enumerate(row):
             p = (i, j)
@@ -171,6 +198,10 @@ def _cells(level):
                 c['bombs'].add(p)
             elif ch == FIREBALL:
                 c['fireballs'].add(p)
+            elif ch == ROCK:
+                c['rocks'].add(p)
+            elif ch == SLIME:
+                c['slimes'].add(p)
             elif ch == PLAYER:
                 c['player'] = p
     return c
@@ -246,6 +277,8 @@ class BrickwardKernel(Service):
         self.bombs = set()           # 炸弹位置（未被引燃的）—— B2a
         self.fireballs = {}          # 火球位置 -> 方向；方向 None = 静止未点燃 —— B2a
         self.fuses = {}              # 已引燃炸弹 -> 剩余引信步数 —— B2a
+        self.rocks = set()           # 滚石位置 —— B2b
+        self.slimes = set()          # 史莱姆位置 —— B2b
         self.blasts = set()          # **本步**的爆炸波及格（渲染用；瞬态，不进指纹）
         self.doors = set()           # **开着**的门
         self.levers = set()          # **扳到 on** 的拉杆
@@ -254,6 +287,7 @@ class BrickwardKernel(Service):
         self.spike_dead = set()      # 被箱子压住（失效）的尖刺
         self.player = None
         self.keys_held = 0
+        self.tick = 0                # 世界时钟（史莱姆按 `tick % SLIME_PERIOD` 行动）
         self._ignited = set()        # **本步**刚被推动的炸弹/火球（瞬态，不进指纹）
         self._pressed_prev = set()   # 上一帧的「触发集」（用于发 src_on/src_off）
         self.bus = Bus('brickward')  # 连接级联（P0-5 自研总线）
@@ -276,6 +310,9 @@ class BrickwardKernel(Service):
         self.crates = set(c['crates'])
         self.bombs = set(c['bombs'])
         self.fireballs = {p: None for p in c['fireballs']}   # 初始静止，要被推才会滚
+        self.rocks = set(c['rocks'])
+        self.slimes = set(c['slimes'])
+        self.tick = 0
         self.keys = set(c['keys'])
         self.exit = _exit_of(level)
         self.player = c['player']
@@ -362,8 +399,10 @@ class BrickwardKernel(Service):
         """
         if p in self.walls:
             return True
-        if p in self.crates or p in self.bombs or p in self.fireballs:
+        if (p in self.crates or p in self.bombs or p in self.fireballs
+                or p in self.rocks):
             return True                          # 可推实体：挡人（但能被推走）
+        # 史莱姆**不在**这里：走上去不是"被挡"，而是**送死**（见 `_player_action`）
         if p in self.door_cells and p not in self.doors:
             return True                          # 关着的门
         if p in self.gold and p not in self.gold_open:
@@ -387,7 +426,7 @@ class BrickwardKernel(Service):
         self._ignited.clear()
         self.blasts.clear()
         ev = self._player_action(d)
-        if ev in ('moved', 'pushed', 'ignited'):
+        if ev in ('moved', 'pushed', 'ignited', 'rolled'):
             self.steps += 1
             self._pickup_key()
             self._step_on_lever()            # 走过拉杆即翻转（切换型）
@@ -433,7 +472,7 @@ class BrickwardKernel(Service):
             return 'unlock'
         if tgt in self.door_cells and tgt not in self.doors:
             return 'blocked'                 # 关着的门挡人挡实体
-        if tgt in self.crates or tgt in self.bombs or tgt in self.fireballs:
+        if tgt in self.crates or tgt in self.bombs or tgt in self.fireballs                 or tgt in self.rocks:
             beyond = (tgt[0] + di, tgt[1] + dj)
             if self._solid_for_player(beyond):
                 return 'blocked'
@@ -442,6 +481,9 @@ class BrickwardKernel(Service):
             self.player = tgt
             return ev
         self.player = tgt
+        if tgt in self.slimes:               # 撞上史莱姆 = 送死（不是被挡住）
+            self._kill_player()
+            return 'died'
         return 'moved'
 
     def _push(self, frm, to, d: str) -> str:
@@ -462,6 +504,11 @@ class BrickwardKernel(Service):
             self.fuses[to] = FUSE
             self._ignited.add(to)                # 本步不倒计时（玩家才有 2 步可逃）
             return 'pushed'
+        if frm in self.rocks:
+            # 滚石：推动 = 朝该方向**一直滚到底**（不可停）—— 与箱子"推一格"完全不同
+            self.rocks.discard(frm)
+            self.rocks.add(self._roll_rock(to, d))
+            return 'rolled'
         # 火球：推动 = 点燃，朝被推方向滚（本步先不滚，否则会追着玩家走）
         self.fireballs.pop(frm, None)
         self.fireballs[to] = d
@@ -488,6 +535,9 @@ class BrickwardKernel(Service):
             if self.fireballs[pos] is None:      # **静止**火球（从没被推过）不滚
                 continue
             self._roll_fireball(pos)
+        self.tick += 1
+        if self.slimes and self.tick % SLIME_PERIOD == 0:
+            self._move_slimes()
         self._ignited.clear()
 
     def _roll_fireball(self, pos):
@@ -514,6 +564,7 @@ class BrickwardKernel(Service):
             self.fireballs.pop(nxt, None)
             self.fireballs.pop(pos, None)
             return
+        self.slimes.discard(nxt)                 # 烧死史莱姆后**继续滚**（火不停）
         self.fireballs.pop(pos, None)
         self.fireballs[nxt] = d
         if nxt == self.player:
@@ -539,6 +590,7 @@ class BrickwardKernel(Service):
                     continue                     # 墙/门/金门**不可摧毁**
                 self.fireballs.pop(p, None)      # 火球被扑灭
                 self.crates.discard(p)           # 炸掉箱子 ← 炸弹的主要用途
+                self.slimes.discard(p)           # 史莱姆被炸死
                 if p in self.bombs and p not in seen:
                     self.bombs.discard(p)
                     self.fuses.pop(p, None)
@@ -550,6 +602,94 @@ class BrickwardKernel(Service):
         if self._status == 'playing':
             self._status = 'lost'
             self.deaths += 1
+
+    # ------------------------------------------------------------- 滚石 / 史莱姆
+    def _block_rock(self, p) -> bool:
+        """滚石滚不进去的格。**注意**：史莱姆 / 火球 / 尖刺**不在此列** —— 石头直接压过去。"""
+        if not (0 <= p[0] < self.h and 0 <= p[1] < self.w):
+            return True
+        if p in self.walls or p in self.crates or p in self.bombs or p in self.rocks:
+            return True
+        if p in self.door_cells and p not in self.doors:
+            return True
+        if p in self.gold and p not in self.gold_open:
+            return True
+        return False
+
+    def _roll_rock(self, start, d: str) -> tuple:
+        """滚石从 `start` 朝 `d` 滚到底，返回停下的格子。
+
+        沿途：压死史莱姆、压灭火球、把尖刺压失效（和箱子一样），**且都不减速**。
+        滚石压不到玩家：它只会朝"推的人的反方向"滚，而推的人一定在后方 ——
+        单条直线滚（不走回头路）⇒ 玩家不可能出现在它的路径前方。**这条无需判定**。
+        """
+        di, dj = DIRS[d]
+        cur = start
+        while True:
+            nxt = (cur[0] + di, cur[1] + dj)
+            if self._block_rock(nxt):
+                break
+            self.slimes.discard(nxt)             # 压死史莱姆，继续滚
+            self.fireballs.pop(nxt, None)        # 压灭火球，继续滚
+            if nxt in self.spikes:
+                self.spike_dead.add(nxt)         # 尖刺被压失效
+            cur = nxt
+        return cur
+
+    def _solid_for_slime(self, p) -> bool:
+        """史莱姆走不进去的格。**炸弹不在此列** —— 它踩上去会把自己送上天（见 `_move_slimes`）。"""
+        if not (0 <= p[0] < self.h and 0 <= p[1] < self.w):
+            return True
+        if p in self.walls or p in self.crates or p in self.rocks:
+            return True
+        if p in self.door_cells and p not in self.doors:
+            return True
+        if p in self.gold and p not in self.gold_open:
+            return True
+        if p in self.fireballs or p in self.slimes:
+            return True
+        return False
+
+    def _move_slimes(self):
+        """史莱姆每 `SLIME_PERIOD` 步朝玩家挪一格。
+
+        寻路：先走"偏离大的那条轴"，被挡就换另一条轴，都不行就原地不动 ——
+        纯贪心、无随机，所以整局依旧确定（`key()` 里放 `tick % SLIME_PERIOD` 就够）。
+        按位置排序遍历：两只史莱姆抢同一格时，谁先动必须是个定数。
+
+        **踩到炸弹 = 同归于尽**（炸弹引爆，史莱姆在爆心被炸死）；**踩到尖刺 = 自己死**；
+        走进玩家所在格 = 玩家死。三条都让"把怪物往陷阱上引"成为正经解法。
+        """
+        for pos in sorted(self.slimes):
+            if pos not in self.slimes:           # 可能已被本步的爆炸/石头清掉
+                continue
+            dr = self.player[0] - pos[0]
+            dc = self.player[1] - pos[1]
+            steps = []
+            vert = (1 if dr > 0 else -1, 0)
+            horz = (0, 1 if dc > 0 else -1)
+            if abs(dr) >= abs(dc):
+                steps = [vert, horz]
+            else:
+                steps = [horz, vert]
+            for di, dj in steps:
+                if (di, dj) == (0, 0):
+                    continue
+                nxt = (pos[0] + di, pos[1] + dj)
+                if self._solid_for_slime(nxt):
+                    continue
+                self.slimes.discard(pos)
+                self.slimes.add(nxt)
+                if nxt in self.spikes and nxt not in self.spike_dead:
+                    self.slimes.discard(nxt)     # 自己踩尖刺 → 死
+                elif nxt == self.player:
+                    self._kill_player()          # 扑到玩家 → 玩家死（史莱姆留在原地）
+                elif nxt in self.bombs:          # 踩到炸弹 → 同归于尽
+                    self.bombs.discard(nxt)
+                    self.fuses.pop(nxt, None)
+                    self.slimes.discard(nxt)
+                    self._explode(nxt)
+                break
 
     def _judge_end(self, ev: str) -> str:
         """终局判定（世界推进**之后**跑一次）。返回这一步对外的事件名。"""
@@ -630,7 +770,8 @@ class BrickwardKernel(Service):
                     spikes=sorted(self.spikes), spikes_dead=sorted(self.spike_dead),
                     bombs=sorted(self.bombs), fuses=sorted(self.fuses.items()),
                     fireballs=sorted(self.fireballs.items()),
-                    blasts=sorted(self.blasts),
+                    rocks=sorted(self.rocks), slimes=sorted(self.slimes),
+                    tick=self.tick, blasts=sorted(self.blasts),
                     exit=self.exit, steps=self.steps, pushes=self.pushes,
                     deaths=self.deaths, status=self._status)
 
@@ -644,12 +785,17 @@ class BrickwardKernel(Service):
 
         `fireballs` 是 dict（位置 → 方向）：**方向必须进指纹** —— 两个"火球在同一格"
         的局面，朝上和朝下往后滚的方向完全不同。`fuses` 同理（引信剩几步决定何时爆）。
+
+        `tick` 只放**模 `SLIME_PERIOD` 的相位**（不是绝对值）：史莱姆的行动只取决于
+        "这一步该不该动"，绝对步数不影响演化 —— 放绝对值等于把同一个局面拆成
+        `PERIOD` 份、白烧 `PERIOD` 倍内存。
         """
         return (self.player, frozenset(self.crates), frozenset(self.doors),
                 frozenset(self.gold_open), frozenset(self.keys), self.keys_held,
                 frozenset(self.levers), frozenset(self.spike_dead), self._status,
                 frozenset(self.bombs), frozenset(self.fuses.items()),
-                frozenset(self.fireballs.items()))
+                frozenset(self.fireballs.items()), frozenset(self.rocks),
+                frozenset(self.slimes), self.tick % SLIME_PERIOD)
 
     def clone_from(self, src):
         """把 ``src`` 的状态复制过来（求解器用）。
@@ -679,6 +825,9 @@ class BrickwardKernel(Service):
         self.bombs = set(src.bombs)
         self.fireballs = dict(src.fireballs)
         self.fuses = dict(src.fuses)
+        self.rocks = set(src.rocks)
+        self.slimes = set(src.slimes)
+        self.tick = src.tick
         self.blasts = set()
         self.doors = set(src.doors)
         self.levers = set(src.levers)
@@ -813,6 +962,29 @@ LEVEL_ART = {
 ###########
 #P.f..C..E#
 ###########
+""",
+    # ---- B2b：滚石（推动即滚到底）与史莱姆（每 SLIME_PERIOD 步追玩家）----
+    # 滚石挡在唯一通路上：不推它就没法前进；推一下它一路滚过去，**顺手把整条尖刺走廊
+    # 压失效** —— 玩家随后走过去才安全。落点算好：石头停在 (1,11)，出口 (1,10) 的空格
+    # (1,12) 是墙，所以石头**不会压住出口**（它比玩家更早到那里）。
+    '滚石垫路': """
+#############
+#P.r.^^^^^..#
+##########.##
+#..........E#
+#############
+""",
+    # 史莱姆堵住**唯一下行口** (1,9)（row2 只有 (2,9) 一个洞）：1 格宽走廊里
+    # 走上去是送死、等它过来也是送死 ⇒ 必须先把它清掉。清它的唯一工具是滚石。
+    # 布局刻意让**史莱姆真的追几步**：石头在玩家右手边 2 格，玩家要走 3 步才够得着，
+    # 这段时间史莱姆已经按 `SLIME_PERIOD` 挪了一格 —— 早先那版石头紧挨着玩家、
+    # 第 2 步就把史莱姆压死，AI 一次都没跑过（"机制在册、但随包关卡从没触发"）。
+    '引怪入瓮': """
+###############
+#P..r....s...##
+#########.#####
+#...........E.#
+###############
 """,
 }
 

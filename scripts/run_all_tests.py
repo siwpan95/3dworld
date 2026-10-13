@@ -33,7 +33,7 @@ MODULES = [
     ('tests.run_tests', 'ALL_LOGIC_TESTS_PASSED', '逻辑/玩法内核'),
     ('tests.test_cores', 'ALL_CORE_TESTS_PASSED', '共同核契约'),
     ('tests.test_engine', 'ALL_ENGINE_TESTS_PASSED', '引擎层'),
-    ('tests.test_brickward', 'ALL_BRICKWARD_TESTS_PASSED', '砖境内核（BQM 致敬 B1/B2a）'),
+    ('tests.test_brickward', 'ALL_BRICKWARD_TESTS_PASSED', '砖境内核（BQM 致敬 B1/B2a/B2b）'),
     ('tests.test_gpu_cull', 'ALL_GPU_CULL_TESTS_PASSED', 'GPU 剔除'),
     ('tests.test_p2_render', 'ALL_P2_TESTS_PASSED', 'P2 渲染能力'),
     ('tests.test_skin', 'ALL_SKIN_TESTS_PASSED', '蒙皮骨骼'),
