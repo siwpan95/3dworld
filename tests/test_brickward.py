@@ -28,7 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from games.brickward.kernel import (  # noqa: E402
     BrickwardKernel, DEMO_SEEDS, ELEMENTS, LEVELS, LEVEL_ART, WALL, FLOOR,
-    CRATE, SPIKE, PLAYER, EXIT,
+    CRATE, SPIKE, PLAYER, EXIT, BOMB, FIREBALL, FUSE,
     generate, make_offline, parse_level, solve_level, validate_level,
 )
 
@@ -41,12 +41,21 @@ def _play(level, path):
     return k
 
 
+def _lv(name):
+    """按关名取随包关卡（比下标稳：加关不会把断言打偏）。"""
+    for lv in LEVELS:
+        if lv['name'] == name:
+            return lv
+    raise AssertionError(f'没有名为 {name!r} 的随包关卡；现有：'
+                         f'{[l["name"] for l in LEVELS]}')
+
+
 #: 全元素微型关（每种元素各一）：用于状态指纹的**完整性**检查。
 ALL_ELEMENTS_ART = """
 ###########
 #P.C.o.L.D#
 #.........#
-#k...^..gD#
+#k^bf..gD#
 #........E#
 ###########
 """
@@ -173,7 +182,7 @@ def test_closed_door_blocks_open_door_passes():
     反例（把旧实现挂回去立即报红）：`doors` 同时当"门格"与"开着的门"。
     那时 `_solid_for_player(门)` 恒为 False（关着也能穿），按钮一压反而变 True。
     """
-    lv = LEVELS[2]
+    lv = _lv('拉杆切门')
     k = make_offline(lv)
     door = sorted(k.door_cells)[0]
     lever = sorted(k.lever_cells)[0]
@@ -190,7 +199,7 @@ def test_closed_door_blocks_open_door_passes():
 
 def test_lever_toggles_on_step():
     """**回归 2**：拉杆格集合曾经恒空 ⇒ 拉杆从不翻转。"""
-    lv = LEVELS[2]
+    lv = _lv('拉杆切门')
     k = make_offline(lv)
     lever = sorted(k.lever_cells)[0]
     assert k.lever_cells == {lever}, '静态拉杆格集合必须非空'
@@ -237,7 +246,7 @@ def test_link_modes_open_close_toggle():
 
 # ================================================================ 5. 金门 / 钥匙
 def test_gold_door_needs_key_and_consumes_one():
-    lv = LEVELS[1]
+    lv = _lv('钥匙金门')
     gold = sorted(make_offline(lv).gold)[0]
     k0 = make_offline(lv)
     assert k0._solid_for_player(gold) is True, '没钥匙时金门必须挡人'
@@ -272,7 +281,7 @@ def test_gold_door_needs_key_and_consumes_one():
 
 def test_gold_door_open_step_is_idempotent_when_already_open():
     """已开的金门不再是障碍（不会反复扣钥匙）。"""
-    lv = LEVELS[1]
+    lv = _lv('钥匙金门')
     gold = sorted(make_offline(lv).gold)[0]
     k = make_offline(lv)
     k.player, k.keys_held = (gold[0] - 1, gold[1]), 2
@@ -284,7 +293,7 @@ def test_gold_door_open_step_is_idempotent_when_already_open():
 
 # ================================================================ 6. 箱子 / 按钮 / 尖刺
 def test_crate_on_button_opens_linked_door():
-    lv = LEVELS[0]
+    lv = _lv('直推教学')
     k = make_offline(lv)
     button = sorted(k.button_cells)[0]
     door = sorted(k.door_cells)[0]
@@ -304,12 +313,13 @@ def test_crate_on_button_opens_linked_door():
 def test_spike_kills_player_and_crate_disarms_it():
     """尖刺两个方向都要验：踩上即败；箱子压上后失效（经典"用箱垫路"）。"""
     k = make_offline(_all_elements_level())
-    spike = (3, 5)
-    assert spike in k.spikes
-    ev = None
-    for d in ('D', 'D', 'R', 'R', 'R', 'R'):     # (1,1)→(3,1)拾钥匙→(3,5)尖刺
-        ev = k.step(d)
-    assert k.player == spike and ev == 'died' and k.status() == 'lost', \
+    spike = (3, 2)
+    assert spike in k.spikes, f'全元素关里应有尖刺：{sorted(k.spikes)}'
+    assert k.step('D') == 'moved'        # (2,1)
+    assert k.step('D') == 'moved'        # (3,1)='k' 拾钥匙
+    assert k.keys_held == 1, '路过钥匙应拾取'
+    ev = k.step('R')                     # (3,2)='^' → 败
+    assert ev == 'died' and k.player == spike and k.status() == 'lost', \
         f'{ev} {k.player} {k.status()}'
     assert k.deaths == 1, k.deaths
 
@@ -376,18 +386,25 @@ def test_state_key_covers_every_dynamic_field():
     assert differs(levers={(1, 7)}), 'levers（on 的拉杆）未进指纹'
     assert differs(spike_dead={(3, 5)}), 'spike_dead 未进指纹'
     assert differs(_status='won'), '_status 未进指纹'
+    assert differs(bombs=set()), 'bombs 未进指纹'
+    assert differs(fuses={(3, 3): 2}), 'fuses（引信剩余步数）未进指纹'
+    # ⚠ 火球的方向必须进指纹：两个"火球在同一格"的局面，朝上/朝下往后完全不同
+    assert differs(fireballs={(3, 5): 'R'}), 'fireballs 的**方向**未进指纹'
 
     # 反向：与"往后怎么演化"无关的量**不能**进指纹（进了就白烧内存/白建节点）
     k = make_offline(lv)
     k.steps, k.pushes, k.deaths = 99, 99, 9
     k.log.append(('R', 'moved', 'playing'))
-    assert k.key() == k0, 'steps/pushes/deaths/log 不该进指纹'
-    print('  ok: 指纹含全部 9 项动态量、不含 4 项无关量（漏/多都算错）')
+    k.blasts.add((0, 0))          # 本步的火光：纯渲染用，不参与后续演化
+    k._ignited.add((0, 0))        # "本步刚被推动"：瞬态
+    assert k.key() == k0, 'steps/pushes/deaths/log/blasts/_ignited 不该进指纹'
+    print('  ok: 指纹含全部 12 项动态量（含引信与火球**方向**）、'
+          '不含 6 项瞬态/无关量（漏/多都算错）')
 
 
 def test_clone_does_not_retoggle_standing_lever():
     """**回归 3**：克隆时重跑 `_settle` 会把"人正站在拉杆上"的状态扳回去。"""
-    lv = LEVELS[2]
+    lv = _lv('拉杆切门')
     k = make_offline(lv)
     for d in ('R', 'R', 'R'):
         k.step(d)
@@ -503,6 +520,7 @@ def test_kernel_service_surface():
     for name in ('player', 'crates', 'door_cells', 'doors_open', 'gold_cells',
                  'gold_open', 'keys_ground', 'keys_held', 'lever_cells',
                  'levers_on', 'button_cells', 'spikes', 'spikes_dead', 'exit',
+                 'bombs', 'fuses', 'fireballs', 'blasts',
                  'rows', 'links', 'status', 'steps', 'pushes', 'deaths'):
         assert name in snap, f'snapshot 缺字段 {name}（渲染层要按它建几何）'
     assert snap['player'] == k.player
@@ -511,6 +529,9 @@ def test_kernel_service_surface():
     assert snap['gold_open'] == sorted(k.gold_open)
     assert snap['levers_on'] == sorted(k.levers)
     assert snap['spikes_dead'] == sorted(k.spike_dead)
+    assert snap['bombs'] == sorted(k.bombs)
+    assert snap['fireballs'] == sorted(k.fireballs.items())
+    assert snap['fuses'] == sorted(k.fuses.items()) == []
     assert snap['keys_held'] == k.keys_held == 0
     assert snap['status'] == k.status() == 'playing'
     assert snap['links'] is k.level['links'], 'links 该是引用（纯数据，别每帧深拷）'
@@ -519,7 +540,7 @@ def test_kernel_service_surface():
 
 def test_snapshot_roundtrip_after_replay():
     """快照与直接读属性必须一致 —— 渲染层只吃快照，不许出现"面板显示假的"。"""
-    lv = LEVELS[0]
+    lv = _lv('直推教学')
     path = solve_level(lv)[1]
     k = _play(lv, path)
     snap = k.snapshot()
@@ -531,24 +552,241 @@ def test_snapshot_roundtrip_after_replay():
           f'status={snap["status"]}）')
 
 
+# ================================================================ 10. 炸弹与火球（B2a）
+def test_bomb_static_until_pushed_then_fuse_starts():
+    """炸弹初始静止、没有引信；**推动**才点引信，且引信随炸弹一起搬走。"""
+    k = make_offline(_lv('炸药开路'))
+    assert k.bombs == {(5, 5)} and k.fuses == {}, '装载后炸弹不该已经在倒计时'
+    assert k.step('U') == 'pushed'
+    assert k.bombs == {(4, 5)} and k.fuses == {(4, 5): FUSE}, \
+        f'推动后应剩 FUSE={FUSE} 步：{k.fuses}'
+    k.step('U')
+    assert k.bombs == {(3, 5)} and k.fuses == {(3, 5): FUSE}, \
+        f'第二次推动应重置引信，且**旧格不能留残影**：{k.fuses}'
+    print(f'  ok: 静止炸弹无引信；推动即点 FUSE={FUSE}；再推则重置'
+          f'（而非两处同时倒计时）')
+
+
+def test_fuse_travels_with_bomb_regression():
+    """**回归守卫**：引信是**炸弹的属性**，不是格子属性。
+
+    反例（把 `self.fuses.pop(frm, None)` 删掉立即报红）：炸弹被推走后旧格仍留着
+    倒计时 ⇒ 到点**原地凭空爆炸**，把旁边（甚至已经走开的）玩家炸死，
+    求解器于是判定"不可解"（实踩：炸药开路整关被判死）。
+    """
+    k = make_offline(_lv('炸药开路'))
+    for d in ('U', 'U', 'U', 'U'):       # 连续往上推四次（每次重置引信）
+        ev = k.step(d)
+        assert len(k.fuses) <= 1, f'引信残影：{k.fuses}'
+        assert set(k.fuses) <= k.bombs, f'引信挂在没有炸弹的格子上：{k.fuses}'
+        if ev != 'pushed':
+            break
+    live = set(k.fuses)
+    assert live <= k.bombs, f'{live} 不在炸弹位置 {k.bombs} 上'
+    print(f'  ok: 任何时刻引信集合 ⊆ 炸弹位置（无残影）；剩 {sorted(k.fuses.items())}')
+
+
+def test_blast_shape_is_cross_one():
+    """爆炸波及 = 十字 1 格（自身 + 上下左右），**不是 3×3**。"""
+    lv = parse_level('#######\n#P.b..#\n#.....#\n#######', 'blast-shape')
+    k = make_offline(lv)
+    assert k.step('R') == 'moved'        # (1,2)
+    assert k.step('R') == 'pushed'       # 炸弹 (1,3)→(1,4)，玩家 (1,3)
+    k.step('D')                          # (2,3)  引信 2→1
+    k.step('D')                          # 撞墙 blocked，引信 1→0 → 爆
+    assert k.bombs == set() and k.fuses == {}, '到点应炸掉炸弹本体'
+    assert k.blasts == {(0, 4), (1, 3), (1, 4), (1, 5), (2, 4)}, \
+        f'波及不对：{sorted(k.blasts)}'
+    # 十字：只到相邻一格 —— (2,3)/(2,5) 都不该被波及
+    assert (2, 3) not in k.blasts and (2, 5) not in k.blasts, \
+        '邻行被波及了（说明写成了 3×3）'
+    assert k.player == (2, 3) and k.status() == 'playing', '玩家在波及外不该死'
+    print(f'  ok: 十字 1 格 = {sorted(k.blasts)}（含上方的墙，渲染要画整片火光）；'
+          f'邻行不受伤')
+
+
+def test_blast_chain_reaction():
+    """炸弹连环引爆：爆炸波及到另一颗炸弹时把它也点着，用队列展开。"""
+    lv = parse_level('#########\n#P.b.b..#\n#.......#\n#########', 'chain')
+    k = make_offline(lv)
+    k.step('R'), k.step('R')             # 推第一颗炸弹到 (1,4)，玩家 (1,3)
+    k.step('D'), k.step('D')             # 退到 (2,3) 等引爆
+    assert k.bombs == set(), f'两颗都应被引爆：{k.bombs}'
+    assert k.blasts == {(1, 3), (1, 4), (2, 4), (1, 5), (2, 5), (1, 6),
+                        (0, 4), (0, 5)}, \
+        f'二次爆炸没跟上：{sorted(k.blasts)}'
+    assert k.status() == 'playing', '玩家在 (2,3)，两颗的波及都不该碰到他'
+    print(f'  ok: 连环引爆 2 颗，波及 {len(k.blasts)} 格，玩家安全')
+
+
+def test_blast_destroys_crate_but_not_wall_door_or_gold():
+    """爆炸的摧毁白名单：箱子没了；墙 / 关着的门 / 金门**原样不动**。"""
+    art = ('###########\n#..C......#\n#.g.b.....#\n#..D......#\n'
+           '#.........#\n#P.......E#\n###########')
+    k = make_offline(parse_level(art, 'blast-targets'))
+    crate, gold, door, wall = (1, 3), (2, 2), (3, 3), (0, 3)
+    assert k.crates == {crate} and k.gold == {gold} and k.door_cells == {door}
+    # 直接把玩家放到炸弹右侧再推 —— 比走位好读，也不依赖寻路
+    k.player = (2, 5)
+    k._pressed_prev = k._pressed_sources()
+    assert k.step('L') == 'pushed', '应把炸弹从 (2,4) 推到 (2,3)'
+    assert k.bombs == {(2, 3)} and k.fuses == {(2, 3): FUSE}
+    k.step('R'), k.step('R')             # 退到 (2,6)，两步后引爆
+    assert k.bombs == set() and k.fuses == {}
+    assert k.crates == set(), f'箱子必须被炸掉：{k.crates}'
+    assert k.gold == {gold} and k.gold_open == set(), '金门不该被炸开'
+    assert k.door_cells == {door} and k.doors == set(), '门不该被炸开'
+    assert wall in k.walls and crate not in k.walls, '墙不该被炸掉'
+    assert k.blasts == {(2, 3), (2, 2), (2, 4), (1, 3), (3, 3)}, \
+        f'波及格（**含**不可摧毁物，渲染要画整片火光）不对：{sorted(k.blasts)}'
+    print(f'  ok: 箱子被炸掉；墙/门/金门原样；波及 {len(k.blasts)} 格全记下')
+
+
+def test_blast_kills_player_standing_in_range():
+    """走回波及区里会被自己的炸弹炸死 —— 这是"一步之内的赌注"，必须成立。"""
+    lv = parse_level('#######\n#P.b..#\n#.....#\n#######', 'self-bomb')
+    k = make_offline(lv)
+    k.step('R'), k.step('R')             # 推炸弹到 (1,4)，玩家 (1,3)
+    assert k.step('D') == 'moved'        # (2,3) 引信 1
+    ev = k.step('R')                     # (2,4) ← 在 (1,4) 的正下方
+    assert ev == 'died' and k.status() == 'lost', f'{ev} {k.status()}'
+    assert k.deaths == 1 and k.player == (2, 4)
+    print('  ok: 主动走回波及区 → died / lost / deaths=1')
+
+
+def test_bomb_level_needs_the_bomb():
+    """「炸药开路」的箱子**只能炸**：抽掉炸弹后必须无解（否则炸弹是装饰）。"""
+    lv = _lv('炸药开路')
+    ok, path = solve_level(lv)
+    assert ok and path, '炸药开路本身应该可解'
+    assert path.count('U') >= 5, f'解应含"推炸弹上去 + 一路走上出口"：{path}'
+    no_bomb = parse_level(LEVEL_ART['炸药开路'].replace('b', '.'), 'no-bomb')
+    ok2, path2 = solve_level(no_bomb)
+    assert not ok2, f'没有炸弹竟然也能通关，炸弹是装饰：{path2!r}'
+    # 反向对照：把挡路箱子也拿掉（不需要炸）→ 必须可解，
+    # 证明前面的"无解"确实来自那颗箱子，而不是关卡本身写坏了
+    no_crate = parse_level(LEVEL_ART['炸药开路'].replace('C', '.'), 'no-crate')
+    ok3, path3 = solve_level(no_crate)
+    assert ok3, f'抽掉箱子后应可解（否则"无解"另有原因）：{path3!r}'
+    print(f'  ok: 有关卡解 {path}（{len(path)} 步）；抽掉炸弹 → 无解；'
+          f'抽掉箱子 → 可解 {path3}')
+
+
+def test_fireball_static_until_pushed_regression():
+    """**回归守卫**：静止火球（方向 `None`）不参与滚动。
+
+    反例（去掉 `if self.fireballs[pos] is None: continue` 立即报红）：
+    `_advance_world` 会对 `DIRS[None]` 取值 → `KeyError: None`，
+    整个求解器炸掉（实踩：`test_solver_is_deterministic` 直接 ERROR）。
+    """
+    lv = _lv('火球烧箱')
+    k = make_offline(lv)
+    assert k.fireballs == {(1, 3): None}, '未被推过的火球方向必须是 None'
+    assert k.step('R') == 'moved'        # (1,2)
+    assert k.fireballs == {(1, 3): None}, f'没被推就自己滚了：{k.fireballs}'
+    assert k.step('L') == 'moved'        # 退回起点
+    assert k.fireballs == {(1, 3): None}, '来回走不该点燃它'
+    assert k.bombs == set() and k.fuses == {}, '不该凭空长出炸弹/引信'
+    print('  ok: 静止火球不动；玩家在旁边走动不会点燃它')
+
+
+def test_fireball_ignites_rolls_and_extinguishes():
+    """推火球 = 点燃并朝该方向滚；烧掉挡路的箱子后自己熄灭。"""
+    lv = _lv('火球烧箱')
+    k = make_offline(lv)
+    crate = (1, 6)
+    assert k.crates == {crate}
+    assert k.step('R') == 'moved'
+    assert k.step('R') == 'ignited', '推火球应返回 ignited'
+    assert k.fireballs == {(1, 4): 'R'}, f'点燃后方向应为 R：{k.fireballs}'
+    k.step('R')                          # 再推一次（重置、朝同方向）
+    assert k.fireballs == {(1, 5): 'R'}, k.fireballs
+    k.step('L')                          # 玩家退开 → 火球自动滚去撞箱子
+    assert k.crates == set(), f'箱子应被烧毁：{k.crates}'
+    assert k.fireballs == {}, f'烧掉箱子后火球应熄灭：{k.fireballs}'
+    assert k.status() == 'playing'
+    print('  ok: ignited → 每步滚一格 → 烧毁箱子 → 自行熄灭')
+
+
+def test_fireball_extinguishes_on_hard_obstacle():
+    """撞墙 / 关着的门 / 未开金门 → 熄灭（不穿过去、也不把它们打开）。
+
+    布局要点：火球**必须能先被推到 (1,4)**（那儿得是空的），硬障碍在 (1,5) ——
+    否则连"点燃"这一步都做不出来（推不进去），测的就不是"滚着撞上"了。
+    """
+    for art, label, blocker in [
+        ('########\n#P.f.#.#\n########', '墙', (1, 5)),
+        ('########\n#P.f.D.#\n########', '关着的门', (1, 5)),
+        ('########\n#P.f.g.#\n########', '未开金门', (1, 5)),
+    ]:
+        k = make_offline(parse_level(art, f'fb-{label}'))
+        walls_before = set(k.walls)
+        assert k.step('R') == 'moved'            # (1,2)
+        assert k.step('R') == 'ignited', f'{label}: 应能点燃（目标格是空的）'
+        assert k.fireballs == {(1, 4): 'R'}, k.fireballs
+        k.step('L')                              # 退开 → 滚一格撞上 → 熄灭
+        assert k.fireballs == {}, f'{label}：火球应熄灭，实际 {k.fireballs}'
+        if blocker in k.door_cells:
+            assert k.doors == set(), '门被火球打开了'
+        if blocker in k.gold:
+            assert k.gold_open == set(), '金门被火球打开了'
+        assert k.walls == walls_before, '墙被火球改了'
+        print(f'       {label}: 熄灭（未穿透、未开启）')
+    print('  ok: 墙 / 关门 / 未开金门 → 火球熄灭；门与金门纹丝不动')
+
+
+def test_fireball_detonates_bomb():
+    """火球撞炸弹 → 引爆炸弹，火球自己熄灭；爆炸按十字波及。"""
+    k = make_offline(parse_level('#########\n#P.f.b..#\n#.......#\n#########',
+                                'fb-bomb'))
+    assert k.fireballs == {(1, 3): None} and k.bombs == {(1, 5)}
+    k.step('R')                          # (1,2)
+    k.step('R')                          # push: 火球 (1,3)→(1,4)，玩家 (1,3)
+    k.step('D')                          # 退到 (2,3)；火球滚到 (1,5) 撞上炸弹
+    assert k.fireballs == {} and k.bombs == set(), \
+        f'火球与炸弹应双双消失：{k.fireballs} {k.bombs}'
+    assert k.blasts == {(0, 5), (1, 5), (1, 4), (1, 6), (2, 5)}, \
+        f'波及不对：{sorted(k.blasts)}'
+    assert k.status() == 'playing', '玩家在 (2,3) 应安全'
+    print(f'  ok: 火球撞炸弹 → 双双消失 + 十字爆炸 {sorted(k.blasts)}')
+
+
+def test_fireballs_colliding_cancel_out():
+    """两个火球对撞 → 都熄灭（不会互相穿过）。"""
+    k = make_offline(parse_level('#########\n#P.f...f.#\n#########', 'fb-pair'))
+    assert k.fireballs == {(1, 3): None, (1, 7): None}
+    k.step('R')                          # (1,2)
+    k.step('R')                          # push 左火球 (1,3)→(1,4)，玩家 (1,3)
+    assert k.fireballs == {(1, 4): 'R', (1, 7): None}, k.fireballs
+    for d in 'LLR':                      # 退开三步，让它滚到右边那颗静止火球上
+        k.step(d)
+    assert k.fireballs == {}, f'对撞应双双熄灭：{k.fireballs}'
+    assert k.player == (1, 2) and k.status() == 'playing'
+    print('  ok: 滚动火球撞上静止火球 → 双双熄灭')
+
+
+
 # ================================================================ 11. 内核装载
 def test_load_level_rejects_bad_and_keeps_old():
     """`load_level` 校验失败必须返回 False 并给出原因，且**不炸掉现有状态**。"""
-    k = make_offline(LEVELS[0])
+    k = make_offline(_lv('直推教学'))
     good_rows = list(k.level['rows'])
     ok = k.load_level(parse_level('#####\n#...#\n#####', 'no-p'))
     assert ok is False, '坏关卡竟然装载成功'
     assert k.load_error, '失败必须留下 load_error 供编辑器/日志用'
-    ok = k.load_level(LEVELS[1])
-    assert ok is True and k.level['name'] == LEVELS[1]['name']
+    reason = k.load_error
+    ok = k.load_level(_lv('钥匙金门'))
+    assert ok is True and k.level['name'] == '钥匙金门'
     assert k.status() == 'playing' and k.steps == 0, '换关必须重置步数/状态'
     assert len(good_rows) > 0
-    print(f'  ok: 坏关卡被拒（load_error={k.load_error!r}）；换关重置 steps/status')
+    assert k.load_error == '', '装载成功后必须清掉上一次的失败原因'
+    print(f'  ok: 坏关卡被拒（load_error={reason!r}）；换关重置 steps/status '
+          f'且清空 load_error')
 
 
 def test_online_kernel_via_service_init():
     """在线内核走 `Service.__init__`（挂 ctx 的那条路）也要能初始化。"""
-    lv = LEVELS[0]
+    lv = _lv('直推教学')
     k = BrickwardKernel.__new__(BrickwardKernel)
     k.ctx = None
     k.seed = 4242
@@ -568,14 +806,15 @@ def test_demo_seeds_and_levels_are_stable_identifiers():
     """种子/关卡名是录制与断言的**外部标识**，改了会让旧剧照/断言全部对不上。"""
     assert DEMO_SEEDS == (20261014, 7, 13, 42, 101, 777), 'DEMO_SEEDS 变了'
     names = tuple(LEVEL_ART)
-    assert names == ('直推教学', '钥匙金门', '拉杆切门'), f'关卡名变了：{names}'
+    assert names == ('直推教学', '钥匙金门', '拉杆切门', '炸药开路', '火球烧箱'), \
+        f'关卡名变了：{names}'
     assert tuple(lv['name'] for lv in LEVELS) == names
     print(f'  ok: {len(DEMO_SEEDS)} 个种子与 {len(names)} 个关卡名原样未动')
 
 
 def test_finish_hook_exists_and_is_used_by_demo():
     """B1 不依赖 GL，但必须有"停机"入口给 B4 的渲染层复用 —— 检查 `finish`。"""
-    k = make_offline(LEVELS[0])
+    k = make_offline(_lv('直推教学'))
     assert hasattr(k, 'load_art'), '缺 load_art（编辑器/渲染端要用）'
     ok = k.load_art(LEVEL_ART['直推教学'], '简写装载')
     assert ok and k.level['name'] == '简写装载', 'load_art 不能装'
@@ -611,6 +850,25 @@ def main() -> int:
          test_state_key_covers_every_dynamic_field),
         ('test_clone_does_not_retoggle_standing_lever',
          test_clone_does_not_retoggle_standing_lever),
+        ('test_bomb_static_until_pushed_then_fuse_starts',
+         test_bomb_static_until_pushed_then_fuse_starts),
+        ('test_fuse_travels_with_bomb_regression',
+         test_fuse_travels_with_bomb_regression),
+        ('test_blast_shape_is_cross_one', test_blast_shape_is_cross_one),
+        ('test_blast_chain_reaction', test_blast_chain_reaction),
+        ('test_blast_destroys_crate_but_not_wall_door_or_gold',
+         test_blast_destroys_crate_but_not_wall_door_or_gold),
+        ('test_blast_kills_player_standing_in_range',
+         test_blast_kills_player_standing_in_range),
+        ('test_bomb_level_needs_the_bomb', test_bomb_level_needs_the_bomb),
+        ('test_fireball_static_until_pushed_regression',
+         test_fireball_static_until_pushed_regression),
+        ('test_fireball_ignites_rolls_and_extinguishes',
+         test_fireball_ignites_rolls_and_extinguishes),
+        ('test_fireball_extinguishes_on_hard_obstacle',
+         test_fireball_extinguishes_on_hard_obstacle),
+        ('test_fireball_detonates_bomb', test_fireball_detonates_bomb),
+        ('test_fireballs_colliding_cancel_out', test_fireballs_colliding_cancel_out),
         ('test_every_shipped_level_solvable_and_replays_to_win',
          test_every_shipped_level_solvable_and_replays_to_win),
         ('test_solver_is_deterministic', test_solver_is_deterministic),

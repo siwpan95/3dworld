@@ -9,30 +9,47 @@
 ## B1 范围（本文件）
 
 * **一格一步的确定性模拟**（同关卡 + 同输入 ⇒ 同结果，可回放、可断言）；
-* **元素表**（6 类）：推箱 / 按钮 / 拉杆 / 门 / 金门+钥匙 / 尖刺；出口为终局；
+* **元素表**：推箱 / 按钮 / 拉杆 / 门 / 金门+钥匙 / 尖刺 / **炸弹** / **火球**；
+  出口为终局；
 * **"连接"（开关 → 门）**：BQM 编辑器的核心机制 —— 声明式绑定，用
   `engine.orchestration.Bus` 做级联（P0-5 自研的总线在这里第一次吃到玩法）；
 * **BFS 求解器**（状态空间有界）—— headless 验收靠它证明"每关可解且能回放到胜"；
 * **关卡 = 纯数据**（ASCII 图 + 连接表），与编辑器/生成器/内核同 schema（三端同源）。
 
-B2（求解器强化 + 炸弹/火球/滚石/史莱姆）、B3（编辑器 UI：道具栏 + 连接编辑）、
+B2b（滚石/史莱姆）、B3（编辑器 UI：道具栏 + 连接编辑）、
 B4（渲染/手感/成片）见 `docs/BQM机制致敬_复刻可行性.md` §6。
 
 ## 元素表
 
 | 码 | 元素 | 语义 |
 |----|------|------|
-| `#` | 墙 | 不可通过（箱子也不能推入） |
+| `#` | 墙 | 不可通过（实体也不能推入） |
 | `.` | 地板 | 可通过 |
 | `P` | 玩家起点 | 唯一 |
-| `C` | 箱子 | 可推、不可拉；可压按钮；**可推上尖刺并挡住它** |
+| `C` | 箱子 | 可推、不可拉；可压按钮；**可推上尖刺并挡住它**；可被炸掉/烧掉 |
 | `o` | 按钮 | **持续型**：被玩家**或箱子**压住时处于按下 |
-| `L` | 拉杆 | **切换型**：玩家走过时翻转（箱子压不住） |
-| `D` | 门 | 关着时挡人挡箱；由连接控制开合 |
+| `L` | 拉杆 | **切换型**：玩家**走进**时翻转（箱子压不住，站着不动也不会反复翻） |
+| `D` | 门 | 关着时挡人挡实体；由连接控制开合 |
 | `g` | 金门 | 有钥匙则开启并**消耗一把**（本步只开门、人不动）；无钥匙挡路 |
 | `k` | 钥匙 | 拾取（计数制，不是占格物品） |
 | `^` | 尖刺 | 玩家踩上即败；箱子压上后失效（经典"用箱垫路"） |
+| `b` | 炸弹 | 可推；**推动即点引信**（`FUSE` 步），归零爆炸 |
+| `f` | 火球 | 可推；**推动即点燃**，此后每步朝该方向滚一格，撞硬障碍熄灭 |
 | `E` | 出口 | 玩家到达即胜 |
+
+## 炸弹与火球（B2a）
+
+* **引信 `FUSE = 2`**：被推动即重置。世界推进里每步减 1，归零则在该格爆炸。
+  在 1 格宽走廊里，2 步刚好够玩家逃出波及范围 —— 3 步会让"推完没处躲"，
+  1 步又等于自杀。**推着炸弹连续走**是合法技巧（每推一次就重置）。
+* **爆炸形状 `BLAST_SHAPE` = 十字 1 格**（自身 + 上下左右），不是 3×3：
+  3×3 在 1 格宽走廊里必然连推炸弹的玩家一起炸，关卡设计空间会被堵死。
+* 爆炸**摧毁**：箱子、炸弹（**连锁**，用队列展开）、火球（扑灭）；
+  **不影响**：墙、门、金门、尖刺、钥匙、按钮、拉杆、出口。
+  玩家在波及格内 → 死。
+* 火球滚动：撞墙 / 关着的门 / 未开的金门 → **熄灭**；撞炸弹 → 引爆它并熄灭；
+  撞箱子 → 烧毁箱子并熄灭；撞另一个火球 → 两个都熄灭；撞玩家 → 玩家死。
+  **火球不烧史莱姆以外的东西还会继续滚**这条留到 B2b 与史莱姆一起定。
 
 ## 连接（links）
 
@@ -68,13 +85,15 @@ from cordis import Service  # noqa: E402
 from engine.orchestration import Bus  # noqa: E402
 
 __all__ = ['BrickwardKernel', 'ELEMENTS', 'LEVELS', 'LEVEL_ART', 'DEMO_SEEDS',
-           'WALL', 'FLOOR', 'parse_level', 'validate_level', 'generate',
+           'WALL', 'FLOOR', 'BOMB', 'FIREBALL', 'FUSE', 'BLAST_SHAPE', 'PUSHABLE',
+           'parse_level', 'validate_level', 'generate',
            'solve_level', 'make_offline', 'DIRS', 'KIND_NAME']
 
 # ---- 元素码 ----
 WALL, FLOOR, PLAYER = '#', '.', 'P'
 CRATE, BUTTON, LEVER = 'C', 'o', 'L'
 DOOR, GOLD_DOOR, KEY, SPIKE, EXIT = 'D', 'g', 'k', '^', 'E'
+BOMB, FIREBALL = 'b', 'f'                       # B2a
 
 #: 元素表（供编辑器/文档/校验共用；`block` = 是否挡人，`pushable` = 能否被推）
 ELEMENTS = {
@@ -89,8 +108,20 @@ ELEMENTS = {
     KEY:       dict(name='钥匙',   block=False, pushable=False),
     SPIKE:     dict(name='尖刺',   block=False, pushable=True),   # 箱可压上（挡尖刺）
     EXIT:      dict(name='出口',   block=False, pushable=False),
+    BOMB:      dict(name='炸弹',   block=False, pushable=True),   # 推动即点引信
+    FIREBALL:  dict(name='火球',   block=False, pushable=True),   # 推动即朝该方向滚
 }
 KIND_NAME = {k: v['name'] for k, v in ELEMENTS.items()}
+
+#: 能推的实体（"推"对它们各有不同后果，见 `_push`）
+PUSHABLE = (CRATE, BOMB, FIREBALL)
+
+#: 炸弹引信（步）。被推动即重置为这个值；世界推进里每步减 1，归零则爆炸。
+#: 取 2 而不是 3：一格宽走廊里玩家必须来得及逃出"十字 1 格"的波及范围。
+FUSE = 2
+#: 爆炸波及形状：自身 + 上下左右（**十字 1 格**，不是 3×3）。
+#: 3×3 在 1 格宽走廊里必然连玩家一起炸，"推完没处躲" ⇒ 关卡设计空间被堵死。
+BLAST_SHAPE = ((0, 0), (-1, 0), (1, 0), (0, -1), (0, 1))
 
 #: 四个方向（与 puzzle 内核同约定：di 行、dj 列）
 DIRS = {'U': (-1, 0), 'D': (1, 0), 'L': (0, -1), 'R': (0, 1)}
@@ -115,7 +146,8 @@ def parse_level(art: str, name: str = '', links=(), par=None) -> dict:
 def _cells(level):
     """把关卡拆成各类元素的坐标集合（`rows` 是唯一事实来源）。"""
     c = dict(walls=set(), crates=set(), buttons=set(), levers=set(), doors=set(),
-             gold=set(), keys=set(), spikes=set(), player=None, exit=None)
+             gold=set(), keys=set(), spikes=set(), bombs=set(), fireballs=set(),
+             player=None, exit=None)
     for i, row in enumerate(level['rows']):
         for j, ch in enumerate(row):
             p = (i, j)
@@ -135,6 +167,10 @@ def _cells(level):
                 c['keys'].add(p)
             elif ch == SPIKE:
                 c['spikes'].add(p)
+            elif ch == BOMB:
+                c['bombs'].add(p)
+            elif ch == FIREBALL:
+                c['fireballs'].add(p)
             elif ch == PLAYER:
                 c['player'] = p
     return c
@@ -207,6 +243,10 @@ class BrickwardKernel(Service):
         self.h = self.w = 0          # 地图尺寸（越界即挡：**不假设**画图的人写了边框）
         # ---- 动态状态（每步可变；求解器的指纹就是它们）----
         self.crates = set()          # 箱子位置
+        self.bombs = set()           # 炸弹位置（未被引燃的）—— B2a
+        self.fireballs = {}          # 火球位置 -> 方向；方向 None = 静止未点燃 —— B2a
+        self.fuses = {}              # 已引燃炸弹 -> 剩余引信步数 —— B2a
+        self.blasts = set()          # **本步**的爆炸波及格（渲染用；瞬态，不进指纹）
         self.doors = set()           # **开着**的门
         self.levers = set()          # **扳到 on** 的拉杆
         self.gold_open = set()       # 已用钥匙开过的金门
@@ -214,6 +254,7 @@ class BrickwardKernel(Service):
         self.spike_dead = set()      # 被箱子压住（失效）的尖刺
         self.player = None
         self.keys_held = 0
+        self._ignited = set()        # **本步**刚被推动的炸弹/火球（瞬态，不进指纹）
         self._pressed_prev = set()   # 上一帧的「触发集」（用于发 src_on/src_off）
         self.bus = Bus('brickward')  # 连接级联（P0-5 自研总线）
         self.log = []                # [(dir, event, note)] —— 可回放/可断言
@@ -233,6 +274,8 @@ class BrickwardKernel(Service):
         self.gold = set(c['gold'])
         self.spikes = set(c['spikes'])
         self.crates = set(c['crates'])
+        self.bombs = set(c['bombs'])
+        self.fireballs = {p: None for p in c['fireballs']}   # 初始静止，要被推才会滚
         self.keys = set(c['keys'])
         self.exit = _exit_of(level)
         self.player = c['player']
@@ -319,8 +362,8 @@ class BrickwardKernel(Service):
         """
         if p in self.walls:
             return True
-        if p in self.crates:
-            return True
+        if p in self.crates or p in self.bombs or p in self.fireballs:
+            return True                          # 可推实体：挡人（但能被推走）
         if p in self.door_cells and p not in self.doors:
             return True                          # 关着的门
         if p in self.gold and p not in self.gold_open:
@@ -329,80 +372,211 @@ class BrickwardKernel(Service):
             return True                          # 越界（不该发生：随包关卡四面封闭）
         return False
 
+    # ------------------------------------------------------------- 单步模拟
     def step(self, d: str) -> str:
-        """走一步（``'U'/'D'/'L'/'R'``）。返回事件名；玩法状态见 `status()`。"""
+        """走一步（``'U'/'D'/'L'/'R'``）。返回事件名；玩法状态见 `status()`。
+
+        **一步 = 玩家动作 → 连接对账 → 世界推进 → 触发集再对账 → 终局判定**。
+        世界推进放在玩家动作之后，是因为"火球滚一格""引信减一格"都是**世界的时间**，
+        要落在玩家这一步之内（否则同一局面会算出两种结果）。
+        终局判定放在最后：走到出口的同时被火球烧到，算死（一步之内的赌注必须承认）。
+        """
         if self._status != 'playing':
             return self._status
         assert d in DIRS, f'未知方向 {d!r}'
-        di, dj = DIRS[d]
-        tgt = (self.player[0] + di, self.player[1] + dj)
-        ev = 'moved'
-
-        if tgt in self.walls or not (0 <= tgt[0] < self.h and 0 <= tgt[1] < self.w):
-            ev = 'blocked'
-        elif tgt in self.gold and tgt not in self.gold_open:
-            if self.keys_held > 0:              # 有钥匙：本步只开门，人不动
-                self.keys_held -= 1
-                self.gold_open.add(tgt)
-                ev = 'unlock'
-            else:
-                ev = 'blocked'
-        elif tgt in self.door_cells and tgt not in self.doors:
-            ev = 'blocked'                      # 关着的门挡人挡箱
-        elif tgt in self.crates:                # 推箱：只推不拉
-            beyond = (tgt[0] + di, tgt[1] + dj)
-            if self._solid_for_player(beyond) or beyond in self.gold - self.gold_open:
-                ev = 'blocked'
-            else:
-                self.crates.discard(tgt)
-                self.crates.add(beyond)
-                if beyond in self.spikes:
-                    self.spike_dead.add(beyond)     # 箱压尖刺 → 失效
-                self.pushes += 1
-                self.player = tgt
-                ev = 'pushed'
-        else:
-            self.player = tgt
-
-        if ev in ('moved', 'pushed'):
+        self._ignited.clear()
+        self.blasts.clear()
+        ev = self._player_action(d)
+        if ev in ('moved', 'pushed', 'ignited'):
             self.steps += 1
-            if self.player in self.keys:
-                self.keys.discard(self.player)
-                self.keys_held += 1
-            if self.player in self.spikes and self.player not in self.spike_dead:
-                self._status = 'lost'
-                self.deaths += 1
-                ev = 'died'
-            elif self.player == self.exit:
-                self._status = 'won'
-                ev = 'won'
-        self._settle(d, ev)
+            self._pickup_key()
+            self._step_on_lever()            # 走过拉杆即翻转（切换型）
+        self._flush_switches()               # 玩家动作改变了触发集
+        self._advance_world()                # 火球滚动 / 引信倒计时 / 爆炸
+        self._flush_switches()               # 世界推进也可能改变触发集
+        ev = self._judge_end(ev)
+        self.log.append((d, ev, self.status()))
         return ev
 
-    def _settle(self, d=None, ev=None):
-        """走完之后统一结算：先扳拉杆（若踩到），再按「触发集变化」发连接事件。
+    def _pickup_key(self):
+        if self.player in self.keys:
+            self.keys.discard(self.player)
+            self.keys_held += 1
 
-        **三类事件一次算清**：`pressed ^ _pressed_prev` 就是"这一步里状态变了的开关"
-        （拉杆被扳、按钮被压/被放开都落在这里），于是
+    def _step_on_lever(self):
+        """玩家**走进**拉杆格 → 翻转。
+
+        ⚠ 只在这里翻，且只在真的移动了的那一步翻。早先这段嵌在"结算"里，
+        而 `step` 每步要结算两次（玩家动作后 + 世界推进后）⇒ 站在拉杆上不动
+        也会被翻两次（净效果为 0），撞墙不动更会反复翻。**翻转属于"走进"这个动作，
+        不属于"结算"**，所以它必须独立成一个只在移动后调用的函数。
+        """
+        if self.player not in self.lever_cells:
+            return
+        on = self.levers
+        if self.player in on:
+            on.discard(self.player)
+        else:
+            on.add(self.player)
+
+    def _player_action(self, d: str) -> str:
+        """玩家的那一下：走 / 推 / 开金门 / 被挡。**不做**世界推进与终局判定。"""
+        di, dj = DIRS[d]
+        tgt = (self.player[0] + di, self.player[1] + dj)
+        if tgt in self.walls or not (0 <= tgt[0] < self.h and 0 <= tgt[1] < self.w):
+            return 'blocked'
+        if tgt in self.gold and tgt not in self.gold_open:
+            if self.keys_held <= 0:
+                return 'blocked'
+            self.keys_held -= 1              # 有钥匙：本步只开门、人不动
+            self.gold_open.add(tgt)
+            return 'unlock'
+        if tgt in self.door_cells and tgt not in self.doors:
+            return 'blocked'                 # 关着的门挡人挡实体
+        if tgt in self.crates or tgt in self.bombs or tgt in self.fireballs:
+            beyond = (tgt[0] + di, tgt[1] + dj)
+            if self._solid_for_player(beyond):
+                return 'blocked'
+            ev = self._push(tgt, beyond, d)  # 推：只推不拉
+            self.pushes += 1
+            self.player = tgt
+            return ev
+        self.player = tgt
+        return 'moved'
+
+    def _push(self, frm, to, d: str) -> str:
+        """把 `frm` 上的可推实体推到 `to`。三种实体的**后果各不相同**。"""
+        if frm in self.crates:
+            self.crates.discard(frm)
+            self.crates.add(to)
+            if to in self.spikes:
+                self.spike_dead.add(to)          # 箱压尖刺 → 失效
+            return 'pushed'
+        if frm in self.bombs:
+            self.bombs.discard(frm)
+            self.bombs.add(to)
+            # ⚠ 引信是**炸弹的属性**，不是"格子属性"：旧格必须一起清掉。
+            # 漏了这一行，炸弹搬走后原格仍留着倒计时 ⇒ 到点原地凭空爆炸
+            # （实踩：玩家被一颗已经不存在的炸弹炸死，求解器判定"不可解"）。
+            self.fuses.pop(frm, None)
+            self.fuses[to] = FUSE
+            self._ignited.add(to)                # 本步不倒计时（玩家才有 2 步可逃）
+            return 'pushed'
+        # 火球：推动 = 点燃，朝被推方向滚（本步先不滚，否则会追着玩家走）
+        self.fireballs.pop(frm, None)
+        self.fireballs[to] = d
+        self._ignited.add(to)
+        return 'ignited'
+
+    # ------------------------------------------------------------- 世界推进
+    def _advance_world(self):
+        """本步的"世界时间"：引信倒计时 → 爆炸 → 火球滚动。"""
+        for pos in sorted(self.fuses):
+            if pos in self._ignited:
+                continue
+            self.fuses[pos] -= 1
+        boom = sorted(p for p, n in self.fuses.items() if n <= 0)
+        for pos in boom:
+            self.fuses.pop(pos, None)
+            self.bombs.discard(pos)
+            self._explode(pos)
+        for pos in sorted(self.fireballs):       # 排序：同一步多个火球，顺序必须确定
+            if pos in self._ignited:
+                continue
+            if pos not in self.fireballs:        # 可能已被本步的爆炸/别的火球清掉
+                continue
+            if self.fireballs[pos] is None:      # **静止**火球（从没被推过）不滚
+                continue
+            self._roll_fireball(pos)
+        self._ignited.clear()
+
+    def _roll_fireball(self, pos):
+        """火球朝自身方向滚一格。撞硬障碍即熄灭；烧掉挡路的软目标。"""
+        d = self.fireballs[pos]
+        di, dj = DIRS[d]
+        nxt = (pos[0] + di, pos[1] + dj)
+        if (not (0 <= nxt[0] < self.h and 0 <= nxt[1] < self.w)
+                or nxt in self.walls
+                or (nxt in self.door_cells and nxt not in self.doors)
+                or (nxt in self.gold and nxt not in self.gold_open)):
+            self.fireballs.pop(pos, None)        # 撞墙/关门/未开金门 → 熄灭
+            return
+        if nxt in self.bombs:                    # 撞炸弹 → 引爆自己消失
+            self.bombs.discard(nxt)
+            self.fireballs.pop(pos, None)
+            self._explode(nxt)
+            return
+        if nxt in self.crates:                   # 烧毁箱子，火球也熄（否则火球太强）
+            self.crates.discard(nxt)
+            self.fireballs.pop(pos, None)
+            return
+        if nxt in self.fireballs:                # 火球对撞 → 都熄
+            self.fireballs.pop(nxt, None)
+            self.fireballs.pop(pos, None)
+            return
+        self.fireballs.pop(pos, None)
+        self.fireballs[nxt] = d
+        if nxt == self.player:
+            self._kill_player()
+
+    def _explode(self, center):
+        """炸弹爆炸：十字 1 格波及；范围内的炸弹**连锁**引燃；软目标被摧毁。"""
+        queue, seen, guard = [center], set(), 0
+        while queue:
+            guard += 1
+            assert guard < 4096, f'爆炸连锁失控（{guard} 次）—— 引信/连锁写成了环'
+            c = queue.pop(0)
+            if c in seen:
+                continue
+            seen.add(c)
+            self.blasts.add(c)
+            for dr, dc in BLAST_SHAPE:
+                p = (c[0] + dr, c[1] + dc)
+                if not (0 <= p[0] < self.h and 0 <= p[1] < self.w):
+                    continue
+                self.blasts.add(p)               # 波及格先全记下（渲染要画整片火光）
+                if p in self.walls or p in self.door_cells or p in self.gold:
+                    continue                     # 墙/门/金门**不可摧毁**
+                self.fireballs.pop(p, None)      # 火球被扑灭
+                self.crates.discard(p)           # 炸掉箱子 ← 炸弹的主要用途
+                if p in self.bombs and p not in seen:
+                    self.bombs.discard(p)
+                    self.fuses.pop(p, None)
+                    queue.append(p)              # 连锁
+                if p == self.player:
+                    self._kill_player()
+
+    def _kill_player(self):
+        if self._status == 'playing':
+            self._status = 'lost'
+            self.deaths += 1
+
+    def _judge_end(self, ev: str) -> str:
+        """终局判定（世界推进**之后**跑一次）。返回这一步对外的事件名。"""
+        if self._status == 'playing':
+            if self.player in self.spikes and self.player not in self.spike_dead:
+                self._kill_player()
+            elif self.player == self.exit:
+                self._status = 'won'
+        if self._status == 'won':
+            return 'won'
+        if self._status == 'lost':
+            return 'died'
+        return ev
+
+    def _flush_switches(self):
+        """按「触发集变化」发连接事件。三类事件一次算清：
 
         * `pressed - prev` → `src_on`（进入触发态）
         * `prev - pressed` → `src_off`（离开触发态）
         * `pressed ^ prev` → `src_flip`（**变化**，`mode='toggle'` 用）
 
-        早先 `src_flip` 只在拉杆分支里直接发，导致「按钮 + toggle 连接」**永远不动作**
-        —— 静默失效，不报错。统一到一处后，任何开关的 toggle 都成立，且每个开关每步
-        至多发一次 flip（不会自己把自己翻两次）。
-
         三处都**排序**后遍历：集合迭代序不该进入玩法语义。求解器解出唯一解的前提是
         「同关同输入 ⇒ 同事件序」，而 `solve()` 的 docstring 明确承诺了这条。
+
+        本函数**不碰拉杆**（那属于"走进"这个动作，见 `_step_on_lever`），
+        因此可以安全地在一步里被调用多次（玩家动作后、世界推进后各一次）。
         """
-        if self.player in self.lever_cells:      # 拉杆：走过即翻转（切换型，箱子压不住）
-            lever = self.player
-            on = self.levers
-            if lever in on:
-                on.discard(lever)
-            else:
-                on.add(lever)
         pressed = self._pressed_sources()
         prev = self._pressed_prev
         for src in sorted(pressed - prev):
@@ -412,6 +586,10 @@ class BrickwardKernel(Service):
         for src in sorted(pressed ^ prev):
             self.bus.emit(f'src_flip:{src}')
         self._pressed_prev = pressed
+
+    def _settle(self, d=None, ev=None):
+        """触发集对账 + 记录（装载路径与 `step` 共用的收口点）。"""
+        self._flush_switches()
         if d is not None:
             self.log.append((d, ev, self.status()))
 
@@ -450,6 +628,9 @@ class BrickwardKernel(Service):
                     lever_cells=sorted(self.lever_cells), levers_on=sorted(self.levers),
                     button_cells=sorted(self.button_cells),
                     spikes=sorted(self.spikes), spikes_dead=sorted(self.spike_dead),
+                    bombs=sorted(self.bombs), fuses=sorted(self.fuses.items()),
+                    fireballs=sorted(self.fireballs.items()),
+                    blasts=sorted(self.blasts),
                     exit=self.exit, steps=self.steps, pushes=self.pushes,
                     deaths=self.deaths, status=self._status)
 
@@ -457,13 +638,18 @@ class BrickwardKernel(Service):
         """状态指纹（求解器去重用）。
 
         **不变式**：凡是能影响"从此刻往后还能怎么演化"的量，一个都不能漏；
-        与之无关的（`steps`/`pushes`/`deaths`/`log`）一个都不能进 ——
+        与之无关的（`steps`/`pushes`/`deaths`/`log`/`blasts`/`_ignited`）一个都不能进 ——
         漏了会让 BFS 把两个不同的局面当成同一个而剪掉正解；
         多算了会让同一局面分成多个节点、白烧内存。
+
+        `fireballs` 是 dict（位置 → 方向）：**方向必须进指纹** —— 两个"火球在同一格"
+        的局面，朝上和朝下往后滚的方向完全不同。`fuses` 同理（引信剩几步决定何时爆）。
         """
         return (self.player, frozenset(self.crates), frozenset(self.doors),
                 frozenset(self.gold_open), frozenset(self.keys), self.keys_held,
-                frozenset(self.levers), frozenset(self.spike_dead), self._status)
+                frozenset(self.levers), frozenset(self.spike_dead), self._status,
+                frozenset(self.bombs), frozenset(self.fuses.items()),
+                frozenset(self.fireballs.items()))
 
     def clone_from(self, src):
         """把 ``src`` 的状态复制过来（求解器用）。
@@ -474,6 +660,9 @@ class BrickwardKernel(Service):
         ⚠ **不要在这里重跑 `_settle`**：玩家可能正站在拉杆上（状态里那一脚已经
         扳过了），再跑一次会把它扳回去 —— 克隆出来的节点就是错的。
         触发集差异由拷贝 `_pressed_prev` 消除，BUS 由 `_bind_links` 重绑。
+
+        `blasts` / `_ignited` 是**本步**的瞬态（只服务于渲染与"本步不倒计时"），
+        克隆总是发生在步与步之间 ⇒ 一律清空，不进指纹。
         """
         self.ctx = getattr(src, 'ctx', None)
         self.seed, self.start_level = src.seed, src.start_level
@@ -487,6 +676,10 @@ class BrickwardKernel(Service):
         self.spikes = src.spikes
         self.exit = src.exit
         self.crates = set(src.crates)
+        self.bombs = set(src.bombs)
+        self.fireballs = dict(src.fireballs)
+        self.fuses = dict(src.fuses)
+        self.blasts = set()
         self.doors = set(src.doors)
         self.levers = set(src.levers)
         self.gold_open = set(src.gold_open)
@@ -494,6 +687,7 @@ class BrickwardKernel(Service):
         self.spike_dead = set(src.spike_dead)
         self.player = src.player
         self.keys_held = src.keys_held
+        self._ignited = set()
         self._pressed_prev = set(getattr(src, '_pressed_prev', ()))
         self._status = src.status()
         self.steps = self.pushes = self.deaths = 0
@@ -595,6 +789,30 @@ LEVEL_ART = {
 #.......#...#
 #.......#..E#
 #############
+""",
+    # ---- B2a：炸弹（引信 2 步、十字 1 格）与火球（推动即朝该方向滚）----
+    # 出口（row1）只有 (2,5)/(3,5)/(4,5)/(5,5) 一条 1 格宽竖井通上去，
+    # 箱子卡在竖井顶且**上面就是出口** —— 把它推上去 = 出口被自己堵死（再也推不动），
+    # 所以**必须用炸弹炸掉它**。
+    # 布局要点：炸弹就放在玩家正上方，连推两次到位（中途不换方向），
+    # 之后玩家还有 2 步退到 (6,5) 逃出"十字 1 格"。
+    # 早先那版把炸弹放在侧边走廊、要"右推两下再绕到下方上推"，中途必然多花 2 步 ——
+    # 引信正好在那 2 步里烧完，玩家被炸死（BFS 直接判"不可解"，这版是它的修正）。
+    '炸药开路': """
+###########
+#....E....#
+#####C#####
+#####.#####
+#####.#####
+#####b#####
+#####P#####
+###########
+""",
+    # 火球教学：推它一下就开始滚，烧掉挡路的箱子后熄灭。
+    '火球烧箱': """
+###########
+#P.f..C..E#
+###########
 """,
 }
 
