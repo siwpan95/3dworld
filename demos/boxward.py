@@ -13,7 +13,8 @@
 - update()  键盘走子 / `--flag auto` 的求解器回放交给内核，事件转音效；
 - render()  只读内核 / 网格状态：**静态墙 = 贪心合并网格**（`greedy_mesh`，一次建网），
             箱 / 玩家 / 目标 = 动态小 cube 逐个 batch（u_model 平移缩放），
-            正交 45° 视角（Q/E 以 90° 步进旋转，WASD 方向随相机映射）。
+            **正交等距视角**（偏航 = 45° + 90°·档，Q/E 切档；俯角 P 键循环，默认 45°），
+            WASD 方向随相机映射（映射按 90° 档取整，故屏幕上呈四个斜向）。
 
 **单一事实来源 = 关卡 JSON**：编辑器（M 键）导出的 = 生成器产出的 = 内核吃的。
 **auto-pilot = 求解器回放**：`--flag auto` 与 `config_boot puzzle` 的 headless 验收同源。
@@ -120,14 +121,22 @@ TINT_CURSOR = (0.30, 0.90, 0.95)
 
 class BoxwardDemo(DemoApp):
     TITLE = '归仓 / Boxward —— 方块解谜（推箱入仓 · 贪心合批 · 程序化关卡）'
-    HELP = ('WASD 走/推   Q/E 旋转视角   Z 撤销   N 下一关   R 新种子关   '
-            'M 编辑   SPACE 暂停   ESC 退出')
+    HELP = ('WASD 走/推   Q/E 旋转视角   P 俯角   Z 撤销   N 下一关   '
+            'R 新种子关   M 编辑   SPACE 暂停   ESC 退出')
     DURATION = None          # 交互型：time 不取模，持续累加
     HUD = True
     SHOTS = ((6.0, 'docs/boxward_a.png'),       # 手工关中段：推箱进行时
              (18.0, 'docs/boxward_b.png'))      # auto 连续闯关中的生成关
 
     ZOOM = 8.2               # 正交半高（世界单位）
+
+    # 等距视角：偏航固定比"轴对齐"多 45°，这样每个方块同时露出**两个侧面 + 顶面**，
+    # 立体感才出来（轴对齐时一个方块只能看到一个面，整幅画面读起来像 2D 平面）。
+    # ⚠️ 输入映射**不跟着转**：`cam_move_dirs(rot)` 仍按 `90°·rot` 取整 —— 于是四个
+    # 方向键在屏幕上呈现为四个"斜向"（经典等距游戏的操作感）。「相机偏航 +45°」与
+    # 「输入按 90° 分档」是两件独立的事，别把它们合并成一件。
+    YAW_OFFSET = 45.0
+    PITCH_PRESETS = (30.0, 38.0, 45.0, 52.0)   # P 键循环（俯角越大越俯视）
 
     def setup(self):
         glEnable(GL_DEPTH_TEST)
@@ -138,8 +147,8 @@ class BoxwardDemo(DemoApp):
         # ---- Cordis 挂载（配置树驱动）----
         self.ctx, self.kernel = self._boot_kernel()
         self.grid = self.kernel.ctx.grid
-        self.cam = OrbitCamera(target=Vec3(0, 0.4, 0), yaw=0.0, pitch=40.0,
-                               dist=17.0, pitch_range=(28.0, 60.0),
+        self.cam = OrbitCamera(target=Vec3(0, 0.4, 0), yaw=self.YAW_OFFSET, pitch=45.0,
+                               dist=17.0, pitch_range=(30.0, 60.0),
                                dist_range=(10.0, 30.0))
         self._rot = 0
 
@@ -272,10 +281,15 @@ class BoxwardDemo(DemoApp):
             self.kernel.step(dirs['D'])
         elif symbol == key.Q:
             self._rot = (self._rot - 1) % 4
-            self.cam.yaw = 90.0 * self._rot
+            self.cam.yaw = self.YAW_OFFSET + 90.0 * self._rot
         elif symbol == key.E:
             self._rot = (self._rot + 1) % 4
-            self.cam.yaw = 90.0 * self._rot
+            self.cam.yaw = self.YAW_OFFSET + 90.0 * self._rot
+        elif symbol == key.P:
+            # 俯角循环：30°（最平、侧面最露）→ 52°（最俯视）。默认 45° 是"等距感"最均衡的一档。
+            i = self.PITCH_PRESETS.index(self.cam.pitch) if self.cam.pitch in self.PITCH_PRESETS else -1
+            self.cam.pitch = self.PITCH_PRESETS[(i + 1) % len(self.PITCH_PRESETS)]
+            self._edit_msg = f'俯角 {self.cam.pitch:.0f}°'
         elif symbol == key.Z:
             self.kernel.undo()
         elif symbol == key.N:
@@ -450,7 +464,8 @@ class BoxwardDemo(DemoApp):
         st = {'won': '入仓', 'prep': ''}.get(k.ctx.rules.state(), '')
         return (f'关 {k.level_name}   步 {k.steps}   推 {k.pushes}/par{par}   '
                 f'箱 {sum(1 for c in g.boxes if g.on_goal(*c))}/{len(g.goals)}   '
-                f'视角{"NESW"[self._rot]}   {self._edit_msg}'
+                f'视角 {int(round(self.cam.yaw)) % 360}°/俯 {int(round(self.cam.pitch))}°   '
+                f'{self._edit_msg}'
                 f'{"  [编辑]" if self._editing else ""}'
                 f'{"  [AUTO]" if self.auto else ""}'
                 f'{"  [PAUSED]" if self.paused else ""}'
