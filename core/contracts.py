@@ -656,6 +656,21 @@ def status_table() -> str:
     return '\n'.join(lines)
 
 
+def _root_cause(exc: BaseException, _max: int = 8) -> BaseException:
+    """沿 ``__cause__`` 链取最底层异常。
+
+    包装异常（如 ``raise ImportError('...') from exc``）把真实原因藏在链尾，
+    只看 ``str(e)`` 会误判：cordis **已定位**但自身依赖缺失时，包装文案里同样
+    含 "cordis"，会被误记成「未暴露 cordis」，把排查方向从「装依赖」带偏。
+    """
+    cur = exc
+    n = 0
+    while cur.__cause__ is not None and n < _max:
+        cur = cur.__cause__
+        n += 1
+    return cur
+
+
 def verify(verbose: bool = True) -> dict[str, Any]:
     """可选自检：核对每个核心契约 docstring 声明的「现有模块」是否真的能 import。
 
@@ -691,16 +706,24 @@ def verify(verbose: bool = True) -> dict[str, Any]:
             if verbose:
                 print(f'  [verify] {name}: OK (模块 {mod} 可 import)')
         except ImportError as e:
-            # core.* 的实现继承 cordis.Service —— 未暴露 cordis 时记为 pending 而非 err
-            # （契约层本身仍不依赖 cordis；这里只是"实现层"的运行时依赖）
-            if 'cordis' in str(e):
+            # core.* 的实现继承 cordis.Service —— cordis 相关失败记为 pending 而非 err
+            # （契约层本身仍不依赖 cordis；这里只是"实现层"的运行时依赖）。
+            #
+            # 不能只判 ``'cordis' in str(e)``：cordis 已定位但自身依赖缺失时，
+            # 包装文案里同样含 "cordis"，会被误记成 pending:cordis，给出
+            # "去设 CORDIS_SRC" 这个永远无效的指令。故沿 __cause__ 找根因后再分类。
+            root = _root_cause(e)
+            missing = getattr(root, 'name', None) if isinstance(root, ImportError) else None
+            if missing and missing != 'cordis':
+                results[name] = f'pending:dep(缺 {missing})'
+                if verbose:
+                    print(f'  [verify] {name}: pending（缺依赖 {missing} —— '
+                          f'请 pip install -r requirements.txt）')
+            else:
                 results[name] = 'pending:cordis'
                 if verbose:
-                    print(f'  [verify] {name}: pending（需 cordis：设 CORDIS_SRC 或经 .pth 暴露）')
-            else:
-                results[name] = f'err:{e.__class__.__name__}'
-                if verbose:
-                    print(f'  [verify] {name}: ERR {e.__class__.__name__}: {e}')
+                    print(f'  [verify] {name}: pending（需 cordis：应自动回退 '
+                          f'vendor/cordis/src，或设 CORDIS_SRC 显式覆盖）')
         except Exception as e:  # 路径写错等
             results[name] = f'err:{e.__class__.__name__}'
             if verbose:

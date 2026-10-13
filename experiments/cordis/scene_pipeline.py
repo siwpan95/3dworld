@@ -38,17 +38,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.insert(0, ROOT)
 
 # ---- cordis 定位：优先已安装；其次 CORDIS_SRC 指向的源码目录 ----
-try:
-    import cordis  # noqa: F401
-except ImportError:
-    _src = os.environ.get('CORDIS_SRC')
-    if _src and os.path.isdir(_src):
-        sys.path.insert(0, _src)
-    try:
-        import cordis  # noqa: F401
-    except ImportError:
-        sys.exit('[cordis] 未找到 cordis 包。安装方式见 '
-                 'experiments/cordis/README.md（或设置 CORDIS_SRC）')
+import _cordis_locate  # noqa: E402
+
+_cordis_locate.ensure()
 
 from cordis import Context, Service                 # noqa: E402
 from engine.scene_build import load_json, validate  # noqa: E402

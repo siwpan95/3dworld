@@ -1,1 +1,14 @@
+# 3dworld 运行时依赖 —— clean clone 执行 `pip install -r requirements.txt` 即可跑通
+# 全部 31 个 demo 与 129 项测试，无需手工设置 CORDIS_SRC 或创建 .pth。
+
+# 渲染/窗口层
 pyglet==2.1.16
+
+# ---- vendored cordis（vendor/cordis/src）的硬依赖 ------------------------
+# 上游 cordis 把 PyYAML 与 watchdog 标为 optional extra，但实为硬依赖：
+#   cordis/__init__.py 无条件 `from .hmr import Hmr`
+#   → hmr.py 顶层 `import yaml`，且模块级 `class _WatchHandler(FileSystemEventHandler)`
+#     把可能为 None 的名字当基类（缺 watchdog 时抛 TypeError: NoneType takes no arguments）
+# 因此二者缺一，`import cordis` 必失败。此前未声明，是本次上线前全检的 P0 发布阻断项。
+PyYAML>=6.0,<7
+watchdog>=4.0,<7

@@ -32,18 +32,9 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 # ---- cordis 定位（vendored 源码经 .pth 暴露；换环境时可设 CORDIS_SRC） ----
-try:
-    import cordis  # noqa: F401
-except ImportError:
-    _src = os.environ.get('CORDIS_SRC')
-    if _src and os.path.isdir(_src):
-        sys.path.insert(0, _src)
-    try:
-        import cordis  # noqa: F401
-    except ImportError as exc:
-        raise ImportError(
-            '[cordis] 未找到 cordis 包。安装方式见 experiments/cordis/README.md'
-            '（或设置 CORDIS_SRC）') from exc
+import _cordis_locate  # noqa: E402
+
+_cordis_locate.ensure()
 
 import yaml  # noqa: E402
 from cordis import Context, Loader  # noqa: E402
@@ -70,6 +61,36 @@ def config_path(name: str) -> str:
     return os.path.join(CONFIG_DIR, name)
 
 
+# ---- 配置树 entry 白名单（安全审计 F-002：配置即代码）----------------------
+# cordis 的 Loader 会把每条 entry 的 ``name`` 直接交给 ``importlib.import_module``
+# （见 vendor/cordis/src/cordis/loader.py）。也就是说：**改一个 .yml 就等于改一段
+# 可执行代码**——而 .yml 在评审者眼里通常被当作"数据"，因此一行 diff 即可获得任意
+# 代码执行，属典型的"评审绕过"（在 cordis.puzzle.yml 里加一行 ``- name: os`` 即可）。
+# 信任边界虽已收敛在"仓库内容"（用了 yaml.safe_load，且 CLI 的 kind 走白名单词典
+# 查表、外部无法指定 YAML 路径），仍在此处强制白名单，把这条原语钉死。
+ALLOWED_NAME_PREFIXES = ('experiments.cordis.',)
+ALLOWED_NAME_EXACT = ('@cordisjs/plugin-group',)
+
+
+def _validate_entry_names(data, path: str) -> None:
+    """拒绝白名单之外的 entry ``name``（它们会被 cordis 当作模块名导入）。"""
+    if not isinstance(data, list):
+        return
+    for i, entry in enumerate(data):
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get('name')
+        if not isinstance(name, str):
+            continue
+        if name in ALLOWED_NAME_EXACT or name.startswith(ALLOWED_NAME_PREFIXES):
+            continue
+        raise ValueError(
+            f'配置树 {path} 第 {i} 条 entry 的 name={name!r} 不在白名单内 —— '
+            f'entry name 会被 cordis 直接 import，等同于执行代码。'
+            f'允许前缀：{ALLOWED_NAME_PREFIXES}；允许精确值：{ALLOWED_NAME_EXACT}。'
+        )
+
+
 async def load_tree(ctx, path: str):
     """用 Cordis 原生 Loader 把 cordis.yml 配置树挂载为服务图。
 
@@ -86,6 +107,7 @@ async def load_tree(ctx, path: str):
         await asyncio.sleep(0)                     # drain：等 isolate 等子插件初始化完毕
     with open(path, 'r', encoding='utf-8') as f:
         data = yaml.safe_load(f)
+    _validate_entry_names(data, path)              # 白名单：name 会被当模块名导入
     await loader.root.update(data)                 # 配置驱动：声明即挂载
     return loader
 

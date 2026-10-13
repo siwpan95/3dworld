@@ -172,7 +172,9 @@ class TimelineUI:
         span = self.track_x1 - self.track_x0
         frac = 0.0 if span <= 0 else (x - self.track_x0) / span
         frac = max(0.0, min(1.0, frac))
-        return frac * self.duration
+        # duration <= 0（含负值）时统一退化为 0：否则负时长会算出负时间，
+        # 而 update() 里的 frac 计算是有 ``duration <= 0`` 守卫的 —— 两处口径需一致。
+        return max(0.0, frac * self.duration)
 
     def on_press(self, x, y):
         """左键按下。命中面板返回 True（拦截相机），否则 False。"""

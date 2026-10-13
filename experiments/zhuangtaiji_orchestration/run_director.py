@@ -20,7 +20,16 @@ import json
 import os
 import sys
 
-Z = os.environ.get('ZHUANGTAIJI_PATH', r'G:\repos\zhuangtaiji')
+# 安全（上线前全检 F-004）：原本这里写成
+#   ``os.environ.get('ZHUANGTAIJI_PATH', r'G:\repos\zhuangtaiji')``
+# 即"带机器相关默认值的外部路径 + 模块级 sys.path.insert(0, …)"——默认值意味着
+# **无需设置任何环境变量**，只要目标机器存在可写的 G 盘，放入同名包即可自动激活，
+# 等同于随代码分发一条活性注入路径。现改为：必须显式指定，且先经 isdir 校验。
+Z = os.environ.get('ZHUANGTAIJI_PATH', '')
+if not Z or not os.path.isdir(Z):
+    sys.exit('[zhuangtaiji] 需要环境变量 ZHUANGTAIJI_PATH 指向 zhuangtaiji 源码目录'
+             f'（外部兄弟仓库，不在本仓库内）；当前值无效：{Z or "<未设置>"}。'
+             '本试点为 dev-only，未配置时不可用。')
 sys.path.insert(0, Z)
 
 from core.orchestrator import build_orchestrator_from_config  # noqa: E402

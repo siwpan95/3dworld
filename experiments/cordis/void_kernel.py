@@ -23,13 +23,9 @@ import sys
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
-try:
-    import cordis  # noqa: F401
-except ImportError:
-    _src = os.environ.get('CORDIS_SRC')
-    if _src and os.path.isdir(_src):
-        sys.path.insert(0, _src)
-    import cordis  # noqa: F401
+import _cordis_locate  # noqa: E402
+
+_cordis_locate.ensure()
 
 from cordis import Service  # noqa: E402
 

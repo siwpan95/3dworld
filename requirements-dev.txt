@@ -1,0 +1,13 @@
+# 开发/验收工具 —— 运行测试与发布检查时才需要，运行 demo 不需要。
+#
+# 安装：pip install -r requirements-dev.txt
+# 回归：python scripts/run_all_tests.py
+# 覆盖率：coverage run scripts/run_all_tests.py && coverage report
+
+# 静态检查：上线前全检用它跑出 931 项告警（BLE001 盲目 except 87 / F401 未用导入 78 /
+# S110 try-except-pass 23）。建议至少把 F811（重复定义）接入门禁 —— 本次全检正是
+# 靠 F811 抓到 demos/voxel_terrain.py 里被覆盖掉的 update()。
+ruff>=0.17.0
+
+# 覆盖率
+coverage>=7.0

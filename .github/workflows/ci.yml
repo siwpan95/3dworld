@@ -1,0 +1,41 @@
+name: CI
+
+# 上线前全检时新增（此前项目**零 CI** —— 依赖缺失、重复方法定义这类缺陷
+# 没有任何自动化手段能发现）。核心守的是两件事：
+#   1) clean clone + `pip install -r requirements.txt` 之后能跑（P0：环境可复现）
+#   2) 过程中**不设置 CORDIS_SRC** —— 强制走 vendored cordis 的自动回退路径，
+#      一旦有人把接线改回"必须手工设置"就会在这里红掉。
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  regression:
+    # 说明：本项目渲染层基于 pyglet + OpenGL，开发与验收均在 Windows 上完成。
+    # Linux runner 无 GL 上下文，GL 用例会走 `_gl_available()` 的 SKIP 分支
+    # （不是失败，但等于没测到），故暂只跑 Windows；等接入 EGL/OSMesa 再扩。
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 安装运行时依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 验证 vendored cordis 自动接线（不设 CORDIS_SRC）
+        shell: bash
+        run: |
+          unset CORDIS_SRC
+          python -c "import _cordis_locate; _cordis_locate.ensure(); import cordis; print('cordis ->', cordis.__file__)"
+
+      - name: 契约自检
+        run: python -c "import core.contracts as c; print(c.status_table())"
+
+      - name: 一键回归
+        run: python scripts/run_all_tests.py --quiet

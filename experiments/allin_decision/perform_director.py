@@ -16,7 +16,13 @@ camera_pose 用大量 `_window()` 拼接）。本试点用 allin_engine.ai.decis
 import os
 import sys
 
-AN_ENGINE = os.environ.get('AN_ENGINE_PATH', r'G:\repos\an-engine')
+# 安全（上线前全检 F-004）：同 run_director.py —— 移除 ``G:\repos\an-engine`` 这类
+# 机器相关默认值（否则"存在 G 盘"即可免环境变量自动激活），并强制 isdir 校验。
+AN_ENGINE = os.environ.get('AN_ENGINE_PATH', '')
+if not AN_ENGINE or not os.path.isdir(AN_ENGINE):
+    sys.exit('[allin] 需要环境变量 AN_ENGINE_PATH 指向 an-engine 源码目录'
+             f'（外部仓库，不在本仓库内）；当前值无效：{AN_ENGINE or "<未设置>"}。'
+             '本试点为 dev-only，未配置时不可用。')
 sys.path.insert(0, AN_ENGINE)
 
 from allin_engine import create_state_machine          # noqa: E402
