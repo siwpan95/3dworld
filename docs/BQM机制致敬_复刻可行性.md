@@ -1,7 +1,7 @@
 # BQM（砖块迷宫建造者）机制致敬 · 复刻可行性探讨
 
 > 状态：**调研 + 可行性（待全哥定范围，未动代码）** · 2026-10-13
-> 起因：全哥在推箱子（`demos/boxward.py`）视角改造后提出「想到了 BQM，探讨能否制作复刻版」。
+> 起因：全哥在推箱子（`examples/boxward.py`）视角改造后提出「想到了 BQM，探讨能否制作复刻版」。
 > 调研：2026-10-13 联网检索（来源见 §1 与文末）。
 
 ---
@@ -39,7 +39,7 @@
 
 处理原则与既有惯例一致：**非 MIT/开放许可的参考源只读思路、不搬码不搬素材**；
 文档与 README 明确标注「机制致敬 BlockQuest Maker (2018)，非移植、非复刻」。
-（`demos/README.md` 里 kkrieger / nordic_saga / swarmward 等已是同一写法。）
+（`examples/README.md` 里 kkrieger / nordic_saga / swarmward 等已是同一写法。）
 
 ## 3. 机制拆解（调研所得）
 
@@ -70,7 +70,7 @@
 
 | BQM 要素 | 3dworld 现成件 | 状态 |
 |---------|---------------|:----:|
-| 45° 等距方块视角 | `demos/boxward.py`（偏航 45° + 俯角 45°，`P` 调） | ✅ 刚做完 |
+| 45° 等距方块视角 | `examples/boxward.py`（偏航 45° + 俯角 45°，`P` 调） | ✅ 刚做完 |
 | 一格一步推箱 + 只推不拉 | `games/puzzle/kernel.py`（`PuzzleKernel` + BFS 求解器） | ✅ |
 | 方块地牢 + 静态墙合批 | `core/sdf_core.py`（`SdfVoxelCore`）+ `engine/greedy_mesh.py` | ✅ |
 | **关卡编辑器**（摆格/试解/导出） | boxward 的 `M` 键编辑器 + `levels/*.json`（编辑器/生成器/内核三端同 schema） | ✅ 种子已有 |
@@ -122,7 +122,7 @@
 | # | 问题 | 推荐 |
 |---|------|------|
 | 1 | 做"机制致敬版"是否可接受（不做完整复刻）？ | **接受** —— 合规上唯一稳妥的路 |
-| 2 | 载体：新建 `games/brickward/` + `demos/brickward.py`？还是继续扩 `boxward`？ | **新建** —— BQM 的机关/道具系统远比推箱大，塞进 boxward 会把它撑坏 |
+| 2 | 载体：新建 `games/brickward/` + `examples/brickward.py`？还是继续扩 `boxward`？ | **新建** —— BQM 的机关/道具系统远比推箱大，塞进 boxward 会把它撑坏 |
 | 3 | MVP 元素集 9 个够不够？ | **够** —— 先证明"组合出谜题"，再按玩法缺口扩 |
 | 4 | 是否要做"玩家关卡包"（仓库内 JSON 分享）替代联网？ | **做** —— 零成本，且天然可版本化/可回归测试 |
 

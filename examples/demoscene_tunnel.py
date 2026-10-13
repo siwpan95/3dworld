@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """无限隧道（demoscene 经典）：全屏片元着色器 + 时间 uniform。
 
-本 demo 同时充当 `demos/` 的**参考样板**：它演示了所有 demo 共用的骨架
+本 demo 同时充当 `examples/` 的**参考样板**：它演示了所有 demo 共用的骨架
 （`world3d/platform/app.py` 的 DemoApp）以及"纯片元着色器"这一类 demo 的标准写法：
 
 - 几何只有一个 NDC 全屏四边形（`make_fullscreen_quad`），不含任何顶点动画；
@@ -14,9 +14,9 @@
 
 用法::
 
-    python demos/demoscene_tunnel.py
-    python demos/demoscene_tunnel.py --smoke
-    python demos/demoscene_tunnel.py --shot
+    python examples/demoscene_tunnel.py
+    python examples/demoscene_tunnel.py --smoke
+    python examples/demoscene_tunnel.py --shot
 
 按键：SPACE 暂停，1/2/3 切换配色，T 切换扭动，G 切换扫描线，ESC 退出。
 """

@@ -8,9 +8,9 @@
 
 运行::
 
-    python demos/skinned_creature.py
-    python demos/skinned_creature.py --smoke     冒烟（~2s 自动关）
-    python demos/skinned_creature.py --shot      抓帧到 docs/ 后关闭
+    python examples/skinned_creature.py
+    python examples/skinned_creature.py --smoke     冒烟（~2s 自动关）
+    python examples/skinned_creature.py --shot      抓帧到 docs/ 后关闭
 
 按键：拖动=旋转视角  滚轮=缩放  SPACE=暂停  A=摆动开关  ESC=退出
 """

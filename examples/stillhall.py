@@ -8,9 +8,9 @@
 
 运行::
 
-    python demos/stillhall.py
-    python demos/stillhall.py --smoke
-    python demos/stillhall.py --shot
+    python examples/stillhall.py
+    python examples/stillhall.py --smoke
+    python examples/stillhall.py --shot
 
 合规：致敬 Myst(1993) 的"节点式漫游 + 点击热点 + 谜题状态机"，**不碰原 IP 名称与素材**；
 全部几何/文案/谜题为本项目原创。

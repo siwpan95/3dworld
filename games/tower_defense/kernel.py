@@ -55,7 +55,7 @@ from core.contracts import (  # noqa: E402
 
 
 # ===================================================================== 平衡常量
-# （与 demos/tower_defense.py 完全一致，保证模拟结果可复现：约 t≈137s 通关）
+# （与 examples/tower_defense.py 完全一致，保证模拟结果可复现：约 t≈137s 通关）
 GRID = 20
 CELL = 2.0
 HALF = GRID * CELL / 2.0

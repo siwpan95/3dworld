@@ -32,9 +32,9 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
-DEMOS_DIR = os.path.join(ROOT, 'demos')
-if DEMOS_DIR not in sys.path:
-    sys.path.insert(0, DEMOS_DIR)
+EXAMPLES_DIR = os.path.join(ROOT, 'examples')
+if EXAMPLES_DIR not in sys.path:
+    sys.path.insert(0, EXAMPLES_DIR)
 
 OUT_DIR = os.path.join(ROOT, 'recordings')
 DEFAULT_FPS = 30
@@ -45,37 +45,37 @@ ENTRIES = [
     dict(name='main_48s',            mod='main.py',                cls='WorldApp',    dur=48.0, size=None),
     dict(name='kkrieger_150s',       mod='kkrieger_demo.py',       cls='KKApp',       dur=150.0, size=None,
          audio='assets/kkrieger_ost_150s.wav'),   # 录完把程序化配乐混进视频
-    dict(name='boids_45s',           mod='demos/boids.py',         cls=None,          dur=45.0, size=DEMO_SIZE),
-    dict(name='demoscene_tunnel_24s', mod='demos/demoscene_tunnel.py', cls=None,      dur=24.0, size=DEMO_SIZE),
-    dict(name='minecraft_style_48s', mod='demos/minecraft_style.py', cls=None,        dur=48.0, size=DEMO_SIZE),
-    dict(name='particles_gpu_30s',   mod='demos/particles_gpu.py', cls=None,          dur=30.0, size=DEMO_SIZE),
-    dict(name='raymarch_sdf_32s',    mod='demos/raymarch_sdf.py',  cls=None,          dur=32.0, size=DEMO_SIZE),
-    dict(name='shadow_map_30s',      mod='demos/shadow_map.py',    cls=None,          dur=30.0, size=DEMO_SIZE),
-    dict(name='solar_system_60s',    mod='demos/solar_system.py',  cls=None,          dur=60.0, size=DEMO_SIZE),
-    dict(name='terrain_flyover_48s', mod='demos/terrain_flyover.py', cls=None,        dur=48.0, size=DEMO_SIZE),
-    dict(name='mountain_100s',       mod='demos/mountain.py',       cls=None,          dur=100.0, size=DEMO_SIZE),
-    dict(name='tower_defense_60s',   mod='demos/tower_defense.py',  cls=None,          dur=60.0, size=DEMO_SIZE),
-    dict(name='godhand_30s',         mod='demos/godhand.py',        cls=None,          dur=30.0, size=DEMO_SIZE),
+    dict(name='boids_45s',           mod='examples/boids.py',         cls=None,          dur=45.0, size=DEMO_SIZE),
+    dict(name='demoscene_tunnel_24s', mod='examples/demoscene_tunnel.py', cls=None,      dur=24.0, size=DEMO_SIZE),
+    dict(name='minecraft_style_48s', mod='examples/minecraft_style.py', cls=None,        dur=48.0, size=DEMO_SIZE),
+    dict(name='particles_gpu_30s',   mod='examples/particles_gpu.py', cls=None,          dur=30.0, size=DEMO_SIZE),
+    dict(name='raymarch_sdf_32s',    mod='examples/raymarch_sdf.py',  cls=None,          dur=32.0, size=DEMO_SIZE),
+    dict(name='shadow_map_30s',      mod='examples/shadow_map.py',    cls=None,          dur=30.0, size=DEMO_SIZE),
+    dict(name='solar_system_60s',    mod='examples/solar_system.py',  cls=None,          dur=60.0, size=DEMO_SIZE),
+    dict(name='terrain_flyover_48s', mod='examples/terrain_flyover.py', cls=None,        dur=48.0, size=DEMO_SIZE),
+    dict(name='mountain_100s',       mod='examples/mountain.py',       cls=None,          dur=100.0, size=DEMO_SIZE),
+    dict(name='tower_defense_60s',   mod='examples/tower_defense.py',  cls=None,          dur=60.0, size=DEMO_SIZE),
+    dict(name='godhand_30s',         mod='examples/godhand.py',        cls=None,          dur=30.0, size=DEMO_SIZE),
          # auto 约 28s 通关 -> 录 30s（原先 40s 有 12s 是静止结算画面）
-    dict(name='rayhold_25s',         mod='demos/rayhold.py',        cls=None,          dur=25.0, size=DEMO_SIZE,
+    dict(name='rayhold_25s',         mod='examples/rayhold.py',        cls=None,          dur=25.0, size=DEMO_SIZE,
          flags='auto'),                            # 交互型必须走 auto（否则玩家站桩挨打）
          # auto 约 21s 通关 -> 录 25s（原先 60s 有 39s 是静止结算画面）
-    dict(name='boxward_60s',         mod='demos/boxward.py',        cls=None,          dur=60.0, size=DEMO_SIZE,
+    dict(name='boxward_60s',         mod='examples/boxward.py',        cls=None,          dur=60.0, size=DEMO_SIZE,
          flags='auto'),                            # 求解器 auto-play
-    dict(name='swarmward_60s',       mod='demos/swarmward.py',      cls=None,          dur=60.0, size=DEMO_SIZE,
+    dict(name='swarmward_60s',       mod='examples/swarmward.py',      cls=None,          dur=60.0, size=DEMO_SIZE,
          flags='auto'),                            # 闪避 AI 与 headless 验收同源
-    dict(name='voxel_terrain_36s',   mod='demos/voxel_terrain.py', cls=None,          dur=36.0, size=DEMO_SIZE),
-    dict(name='water_waves_40s',     mod='demos/water_waves.py',   cls=None,          dur=40.0, size=DEMO_SIZE),
-    dict(name='engine_showcase_24s', mod='demos/engine_showcase.py', cls='ShowcaseApp', dur=24.0, size=DEMO_SIZE),
-    dict(name='material_lab_30s',    mod='demos/material_lab.py',  cls='MaterialLabApp', dur=30.0, size=DEMO_SIZE),
-    dict(name='nordic_saga_60s',     mod='demos/nordic_saga.py',  cls='NordicSagaApp', dur=60.0, size=DEMO_SIZE,
+    dict(name='voxel_terrain_36s',   mod='examples/voxel_terrain.py', cls=None,          dur=36.0, size=DEMO_SIZE),
+    dict(name='water_waves_40s',     mod='examples/water_waves.py',   cls=None,          dur=40.0, size=DEMO_SIZE),
+    dict(name='engine_showcase_24s', mod='examples/engine_showcase.py', cls='ShowcaseApp', dur=24.0, size=DEMO_SIZE),
+    dict(name='material_lab_30s',    mod='examples/material_lab.py',  cls='MaterialLabApp', dur=30.0, size=DEMO_SIZE),
+    dict(name='nordic_saga_60s',     mod='examples/nordic_saga.py',  cls='NordicSagaApp', dur=60.0, size=DEMO_SIZE,
          audio='assets/nordic_saga_ost_60s.wav',
          ost_fn='logic.nordic_audio:ensure_ost'),  # 北欧配乐（通用 ost 钩子）
-    dict(name='blockworld_30s',      mod='demos/blockworld.py',   cls='BlockWorldApp', dur=30.0,
+    dict(name='blockworld_30s',      mod='examples/blockworld.py',   cls='BlockWorldApp', dur=30.0,
          size=DEMO_SIZE, flags='cine'),            # 可交互方块世界（脚本化运镜）
-    dict(name='kid_a_walker_3d_40s', mod='demos/kid_a_walker_3d.py', cls='KidAApp', dur=40.0,
+    dict(name='kid_a_walker_3d_40s', mod='examples/kid_a_walker_3d.py', cls='KidAApp', dur=40.0,
          size=DEMO_SIZE, flags='go'),              # KID-A WALKER 3D（自动探索运镜）
-    dict(name='director_20s',        mod='demos/director.py',      cls='DirectorApp', dur=20.0,
+    dict(name='director_20s',        mod='examples/director.py',      cls='DirectorApp', dur=20.0,
          size=DEMO_SIZE),                          # 可视化导演台：默认演出（闭环环绕 + 灯光）
          # 想看别的运镜就加 shot_json='shots/xxx.shot.json'（导演台 F2 导出的那份）
 ]
@@ -115,7 +115,7 @@ def ffmpeg_exe():
 
 
 def import_module(rel_path, name):
-    """按文件路径导入模块（demos/ 与 ROOT 都塞进 sys.path）。"""
+    """按文件路径导入模块（examples/ 与 ROOT 都塞进 sys.path）。"""
     spec = importlib.util.spec_from_file_location(f'_rec_{name}', os.path.join(ROOT, rel_path))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -123,7 +123,7 @@ def import_module(rel_path, name):
 
 
 def find_app_class(mod, cls_name):
-    """取 App 类：显式指定优先，否则找 demos/_harness.DemoApp 的子类。"""
+    """取 App 类：显式指定优先，否则找 examples/_harness.DemoApp 的子类。"""
     import inspect
     if cls_name:
         return getattr(mod, cls_name)
@@ -149,7 +149,7 @@ def build_app(entry):
             argv += ['--flag', entry['flags']]
         # 演出 JSON（导演台）：`--shot-json` 是 demo 私有开关，`_harness.parse_args`
         # 不认识它（还会跟 `--shot` 撞前缀歧义），所以走**类属性**注入——
-        # 和 `demos/director.py:main()` 里 `DirectorApp.SHOT_PATH = path` 同一条路。
+        # 和 `examples/director.py:main()` 里 `DirectorApp.SHOT_PATH = path` 同一条路。
         if entry.get('shot_json'):
             cls.SHOT_PATH = os.path.abspath(
                 os.path.join(ROOT, entry['shot_json']))

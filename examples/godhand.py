@@ -4,7 +4,7 @@
 机制致敬 Populous / From Dust 的「神力实时改写地形」：玩家以「抬山 / 挖海」之力
 实时修改高度场，淹没或掩埋敌方聚落即胜。原创美术 / 命名 / 世界观，不碰任何原 IP。
 
-阶段 A（demos/godhand.py 初版）：直连 engine，自管地形与聚落状态。
+阶段 A（examples/godhand.py 初版）：直连 engine，自管地形与聚落状态。
 阶段 B（games/godhand/kernel.py）：把玩法拆成「共同核（Render/Economy/
          Entity/Rules/Terrain）+ 内核（GodHandKernel）」，用 cordis v4.0.0 fiber 属性式
          API 接线，并验证 GL 资源随内核 fiber dispose 可逆回滚（headless 模拟淹没通关 + 回滚断言）。

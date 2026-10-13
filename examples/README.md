@@ -1,20 +1,23 @@
-# demos — 单文件 3D 示例与工具集
+# examples — 单文件 3D 示例与工具集
 
-每个 demo 都是**独立可跑的单文件脚本**，共用 `platform/app.py` 里的 `DemoApp`（P2-1 起真身在此；`demos/_harness.py` 是薄兼容层）
-骨架（窗口 / DPI / 命令行 / HUD / 截图 / 暂停），不改变主工程
-`core → logic → presentation` 的分层约定。
+> **目录名沿革**：本目录原叫 `demos/`，2026-10-14（P2-3）改名为 `examples/` —— 引擎项目里
+> 这些是**示例与仓库工具**，不是产品本体。历史文档里若见 `demos/`，按 `examples/` 读。
+
+每个示例都是**独立可跑的单文件脚本**，共用 `world3d/platform/app.py` 里的 `DemoApp`
+骨架（窗口 / DPI / 命令行 / HUD / 截图 / 暂停；P2-1 起真身在此，旧路径 `examples/_harness.py`
+是薄兼容层），不改变主工程 `core → engine → logic → presentation` 的分层约定。
 
 ## 统一用法
 
 ```bat
-python demos\<名字>.py                  正常运行
-python demos\<名字>.py --smoke [秒]     冒烟：N 秒后自动关闭（默认 2.0）
-python demos\<名字>.py --shot           按时抓帧写 docs/ 后自动关闭
-python demos\<名字>.py --size 960x540   指定窗口尺寸
-python demos\<名字>.py --fps 30         指定逻辑刷新率
-python demos\<名字>.py --duration 12    覆盖演示循环时长
-python demos\<名字>.py --bench 5        基准：跑 5 秒，打印真实帧率统计后退出
-python demos\<名字>.py --flag NAME      演示专属开关（可逗号并列，见下表）
+python examples\<名字>.py                  正常运行
+python examples\<名字>.py --smoke [秒]     冒烟：N 秒后自动关闭（默认 2.0）
+python examples\<名字>.py --shot           按时抓帧写 docs/ 后自动关闭
+python examples\<名字>.py --size 960x540   指定窗口尺寸
+python examples\<名字>.py --fps 30         指定逻辑刷新率
+python examples\<名字>.py --duration 12    覆盖演示循环时长
+python examples\<名字>.py --bench 5        基准：跑 5 秒，打印真实帧率统计后退出
+python examples\<名字>.py --flag NAME      演示专属开关（可逗号并列，见下表）
 ```
 
 **关于 `--bench`**：它会自动关掉 vsync，并且把 pyglet 的窗口重绘节流
@@ -73,15 +76,15 @@ python scripts\verify_demos.py --only boids,water  只验指定 demo
 | `pulsefall.py` | 交互 | **《落音 / Pulsefall》**（§16 **下落式音击**）：4 轨道（DFJK）+ 3 谱面（BPM 90/120/150，**种子复现**）+ 判定 3 档（PERFECT ±40ms / GOOD ±90ms / MISS）+ 血量与连击得分 + 结算（P/G/M + 准确率 + 最大连击）；音乐由 **audio 核按谱面程序化合成**（三层：低音/和弦/主旋律）；F4/F5 offset 校准、G 自动演奏 | `pulsefall_01..02.png` |
 | `director.py` | 工具 | **可视化导演台（③）**：把关键帧系统（`engine/shot.py` + `engine/timeline.py`）和 `TimelineUI` 串成"**编排 → 预览 → 导出 → 录制**"闭环。三个编辑目标用 `T` 循环：`$camera`（position/target/fov）、`$env`（sun_intensity/sun_dir/ibl_intensity，**真·灯光演出**，渲染器每帧 apply）、场景节点（TRS，键盘微调）。`K` 记帧 / `DEL` 删帧 / `[ ]` 选通道 / `I` 换插值 / `M` 加幕 / `F2` 导出演出 JSON / `O` 载入 / `R` 重载场景；右侧**关键帧检察器**显示每通道的插值与键刻度（可点行选中、点键 seek）；内置默认演出「绕祭坛闭环环绕 + 主体自转 + 太阳随相机扫过」，`--shot-json <path>` 可回放导出的运镜 | `director_a..d.png` |
 
-> 上表 31 项与 `demos/*.py`（不含 `_harness.py` 兼容层）一一对应，也是
+> 上表 31 项与 `examples/*.py`（不含 `_harness.py` 兼容层）一一对应，也是
 > `scripts/verify_demos.py` 逐项冒烟的对象；唯一不参与截图阶段的是
 > `scene_viewer.py`——它由 `--file` 驱动、没有固定剧照时刻。
 
 `scene_viewer.py` 用法定制（其余 demo 用上面的统一命令行）：
 
 ```bat
-python demos\scene_viewer.py --file docs\llm_scene_demo.json
-python demos\scene_viewer.py --file docs\llm_scene_demo.json --smoke 3
+python examples\scene_viewer.py --file docs\llm_scene_demo.json
+python examples\scene_viewer.py --file docs\llm_scene_demo.json --smoke 3
 ```
 
 ### 演示专属开关（`--flag`，逗号可并列）
@@ -125,9 +128,9 @@ python demos\scene_viewer.py --file docs\llm_scene_demo.json --smoke 3
 voxel 6ms），旧网格一直画到最后一次性替换。复现对照数据：
 
 ```bat
-python demos\terrain_flyover.py --bench 5 --flag reseed        :: 渐进
-python demos\terrain_flyover.py --bench 5 --flag reseed-sync   :: 对照（同步）
-python demos\voxel_terrain.py   --bench 5 --flag reseed        :: 渐进
+python examples\terrain_flyover.py --bench 5 --flag reseed        :: 渐进
+python examples\terrain_flyover.py --bench 5 --flag reseed-sync   :: 对照（同步）
+python examples\voxel_terrain.py   --bench 5 --flag reseed        :: 渐进
 ```
 
 剩下的几十毫秒是**换网格时的显存上传**（一次性），无法再摊——除非改成

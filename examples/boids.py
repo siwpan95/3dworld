@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Boids 3D 鸟群 —— **原生实例化渲染**（pyglet 2.1.16 ``vertex_list_instanced``）。
 
-结构照抄 ``demos/demoscene_tunnel.py`` 的骨架（``platform.app.DemoApp``），
+结构照抄 ``examples/demoscene_tunnel.py`` 的骨架（``platform.app.DemoApp``），
 逻辑层用 ``logic.boids.Flock``（纯数学、无 GL），本文件只负责"把状态画出来"。
 
 ## 为什么要用实例化

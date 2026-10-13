@@ -3,7 +3,7 @@
 
 （P0-2 试点转正：原 `experiments/cordis/config_boot.py` → `cli/config_boot.py`。）
 
-本脚本与 demos/*.py 共用 ``host.tree.mount_tree`` 的同一条挂载路径——
+本脚本与 examples/*.py 共用 ``host.tree.mount_tree`` 的同一条挂载路径——
 「demo 怎么挂的 = 验证怎么挂的」，不存在两套接线。在此之上，本脚本额外做三件事：
 
 1. 全速跑完一局（TD：撑过 5 波 / 神之手：淹没全部聚落），验证内核仍可胜；

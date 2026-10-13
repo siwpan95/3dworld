@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """粒子共同核 ``particles``（实现 ``core.contracts.ParticlesCore``）。
 
-P0-1 新建（封装）：把 ``demos/particles_gpu`` 的粒子**参数/生命周期**收成一个
+P0-1 新建（封装）：把 ``examples/particles_gpu`` 的粒子**参数/生命周期**收成一个
 可复用核心。GPU 端的实例化绘制由渲染共同核负责；本核持有 CPU 侧的粒子状态与
 简单数值步进，**headless 安全**（不触碰 GL 上下文）。
 

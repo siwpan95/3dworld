@@ -10,7 +10,7 @@
   只存「生成器名 + 参数 + 材质 + 变换」——几何在构建时由 `engine.geometry` 现算。
 - 双端分离：
   - **生成端（LLM / 人）**：只需要懂生成器清单与 JSON 格式（见第三节 + 第四节 Prompt 模板）
-  - **执行端（引擎）**：`engine/scene_build.py` 校验 + 重建；`demos/scene_viewer.py` 渲染 + 热重载
+  - **执行端（引擎）**：`engine/scene_build.py` 校验 + 重建；`examples/scene_viewer.py` 渲染 + 热重载
 - **校验器即"本地纠错器"**：LLM 的空间推理不可靠，但它写的每个参数都会被
   **实际试构建**（未知生成器 / 未知参数 / 数组形状错误 → 立即报错）——
   这是 PSDL 论文「无 LLM 本地纠错」思路的工程化雏形。
@@ -25,7 +25,7 @@ python scripts/scene_build.py docs/xxx.json --validate
 python scripts/scene_build.py docs/xxx.json --dry-run     # 再跑全量 CPU 构建
 
 # 3. 查看：打开查看器，编辑 JSON 保存即热重载（R 键手动重载）
-python demos/scene_viewer.py --file docs/xxx.json
+python examples/scene_viewer.py --file docs/xxx.json
 ```
 
 热重载行为：改文件保存 → 自动重载；**含错误的 JSON 会被拒绝并保留旧场景**

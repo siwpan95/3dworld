@@ -9,9 +9,9 @@
 
 运行::
 
-    python demos/gpu_cull_field.py
-    python demos/gpu_cull_field.py --smoke
-    python demos/gpu_cull_field.py --shot
+    python examples/gpu_cull_field.py
+    python examples/gpu_cull_field.py --smoke
+    python examples/gpu_cull_field.py --shot
 
 按 P3-1 决策②：**运行时能力探测 + CPU 回退**——若 compute/indirect 不可用，自动落 CPU 路径
 （画面一致，只是命令在 CPU 生成）。

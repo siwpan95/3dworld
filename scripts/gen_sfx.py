@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""渲染 3dworld 交互 SFX（bloodmusic 预设 → WAV，供 demos/scene_walker 使用）。
+"""渲染 3dworld 交互 SFX（bloodmusic 预设 → WAV，供 examples/scene_walker 使用）。
 
 产物：assets/sfx/{jump,pickup,power_up,land}.wav（生成物，不入库）。
 设计：不硬编码预设全名——按「语义 → 关键词」在 ALL_PRESETS 中自适应匹配，

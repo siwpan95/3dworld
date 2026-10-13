@@ -5,13 +5,13 @@
 
     1. 生成  LLM/人写场景 JSON（prompt 模板见 docs/LLM场景生成工作流.md）
     2. 校验  python scripts/scene_build.py <json> --validate
-    3. 查看  python demos/scene_viewer.py --file <json>
+    3. 查看  python examples/scene_viewer.py --file <json>
     4. 迭代  编辑 JSON 保存 → 本查看器自动重载（含错误的 JSON 会被拒绝、保留旧场景）
 
 用法::
 
-    python demos/scene_viewer.py --file docs/llm_scene_demo.json
-    python demos/scene_viewer.py --file xxx.json --smoke 3
+    python examples/scene_viewer.py --file docs/llm_scene_demo.json
+    python examples/scene_viewer.py --file xxx.json --smoke 3
 """
 from __future__ import annotations
 

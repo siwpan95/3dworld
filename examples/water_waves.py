@@ -37,10 +37,10 @@
 
 用法::
 
-    python demos/water_waves.py
-    python demos/water_waves.py --smoke 3
-    python demos/water_waves.py --shot
-    python demos/water_waves.py --size 960x540
+    python examples/water_waves.py
+    python examples/water_waves.py --smoke 3
+    python examples/water_waves.py --shot
+    python examples/water_waves.py --size 960x540
 
 按键：1/2/3 波浪强度预设，W 线框，鼠标拖动环绕/滚轮缩放，SPACE 暂停，ESC 退出。
 """

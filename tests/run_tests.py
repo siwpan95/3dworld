@@ -817,7 +817,7 @@ def test_box_data_pivot():
 
 
 def test_boids_flock():
-    """demos/boids 的逻辑层：可复现、有界、限速、捕食者会把鸟群推开。"""
+    """examples/boids 的逻辑层：可复现、有界、限速、捕食者会把鸟群推开。"""
     import time
     from logic.boids import Flock
 
@@ -859,7 +859,7 @@ def test_boids_flock():
 
 
 def test_waves_math():
-    """demos/water_waves 的逻辑层：Gerstner 波的高度/梯度/法线自洽，且 CPU 侧
+    """examples/water_waves 的逻辑层：Gerstner 波的高度/梯度/法线自洽，且 CPU 侧
     与着色器共用同一套公式（这里锁死解析性质）。"""
     from logic.waves import (default_waves, gerstner_gradient, gerstner_height,
                              gerstner_normal, sample_surface, scaled_preset,
@@ -925,7 +925,7 @@ def test_terrain_row_emitter():
     import array
     import sys as _sys
     _sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__))), 'demos'))
+        os.path.abspath(__file__))), 'examples'))
     from terrain_flyover import (LIGHT_DIR, _hash01, emit_row, height_at,
                                  terrain_color)
 
@@ -986,7 +986,7 @@ def test_voxel_mesh_invariants():
     """
     import sys as _sys
     _sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__))), 'demos'))
+        os.path.abspath(__file__))), 'examples'))
     from voxel_terrain import MAXH, W, build_heights, build_mesh
 
     h1 = build_heights(1234)

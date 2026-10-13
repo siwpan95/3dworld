@@ -27,9 +27,9 @@
 
 用法::
 
-    python demos/blockworld.py
-    python demos/blockworld.py --smoke 3        # 冒烟
-    python demos/blockworld.py --smoke 3 --flag digdemo   # 自检：自动挖/放/重建
+    python examples/blockworld.py
+    python examples/blockworld.py --smoke 3        # 冒烟
+    python examples/blockworld.py --smoke 3 --flag digdemo   # 自检：自动挖/放/重建
 """
 import array
 import math

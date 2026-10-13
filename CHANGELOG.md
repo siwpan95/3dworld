@@ -3,21 +3,50 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [未发布] — 引擎化改造 P2-3：`demos/` → `examples/`
+
+引擎项目里那些单文件示例与仓库工具是**示例**，不是产品本体；目录名改回它该有的语义。
+`git mv` 保历史，全仓引用**一次改完（68 个文件）**：
+
+- 30 个示例自身的用法行（`python examples/<名>.py`）；
+- `scripts/verify_demos.py`（`DEMOS_DIR` → `EXAMPLES_DIR`）、
+  **`scripts/record_all.py` 的 22 条 ENTRIES 路径**、`scripts/build_exe.py` 的 13 条打包条目
+  （这两处最脆：录制/打包按路径 import 模块，改错就直接跑不起来）；
+- `pyproject.toml` 的 `exclude = ["examples*"]`；9 棵配置树的注释；
+  `core` / `engine` / `host` / `cli` 里的文档串；活文档与 `examples/README.md`。
+
+> **迁移映射规则（长期有效）**：**2026-10-14 起 `demos/` ⇒ `examples/`**。
+> 有日期的 design note 与 CHANGELOG 历史条目里的 `demos/` 是当时的记录，**不追改**。
+
+### 验收（实测，未设 `CORDIS_SRC`）
+
+| 门禁 | 结果 |
+|------|------|
+| 示例直跑 | `python examples/boids.py --smoke 1` → `EXIT_OK` |
+| **录制脚本**（改名后最脆的一环） | `record_all.py --only boids --dur-override 1` → `ALL_RECORDED`；随后恢复完整 45s 成片 |
+| `scripts/run_all_tests.py` | 7/7 模块 / **140 项** / `ALL_TESTS_PASSED` |
+| `python main.py --shot` / `kkrieger_demo.py --shot` | `EXIT_OK` |
+| `python -m cli.config_boot all` | 9 个 OK 标记 |
+| `scripts/verify_demos.py` 全量 | **ALL_DEMOS_OK (31 examples)** |
+
+> 顺带一个操作教训：**全仓文本替换会把"描述迁移本身"的句子也改掉**
+> （`demos/ → examples/` 被改成 `examples/ → examples/`）—— 这类**映射句必须人工复核**。
+
 ## [未发布] — 引擎化改造 P2-1/P2-2：分层归位
 
 依据 `docs/5_引擎化改造规划.md` §6-P2。P1 让仓库"能装"，P2 让**分层真的成立**。
 
-### P2-1 平台层抽出（`demos/_harness.py` → `world3d/platform/app.py`）
+### P2-1 平台层抽出（`examples/_harness.py` → `world3d/platform/app.py`）
 
 `_harness.py` 是与任何具体 demo 都无关的**平台层**（32 个 demo/脚本靠它开窗口、解析命令行、
-抓帧、HUD、主循环），却寄生在 `demos/` 里。现在正名为 `world3d/platform/app.py`：
+抓帧、HUD、主循环），却寄生在 `examples/` 里。现在正名为 `world3d/platform/app.py`：
 
 - 全部 20 个 demo + 2 个脚本（`verify_demos` / `record_all`）的导入统一为
-  `from world3d.platform.app import ...`；顺手修掉 `demos/scene_viewer.py` 里
+  `from world3d.platform.app import ...`；顺手修掉 `examples/scene_viewer.py` 里
   `from demos._harness import ...` 这个**全仓唯一的不一致形态**（它会让同一个文件被当成两个
   模块导入、`DemoApp` 变成两个类对象，`issubclass` 判定失败）；
 - `world3d/platform/app.py` 收口了 `__all__`（兼容层靠它转发，所以必须显式声明）；
-- **旧路径 `demos/_harness.py` 保留为薄兼容层**（`from world3d.platform.app import *`），
+- **旧路径 `examples/_harness.py` 保留为薄兼容层**（`from world3d.platform.app import *`），
   实测旧用法仍可用且是同一个类对象。
 
 #### ⚠️ 硬约束：顶层包不能叫 `platform`
@@ -45,13 +74,13 @@
 1. **引用形态三种**都要 grep：`from core.<mod> import X` / **`from core import <mod> as y`** /
    `import core.<mod>` —— P2-2 漏了第二种，被 `test_nordic_scene_geometry` 抓出来；
 2. **路径层级推导要同步改**：`world3d/platform/app.py` 找仓库根要 `dirname` 三次
-   （`demos/_harness.py` 是两次）。"少一层就炸"这类问题在 P0-3（内核 `_ROOT`）也踩过一次。
+   （`examples/_harness.py` 是两次）。"少一层就炸"这类问题在 P0-3（内核 `_ROOT`）也踩过一次。
 
 ### 验收（实测，未设 `CORDIS_SRC`）
 
 | 门禁 | 结果 |
 |------|------|
-| 兼容层自检 | `demos/_harness.DemoApp is world3d.platform.app.DemoApp` → **True**；`__all__` 全部转发到位 |
+| 兼容层自检 | `examples/_harness.DemoApp is world3d.platform.app.DemoApp` → **True**；`__all__` 全部转发到位 |
 | `scripts/run_all_tests.py` | 7/7 模块 / **140 项** / `ALL_TESTS_PASSED` |
 | `python main.py --shot` / `python kkrieger_demo.py --shot` | `EXIT_OK`（4 张 / 9 张） |
 | `scripts/verify_demos.py`（31 个全量冒烟 + 截图） | 见提交信息（本批的最强门禁：所有 demo 都改了导入） |
@@ -148,7 +177,7 @@
 | `allin_decision/`（FSM 决策） | **能力自研**（`engine/fsm.py`），试点退役 | 依赖外部仓库；本机 G 盘已移除，不可复现 |
 | `zhuangtaiji_orchestration/`（编排） | **能力自研**（`engine/orchestration.py`），试点退役 | 同上 |
 | `bloodmusic_ost/remake_act6.py` | **退役**（能力已有） | 原生 OST 已在 `logic/kkrieger_audio.py`（第六幕） |
-| `scene_walker/walk.py` | **退役**（被取代） | 正式版 `demos/scene_walker.py`（652 行）⊃ 试点（422 行），且多出热重载/限时挑战/结算 |
+| `scene_walker/walk.py` | **退役**（被取代） | 正式版 `examples/scene_walker.py`（652 行）⊃ 试点（422 行），且多出热重载/限时挑战/结算 |
 | `scene_walker/bgm.py`、`gen_sfx.py` | **退役**（被取代） | 已转正为 `engine/adaptive_music.py` 与 `scripts/gen_sfx.py` |
 
 ### 顺手修掉的两个真缺陷

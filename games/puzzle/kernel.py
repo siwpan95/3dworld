@@ -69,7 +69,7 @@ def cam_move_dirs(rot):
 
     纯函数（demo 与单测共用）：相机朝向的 xz 分量为 (-cos a, -sin a)，
     W = 前方，D = 右方（right = (-fz, fx)，与 rayhold 的约定一致）。
-    ⚠️ demo 的相机偏航带一个**固定的 +45° 等距偏移**（`demos/boxward.py` 的 `YAW_OFFSET`），
+    ⚠️ demo 的相机偏航带一个**固定的 +45° 等距偏移**（`examples/boxward.py` 的 `YAW_OFFSET`），
     但本映射**故意按 `90°·rot` 取整、不跟着转** —— 于是四个键仍对应四个正交的格方向
     （屏幕上呈现为四个斜向，即经典等距操作），不会算出非法的对角步。
     别"顺手"把那个偏移加进来：一加就取整成对角，走子直接失效。

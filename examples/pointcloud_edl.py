@@ -14,9 +14,9 @@
 
 运行::
 
-    python demos/pointcloud_edl.py
-    python demos/pointcloud_edl.py --smoke
-    python demos/pointcloud_edl.py --shot
+    python examples/pointcloud_edl.py
+    python examples/pointcloud_edl.py --smoke
+    python examples/pointcloud_edl.py --shot
 """
 from __future__ import annotations
 

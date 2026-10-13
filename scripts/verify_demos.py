@@ -33,7 +33,7 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEMOS_DIR = os.path.join(ROOT, 'demos')
+EXAMPLES_DIR = os.path.join(ROOT, 'examples')
 PYTHON = os.path.join(ROOT, '.venv', 'Scripts', 'python.exe')
 if not os.path.exists(PYTHON):                       # 非 Windows / 系统 python 兜底
     PYTHON = sys.executable
@@ -55,10 +55,10 @@ def discover():
     global _DISCOVERED
     if _DISCOVERED is None:
         out = []
-        for fn in sorted(os.listdir(DEMOS_DIR)):
+        for fn in sorted(os.listdir(EXAMPLES_DIR)):
             if not fn.endswith('.py') or fn in SKIP:
                 continue
-            path = os.path.join(DEMOS_DIR, fn)
+            path = os.path.join(EXAMPLES_DIR, fn)
             shots = _read_shots(path, fn[:-3])
             out.append((fn[:-3], path, shots))
         _DISCOVERED = out
@@ -68,12 +68,12 @@ def discover():
 def _read_shots(path, name):
     """导入 demo 模块读 SHOTS（模块级只有类定义与常量，import 不会开窗口）。
 
-    注意要同时把项目根与 demos/ 塞进 sys.path：本脚本以 ``python scripts/…``
+    注意要同时把项目根与 examples/ 塞进 sys.path：本脚本以 ``python scripts/…``
     启动时 ``sys.path[0]`` 是 scripts/，直接 exec_module 会 ImportError
     （demo 里的 ``from logic.x import y`` 找不到包）。
     """
     saved = list(sys.path)
-    sys.path.insert(0, DEMOS_DIR)
+    sys.path.insert(0, EXAMPLES_DIR)
     sys.path.insert(0, ROOT)
     try:
         spec = importlib.util.spec_from_file_location(f'_verify_{name}', path)
@@ -81,7 +81,7 @@ def _read_shots(path, name):
         spec.loader.exec_module(mod)
         if hasattr(mod, 'SHOTS'):                     # 模块级 SHOTS（kkrieger/main 风格）
             return list(mod.SHOTS or ())
-        # demos/ 的约定：SHOTS 是 DemoApp 子类的类属性，从模块里找出那个子类
+        # examples/ 的约定：SHOTS 是 DemoApp 子类的类属性，从模块里找出那个子类
         import inspect
         from world3d.platform.app import DemoApp
         for _n, obj in vars(mod).items():

@@ -4,7 +4,7 @@
 机制致敬 Warcraft / Dune II 的「经济→兵力→战斗」循环；原创美术 / 命名 / 世界观，
 不碰任何原 IP 名称与素材（合规见 docs/remake_ideas.md §7 / §9）。
 
-阶段 A（demos/tower_defense.py 初版）：直连 engine，自管全部游戏状态与逻辑。
+阶段 A（examples/tower_defense.py 初版）：直连 engine，自管全部游戏状态与逻辑。
 阶段 B（games/tower_defense/kernel.py）：把玩法拆成「共同核（Service）
 + 内核（TowerDefenseKernel）」两层，用 cordis v4.0.0 fiber 属性式 API 接线，
 并验证 GL 资源随内核 fiber dispose 可逆回滚（headless 模拟通关 + 回滚断言）。

@@ -66,14 +66,14 @@ yml 里直接写短名，例如::
 
 | kind | 内核 | demo | 一句话 |
 |------|------|------|--------|
-| `td` | 塔防「戍卫之路」 | `demos/tower_defense.py` | 经济 → 兵力 → 战斗循环 |
-| `godhand` | 神之手 | `demos/godhand.py` | 抬高/挖低地形改写高度场 |
-| `fps` | 迷堡枪影 | `demos/rayhold.py` | 射线 FPS + 全屏 SDF 光线步进 |
-| `puzzle` | 归仓 | `demos/boxward.py` | 推箱 + BFS 求解器 + 程序化关卡 |
-| `storm` | 弹潮 | `demos/swarmward.py` | 全向生存 + boss 波 + 弹幕图案生成器 |
-| `hall` | 静馆 | `demos/stillhall.py` | 节点式漫游解谜 + 场景 JSON 热重载 |
-| `void` | 星阑 | `demos/voidward.py` | 惯性飞行 + 确定性市场 + 海盗拦截 |
-| `pulse` | 落音 | `demos/pulsefall.py` | 下落式音击（audio 核的首个消费者） |
+| `td` | 塔防「戍卫之路」 | `examples/tower_defense.py` | 经济 → 兵力 → 战斗循环 |
+| `godhand` | 神之手 | `examples/godhand.py` | 抬高/挖低地形改写高度场 |
+| `fps` | 迷堡枪影 | `examples/rayhold.py` | 射线 FPS + 全屏 SDF 光线步进 |
+| `puzzle` | 归仓 | `examples/boxward.py` | 推箱 + BFS 求解器 + 程序化关卡 |
+| `storm` | 弹潮 | `examples/swarmward.py` | 全向生存 + boss 波 + 弹幕图案生成器 |
+| `hall` | 静馆 | `examples/stillhall.py` | 节点式漫游解谜 + 场景 JSON 热重载 |
+| `void` | 星阑 | `examples/voidward.py` | 惯性飞行 + 确定性市场 + 海盗拦截 |
+| `pulse` | 落音 | `examples/pulsefall.py` | 下落式音击（audio 核的首个消费者） |
 
 外加 `cores`（纯共同核自检，`require_gl=False`）。
 

@@ -3,11 +3,11 @@
 
 一个 demo 把引擎的每条能力都跑一遍，方便一眼验收，也方便做基准::
 
-    python demos/engine_showcase.py                 正常跑
-    python demos/engine_showcase.py --smoke 2       冒烟 2 秒后关闭
-    python demos/engine_showcase.py --shot          抓帧到 docs/ 后关闭
-    python demos/engine_showcase.py --bench 5       5 秒基准（关 vsync）
-    python demos/engine_showcase.py --flag nostatics 关掉静态柱林（看剔除差异）
+    python examples/engine_showcase.py                 正常跑
+    python examples/engine_showcase.py --smoke 2       冒烟 2 秒后关闭
+    python examples/engine_showcase.py --shot          抓帧到 docs/ 后关闭
+    python examples/engine_showcase.py --bench 5       5 秒基准（关 vsync）
+    python examples/engine_showcase.py --flag nostatics 关掉静态柱林（看剔除差异）
 
 按键::
 

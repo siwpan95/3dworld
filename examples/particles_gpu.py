@@ -38,9 +38,9 @@ CPU 每帧只做三件事：``prog['u_time'] = self.phase``（一个标量）、
 
 用法::
 
-    python demos/particles_gpu.py
-    python demos/particles_gpu.py --smoke 2
-    python demos/particles_gpu.py --shot
+    python examples/particles_gpu.py
+    python examples/particles_gpu.py --smoke 2
+    python examples/particles_gpu.py --shot
 
 按键：1/2/3 切预设（切了就是手动，不再自动轮播），+/- 调能量，
 A 回到自动轮播，鼠标拖动/滚轮转视角，SPACE 暂停，ESC 退出。

@@ -20,9 +20,9 @@
 
 用法::
 
-    python demos/scene_walker.py
-    python demos/scene_walker.py --file docs/llm_scene_demo.json
-    python demos/scene_walker.py --smoke 6 --flag walk,interact   # 自检
+    python examples/scene_walker.py
+    python examples/scene_walker.py --file docs/llm_scene_demo.json
+    python examples/scene_walker.py --smoke 6 --flag walk,interact   # 自检
 
 键位：V 轨道/漫游   WASD 走   SPACE 跳（漫游）   SHIFT 加速
       E 近身互动（漫游）   鼠标拖动：轨道环绕 / 漫游转视角   点击：拾取
@@ -35,7 +35,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-sys.path.insert(0, os.path.join(ROOT, 'demos'))
+sys.path.insert(0, os.path.join(ROOT, 'examples'))
 
 import pyglet                                                       # noqa: E402
 

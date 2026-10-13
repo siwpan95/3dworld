@@ -17,9 +17,9 @@
 
 用法::
 
-    python demos/mountain.py               正常运行（鼠标拖动转视角，滚轮缩放）
-    python demos/mountain.py --smoke 3     冒烟：3 秒后自动关闭
-    python demos/mountain.py --shot        抓两张验证截图（昼/夜）后关闭
+    python examples/mountain.py               正常运行（鼠标拖动转视角，滚轮缩放）
+    python examples/mountain.py --smoke 3     冒烟：3 秒后自动关闭
+    python examples/mountain.py --shot        抓两张验证截图（昼/夜）后关闭
 
 按键：拖动/滚轮 视角   SPACE 暂停   N 重新做人格测验   R 随机新山
      C 召唤流星（强制崩解）   M 静音   1~4 答题（测验中）   A S D F G H J K 钢琴

@@ -53,7 +53,7 @@ Changelog = "https://gitee.com/siwpan/3dworld/blob/master/CHANGELOG.md"
 # `docs/` 场景样例 —— 它们是**仓库/开发期**工具（wheel 不携带 configs/，可用环境变量
 # `WORLD3D_CONFIGS` 指向别处的配置树）。`world3d-info` 是纯库自检，任何安装方式都可用。
 # 面向仓库的工具（批量验收 `scripts/verify_demos.py`、离线录制 `scripts/record_all.py`、
-# 打包 `scripts/build_exe.py`）依赖 demos/ 与 assets/，**不随 wheel 分发**，用
+# 打包 `scripts/build_exe.py`）依赖 examples/ 与 assets/，**不随 wheel 分发**，用
 # `python scripts/<名>.py` 运行。见 docs/分发指南.md。
 [project.scripts]
 world3d-info = "world3d._info:main"
@@ -64,7 +64,7 @@ world3d-pipeline = "host.pipeline:main"
 # 打包范围（P1 用"顶层多包"，src/ 布局留到 P2 一次性切换 —— 规划 §7-Q2）
 #   * `where` 含 vendor/cordis/src：vendored cordis 必须随包分发，否则装上后
 #     `import cordis` 找不到（运行时的 `_cordis_locate.ensure()` 优先已安装的 cordis）。
-#   * demos/tests/scripts 不打包：它们是示例与仓库工具，不是库的一部分。
+#   * examples/tests/scripts 不打包：它们是示例与仓库工具，不是库的一部分。
 # ---------------------------------------------------------------------------
 # 顶层**模块**（不是包）必须单独声明 —— packages.find 只找包，漏了它会出现
 # "装上后 host.tree 报 ModuleNotFoundError: No module named '_cordis_locate'"
@@ -76,7 +76,7 @@ py-modules = ["_cordis_locate"]
 where = [".", "vendor/cordis/src"]
 include = ["world3d*", "engine*", "core*", "logic*", "presentation*", "host*",
            "cli*", "games*", "cordis*"]
-exclude = ["demos*", "tests*", "scripts*", "docs*", "assets*", "recordings*", "levels*",
+exclude = ["examples*", "tests*", "scripts*", "docs*", "assets*", "recordings*", "levels*",
            "shots*", "configs*"]
 
 [tool.setuptools.package-data]

@@ -25,9 +25,9 @@
 
 用法::
 
-    python demos/kid_a_walker_3d.py
-    python demos/kid_a_walker_3d.py --smoke 4 --flag go     # 自动探索（自检/录制）
-    python demos/kid_a_walker_3d.py --shot
+    python examples/kid_a_walker_3d.py
+    python examples/kid_a_walker_3d.py --smoke 4 --flag go     # 自动探索（自检/录制）
+    python examples/kid_a_walker_3d.py --shot
 """
 import array
 import math

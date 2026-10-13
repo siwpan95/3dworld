@@ -148,7 +148,7 @@ def default_waves(scale=1.0):
     return [Wave(a * scale, L, dirs[i], 0.22) for i, (a, L) in enumerate(spec)]
 
 
-# 三档强度预设：(名称, 放大系数, 波数)——给 demos/water_waves.py 的 1/2/3 键用。
+# 三档强度预设：(名称, 放大系数, 波数)——给 examples/water_waves.py 的 1/2/3 键用。
 # 放大系数别调太猛：振幅到 2.0 时波高（峰谷 ~4m）相对相机眼高（~9m）太大，
 # 画面上会变成一片"白色冰川"而不是浪——白沫覆盖 + 菲涅尔掠射 + 雾一起作用，
 # 亮部直接糊成整片。1.15 这一档的峰谷约 2.2m，仍然明显是"大浪"但画面读得出来。

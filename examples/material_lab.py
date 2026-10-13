@@ -9,9 +9,9 @@
 
 用法::
 
-    python demos/material_lab.py                正常跑
-    python demos/material_lab.py --smoke 2      冒烟 2 秒后关闭
-    python demos/material_lab.py --shot         抓帧到 docs/ 后关闭
+    python examples/material_lab.py                正常跑
+    python examples/material_lab.py --smoke 2      冒烟 2 秒后关闭
+    python examples/material_lab.py --shot         抓帧到 docs/ 后关闭
 
 按键：ESC 退出  SPACE 暂停  F2 性能面板  B Bloom  O SSAO  V 相机模式
 """

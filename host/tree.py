@@ -5,7 +5,7 @@
 9 棵配置树 → 顶层 `configs/`。见 `docs/5_引擎化改造规划.md`。）
 
 在 Cordis v4.0.0 原生 ``Loader`` / ``EntryTree`` 之上封装三件小事，让
-``cli/config_boot.py``（headless 验证）与 ``demos/*.py``（真实应用）走**同一条**挂载路径——
+``cli/config_boot.py``（headless 验证）与 ``examples/*.py``（真实应用）走**同一条**挂载路径——
 「本次挂哪些插件、各带什么配置」只由 yaml 声明一次（单一事实来源）::
 
     - name: economy          # <- 服务短名，表在 host/registry.py
@@ -20,7 +20,7 @@
 - ``await_ready(ctx, ...)``   等待「服务可达 + 内核 GL 句柄已取得」。
 - ``mount_tree(path, want)``  一行式：新建 Context → 挂树 → 等就绪 → 返回 ctx。
 
-demos/tower_defense.py / demos/godhand.py 的 ``_mount_kernel`` 即调用 ``mount_tree``；
+examples/tower_defense.py / examples/godhand.py 的 ``_mount_kernel`` 即调用 ``mount_tree``；
 `cli/config_boot.py` 的 headless 验证复用同一函数与同一 ``WANT_*`` 列表——
 「demo 怎么挂的」= 「验证怎么挂的」，不存在两套接线。
 """
@@ -194,7 +194,7 @@ async def mount_tree(path: str, want=(), timeout: float = 8.0,
                      require_gl: bool = True):
     """一行式引导：新建 Context、按 cordis.yml 挂载、等到就绪，返回 ctx。
 
-    demos 的 ``_mount_kernel`` 与 config_boot 的 headless 验证都调用本函数。
+    examples 的 ``_mount_kernel`` 与 config_boot 的 headless 验证都调用本函数。
     ``require_gl=False`` 用于**纯共同核**配置树（无内核取 GL 句柄）。
     """
     ctx = Context()

@@ -10,7 +10,7 @@
 #   boxes       —— 生成关箱子数
 #   start_level —— 内核开局加载的手工关序号（0=直推 1=转向 2=双箱排队）
 #
-# 本文件同时是 demos/boxward.py 的实际挂载声明（host.tree.mount_tree 加载本文件）——
+# 本文件同时是 examples/boxward.py 的实际挂载声明（host.tree.mount_tree 加载本文件）——
 # 「demo 怎么挂的 = headless 验证怎么挂的」，接线只有这一份。
 #
 # 运行（headless 验证）：python -m cli.config_boot puzzle

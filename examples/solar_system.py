@@ -41,9 +41,9 @@
 
 用法::
 
-    python demos/solar_system.py
-    python demos/solar_system.py --smoke 3
-    python demos/solar_system.py --shot
+    python examples/solar_system.py
+    python examples/solar_system.py --smoke 3
+    python examples/solar_system.py --shot
 
 按键：1..8 聚焦行星 / 0 全景 / = 拉近 - 拉远 / M 月球开关
      鼠标拖动环绕、滚轮缩放、SPACE 暂停、ESC 退出。

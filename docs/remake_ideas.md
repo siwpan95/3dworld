@@ -2,7 +2,7 @@
 
 > 状态：**内核族 8 个已交付**（td / godhand / fps / puzzle / storm / hall / void / pulse）；
 > §13-16 四份候选 note 已全部落地（2026-10-12）。各节状态行见其 §x.7/§x.8「执行结果」。
-> 关联：`docs/cordis集成.md`（Cordis 集成：配置树 + 服务宿主）、`demos/mountain.py`（已完成）、`recordings/mountain_100s.mp4`（已录制）
+> 关联：`docs/cordis集成.md`（Cordis 集成：配置树 + 服务宿主）、`examples/mountain.py`（已完成）、`recordings/mountain_100s.mp4`（已录制）
 
 ---
 
@@ -161,7 +161,7 @@ DeepSeek Harness 的运行时内核。
 ## 8. 现状与下一步
 
 **已完成**
-- `demos/mountain.py`：复刻 David O'Reilly 的《山》，已推送远端（commit `e66df0c`，IN_SYNC 核对通过）；
+- `examples/mountain.py`：复刻 David O'Reilly 的《山》，已推送远端（commit `e66df0c`，IN_SYNC 核对通过）；
 - `recordings/mountain_100s.mp4`：100s 离线录制（H.264 720p30，11.5MB）已产出并验证；
 - `host/pipeline.py`（原 experiments/cordis 试点一，P0-5 转正）：场景管线 Cordis 化跑通（`PIPELINE_OK`），验证 inject/可逆副作用/coeffect。
 
@@ -172,14 +172,14 @@ DeepSeek Harness 的运行时内核。
 
 **P0 收尾 + P1-①/② 状态（2026-10-09 晚）**
 - 试点二（共同核 + 内核 Cordis 化 + GL 回滚）：`tower_defense_kernel.py`，commit `0887185`。
-- 试点三（`cordis.yml` 配置树）：`experiments/cordis/services/*` 适配层（**P0-4 起已删除**，服务短名表在 `host/registry.py`） + `cordis.td.yml` / `cordis.godhand.yml`；`host.tree.mount_tree` 为唯一挂载入口——`demos/tower_defense.py`、`demos/godhand.py` 的 `_mount_kernel` 与 `config_boot.py` 的 headless 验证**走同一函数、同一 `WANT_*` 列表**（验证输出 `TDKERNEL_OK` / `GODHAND_OK` + 配置传递断言 + GL 回滚 `4→0` / `3→0`）。
+- 试点三（`cordis.yml` 配置树）：`experiments/cordis/services/*` 适配层（**P0-4 起已删除**，服务短名表在 `host/registry.py`） + `cordis.td.yml` / `cordis.godhand.yml`；`host.tree.mount_tree` 为唯一挂载入口——`examples/tower_defense.py`、`examples/godhand.py` 的 `_mount_kernel` 与 `config_boot.py` 的 headless 验证**走同一函数、同一 `WANT_*` 列表**（验证输出 `TDKERNEL_OK` / `GODHAND_OK` + 配置传递断言 + GL 回滚 `4→0` / `3→0`）。
 - Cordis 转正：`vendor/cordis.lock` 锁定上游 commit `a3d0c171571c6bbb465d04c06eab2de53d270814`（zip SHA-256 `b216a2b8…2a31616`）；`VENDOR.md` 记账同步，commit `47a7336`。
-- P1-① 神之手：`godhand_kernel.py` + `demos/godhand.py` 交互 demo（`godhand_40s` 录制入口就位；本沙箱 pyglet 原生 GL 受限，实录待本机补跑）。
+- P1-① 神之手：`godhand_kernel.py` + `examples/godhand.py` 交互 demo（`godhand_40s` 录制入口就位；本沙箱 pyglet 原生 GL 受限，实录待本机补跑）。
 - P1-② 塔防切片：commit `f0ad2c2`（直连）→ `4642aa1`（委托内核）。
 
 **P1-③ + 打磨轮状态（2026-10-10）**
 - P1-③ 射线 FPS「迷堡枪影 / Rayhold」已交付并推送（commit `edbf8ed` + 设计 note `9246e85`，IN_SYNC=0 0）：
-  `fps_kernel.py`（MazeService + FpsKernel）、`cordis.fps.yml`、`demos/rayhold.py`（SDF 光线步进）、
+  `fps_kernel.py`（MazeService + FpsKernel）、`cordis.fps.yml`、`examples/rayhold.py`（SDF 光线步进）、
   10/10 种子 auto-pilot 通关，三内核回归全绿；执行结果见 §10.9。
 - **手感与帧率打磨一轮已执行**（全哥指令 + 「参考 Aimlabs」）：hitmarker / 灵敏度 cm/360 标定 /
   量化结算 / 拾取可见化 / 出口高亮 / 失焦清键 / 步进调优 / 平衡复调（敌 10、更凶、弹药收紧）；
@@ -189,7 +189,7 @@ DeepSeek Harness 的运行时内核。
 **P1-④ 归仓 / Boxward（2026-10-10）**
 - **P1-④「归仓 / Boxward」已执行完毕**（设计 note `0db37cc` → 全哥放行「按 note 执行」→ 执行，§11.9）：
   内核 `puzzle_kernel.py`（GridService + PuzzleKernel + 反向拉箱生成器 + BFS 求解器 +
-  贪心网格化补齐 `world_mesh`）、`cordis.puzzle.yml`、`demos/boxward.py`（编辑器 + auto-play）、
+  贪心网格化补齐 `world_mesh`）、`cordis.puzzle.yml`、`examples/boxward.py`（编辑器 + auto-play）、
   `engine/greedy_mesh.py`（共同核算法件，P0-1 已从 experiments 转正）+ 6 项单测；`config_boot all` **五内核**全绿、
   10/10 生成种子回放全胜（`BOXWARD_OK`，GL 3→0）；与全哥 P0 共同核抽离线
   rebase 对齐后推送，最终 commit `0d22d04`（IN_SYNC=0 0）。
@@ -197,7 +197,7 @@ DeepSeek Harness 的运行时内核。
 **P1-⑤ 弹潮 / Swarmward（2026-10-11）**
 - **P1-⑤ 已执行完毕**（设计 note `8c2f091` → 全哥放行「按 note 执行」→ 执行，§12.9）：
   内核 `storm_kernel.py`（程序化编波 + 3 敌型 + 闪避 AI auto-pilot + **particles/
-  pathing 首个内核消费者**）、`cordis.storm.yml`、`demos/swarmward.py`（双摇杆 + 粒子层
+  pathing 首个内核消费者**）、`cordis.storm.yml`、`examples/swarmward.py`（双摇杆 + 粒子层
   + Aimlabs 手感件）、`core/particles_core.py` 加 `snapshot()`（共同核最小扩展）；
   `config_boot all` **六项**全绿、10/10 种子 10 波全通关（`STORMKERNEL_OK`，GL 3→0）。
 
@@ -247,18 +247,18 @@ DeepSeek Harness 的运行时内核。
 > ⚠️ 修正：`logic.boids.Flock` 是**群集飞行**（有界立方内 flocking），**不是寻路**；塔防敌人走固定车道 waypoint，不需要 boids。网格 A\*（`find_path`）若日后做「迷宫塔防」再新建 `logic/pathfind.py`，不改造 boids。
 
 ### 9.4 落地架构（两阶段）
-- **阶段 A（本内核先做）直连引擎切片**：`demos/tower_defense.py` 作为 `DemoApp` 子类，直接复用上面各核；系统类（`Grid`/`EnemySystem`/`TowerSystem`/`Economy`/`Rules`/`Waves`）先内联或放 `games/tower_defense/` 子包。**先交付可运行 + 可录制 demo**，证明玩法与引擎复用。
+- **阶段 A（本内核先做）直连引擎切片**：`examples/tower_defense.py` 作为 `DemoApp` 子类，直接复用上面各核；系统类（`Grid`/`EnemySystem`/`TowerSystem`/`Economy`/`Rules`/`Waves`）先内联或放 `games/tower_defense/` 子包。**先交付可运行 + 可录制 demo**，证明玩法与引擎复用。
 - **阶段 B（pilot-2 跟进项）Cordis 服务化**：先按 cordis v4.0.0 **fiber 属性式 API** 重写场景管线（现 `host/pipeline.py`），再把本内核的系统抽成 Cordis 插件（`provide` 各核服务 + `effect` 回收 GL 资源），用 Cordis 重新驱动 demo，验证「共同核 + 内核」范式与 GL 回滚。这才是 P0「Cordis 转正」的终验。
 
 > 为什么阶段 A 不直接上 Cordis：v4.0.0 的 API 与试点一不兼容，pilot-2 尚未做；先切片可最快拿到可玩结果，Cordis 化作为独立跟进项，互不阻塞。
 
 ### 9.5 文件布局
-- `demos/tower_defense.py` —— 主交付（DemoApp 内核）；或 `games/tower_defense/{app,grid,systems,towers,enemies,render_helpers}.py`（更干净、便于 Cordis 化）。**推荐先单文件快速跑通，再视情况拆分。**
-- 复用：`demos/_harness.py`(`run`)、`logic/camera.py`、`engine.picking`、`engine.audio`、`core/contracts.py`(形状参考)。
+- `examples/tower_defense.py` —— 主交付（DemoApp 内核）；或 `games/tower_defense/{app,grid,systems,towers,enemies,render_helpers}.py`（更干净、便于 Cordis 化）。**推荐先单文件快速跑通，再视情况拆分。**
+- 复用：`examples/_harness.py`(`run`)、`logic/camera.py`、`engine.picking`、`engine.audio`、`core/contracts.py`(形状参考)。
 - `scripts/record_all.py`：新增 `tower_defense_60s` 录制入口（仿 `mountain_100s`）。
 
 ### 9.6 验收标准
-- `python demos/tower_defense.py --smoke 3` 无报错，地图 + 第 1 波敌人出现。
+- `python examples/tower_defense.py --smoke 3` 无报错，地图 + 第 1 波敌人出现。
 - 点击空地可建塔；塔对范围内敌人开火；敌人死亡金币增加。
 - 撑过 5 波 → 「胜利」叠层；基地 HP=0 → 「失败」叠层。
 - 经 `scripts/record_all.py` 录一段短 demo 落盘。
@@ -323,12 +323,12 @@ DeepSeek Harness 的运行时内核。
 - `experiments/cordis/services/{fps_kernel,maze}.py`：`default=` 适配层（配置树经 importlib 解析）（**P0-4 起由 `host/registry.py` 的 `fps` / `maze` 两条短名替代**）
 - `configs/cordis.fps.yml`：声明本次挂载（render / economy / entity / rules / maze / fps）
 - `host.tree.py`：新增 `WANT_FPS`；`config_boot.py`：新增 `fps` 项（headless：auto-pilot 通关 + 弹药/击杀断言 + GL 回滚）
-- `demos/rayhold.py`：DemoApp 子类（SDF shader + FlyCamera + HUD + auto 驾驶）；`_mount_kernel` 经 `mount_tree(config_path('cordis.fps.yml'), want=WANT_FPS)`
+- `examples/rayhold.py`：DemoApp 子类（SDF shader + FlyCamera + HUD + auto 驾驶）；`_mount_kernel` 经 `mount_tree(config_path('cordis.fps.yml'), want=WANT_FPS)`
 - `scripts/record_all.py`：新增 `rayhold_60s` 录制入口 + SHOTS 截图时刻（复用 720p 规格）
 
 ### 10.6 验收标准
 - `python -m cli.config_boot fps` → `FPSKERNEL_OK`（auto-pilot 抵达出口 `state=won`；GL live → 0）
-- `python demos/rayhold.py --smoke 3` 无报错；`--shot` 出图；`--flag auto` 无人值守通关
+- `python examples/rayhold.py --smoke 3` 无报错；`--shot` 出图；`--flag auto` 无人值守通关
 - `scripts/record_all.py --only rayhold` 录制落盘
 - 零外部素材、MIT 干净；命名核验记录在案（§10.1）
 
@@ -450,7 +450,7 @@ DeepSeek Harness 的运行时内核。
 - GL 资源照旧 `ctx.effect` 绑内核 fiber，dispose 回滚断言 live→0。
 - 文件清单：`engine/greedy_mesh.py`、`puzzle_kernel.py`（GridService+PuzzleKernel）、
   `services/puzzle.py` 适配、`cordis.puzzle.yml`、`host.tree.WANT_PUZZLE`、
-  `config_boot.py puzzle 分支（+all 四项）`、`demos/boxward.py`、
+  `config_boot.py puzzle 分支（+all 四项）`、`examples/boxward.py`、
   `record_all.py boxward_60s`、tests 单测、README 清单 19→20。
 
 ### 11.6 验收标准
@@ -484,7 +484,7 @@ DeepSeek Harness 的运行时内核。
   （非法动作）→ 打乱状态根本不可解，448 次尝试全灭。改为标准**反向拉箱**
   （玩家在箱外侧走一步、箱跟进原格——每步拉恰好被一次反向推撤销，可解性由构造保证），
   10/10 种子立即全过。
-- **demo**：`demos/boxward.py`——正交 45° 视角（`OrbitCamera` 复用，Q/E 90° 步进），
+- **demo**：`examples/boxward.py`——正交 45° 视角（`OrbitCamera` 复用，Q/E 90° 步进），
   WASD 方向随相机映射（`cam_move_dirs` 纯函数 + 单测）；静态墙一次贪心建网（换关重建），
   箱/玩家/目标动态小 cube；目标金色呼吸光、箱入仓变绿；编辑器（M 摆格 / X 试解 /
   E 导出 `levels/*.json` / C 清内墙）；音效 6 合成；
@@ -560,7 +560,7 @@ DeepSeek Harness 的运行时内核。
 - **10 波通关制**：headless 断言 won 干净利落；`--flag endless` 实机无尽模式。
 - 文件清单：`storm_kernel.py`、`services/storm.py`、`cordis.storm.yml`、
   `host.tree.WANT_STORM = ('storm','render','rules','economy','entity','particles','pathing')`、
-  `config_boot.py storm 分支（all 六项）`、`demos/swarmward.py`、`record_all.py stormward_60s`、
+  `config_boot.py storm 分支（all 六项）`、`examples/swarmward.py`、`record_all.py stormward_60s`、
   tests 增补、README 20→21、remake_ideas §12.9。
 
 ### 12.6 验收标准
@@ -595,7 +595,7 @@ DeepSeek Harness 的运行时内核。
   只读快照（`[(x,y,z,life_frac)]`）——粒子核首个内核消费者的渲染端需要读状态，
   不暴露 `_parts` 内部结构；`StormKernel.update` 每帧驱动 `particles.update` +
   三事件 emit（击杀碎屑/命中火花/受击冲击，自定义 preset gravity=0 压到屏面）。
-- **demo**：`demos/swarmward.py`——正交固定屏（竞技场 letterbox 完整可见）、
+- **demo**：`examples/swarmward.py`——正交固定屏（竞技场 letterbox 完整可见）、
   双摇杆（WASD + 方向键/鼠标指向射击）、受击白闪（Aimlabs hitmarker 的 3D 等价物）、
   粒子层预分配 512 槽 vlist 逐帧整块写入、量化结算叠层（波数/击杀/命中率/最长连击/得分）、
   6 合成音效、失焦清键；`--flag auto/endless/seedN`；record 入口 `stormward_60s`。
@@ -656,7 +656,7 @@ particles（boss 死亡大爆炸）、entity/render 记账；自建 **PatternEmi
 **落地**：`storm_kernel.py` 就地扩展 —— `emit_plan`（螺旋/花瓣/扇形/环爆/扫射五图案，纯函数
 确定性）+ `boss_phase` / `boss_hp_for_wave` / `is_boss_wave` + `StormKernel._boss` /
 `_boss_fire`（三阶段 + P2 召唤 drone）+ `EBULLET_CAP` 限流 + auto-pilot 增强；
-`demos/swarmward.py` 加 boss 绘制 + **顶部血条**；`tests/run_tests.py` 加 3 项。
+`examples/swarmward.py` 加 boss 绘制 + **顶部血条**；`tests/run_tests.py` 加 3 项。
 
 **验收**：`config_boot storm --seeds`（10 种子）**10/10 通关**（68.0~72.9s）；
 `run_tests` 新增 3 项（图案确定性/角度覆盖、阶段切换、boss 波编排）全过；全量回归全绿；
@@ -731,7 +731,7 @@ LLM 场景 JSON ↔ hall schema 映射层工作量 → 先手写一份样例场�
 **落地**：`games/hall/kernel.py`（服务名 `hall`）—— 节点图 + 热点表 +
 物品栏 + **谜题状态机**（顺序解锁链）+ **`click(hotspot_id)` API**（headless 与 demo 同入口）+
 场景 JSON **加载/热重载**（坏 JSON **拒绝并保留旧场景**）；`services/hall.py` + `cordis.hall.yml`
-+ `host.tree.WANT_HALL` + `config_boot hall`；`demos/stillhall.py`（固定机位示意渲染 +
++ `host.tree.WANT_HALL` + `config_boot hall`；`examples/stillhall.py`（固定机位示意渲染 +
 热点点击/悬停高亮 + 物品栏 HUD + `1` 键自动推进）；`run_tests.py` 加 **4 项**。
 
 **场景 JSON schema**（与 `scene_viewer` / LLM 场景生成工作流同源）::
@@ -810,7 +810,7 @@ LLM 场景 JSON ↔ hall schema 映射层工作量 → 先手写一份样例场�
 + **惯性飞行**（`thrust` + 阻尼终端速度 ≈22）+ **海盗拦截**（保持中距 / 开火 / 赏金）
 + `buy/sell/upgrade`（2 级舱位与炮）+ **auto_step 贸易脚本**（低买高卖 + 海盗击退，
 与 demo 手玩同 API）；`services/void.py` + `cordis.void.yml` + `host.tree.WANT_VOID` +
-`config_boot void`；`demos/voidward.py`（2D 星图 + 惯性飞行 + 交易 HUD）；
+`config_boot void`；`examples/voidward.py`（2D 星图 + 惯性飞行 + 交易 HUD）；
 `run_tests.py` 加 **3 项**。**rules 新增第 6 条事件 `asset_reached`**（§15.4）。
 
 **验收（全绿）**：`config_boot void` → `VOIDKERNEL_OK`：
@@ -881,7 +881,7 @@ LLM 场景 JSON ↔ hall schema 映射层工作量 → 先手写一份样例场�
 **offset 校准**（F4 ±20ms）+ `hit(track, t_now)` API（headless 自动演奏同源）；
 **audio 核的首个内核消费者**：`synth_events_to_track()` 把谱面合成成三层曲子
 （低音 square / 和弦 sine / 主旋律 saw）；`services/pulse.py` + `cordis.pulse.yml` +
-`host.tree.WANT_PULSE` + `config_boot pulse`；`demos/pulsefall.py`（4 轨道下落 + note +
+`host.tree.WANT_PULSE` + `config_boot pulse`；`examples/pulsefall.py`（4 轨道下落 + note +
 判定线 + 结算 HUD + 1/2/3 切 BPM + G 自动）；`run_tests.py` 加 **2 项**。
 
 **验收（全绿）**：`config_boot pulse` → `PULSEKERNEL_OK`：

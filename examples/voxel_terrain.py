@@ -30,9 +30,9 @@ F 线框就能直接看到"内部面本来也在被画"这件事。
 
 用法::
 
-    python demos/voxel_terrain.py
-    python demos/voxel_terrain.py --smoke 2
-    python demos/voxel_terrain.py --shot
+    python examples/voxel_terrain.py
+    python examples/voxel_terrain.py --smoke 2
+    python examples/voxel_terrain.py --shot
 
 按键：1 环绕俯瞰 / 2 贴地漫游，F 线框，H 面剔除开关，鼠标拖动/滚轮 视角，
 SPACE 暂停，ESC 退出。

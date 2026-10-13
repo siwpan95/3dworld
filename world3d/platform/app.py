@@ -1,19 +1,19 @@
 # -*- coding: utf-8 -*-
 """平台层骨架（DemoApp）：窗口、DPI、命令行、HUD、截图与主循环。
 
-（P2-1：原 `demos/_harness.py` → `world3d/platform/app.py`。它与任何具体 demo 无关——
+（P2-1：原 `examples/_harness.py` → `world3d/platform/app.py`。它与任何具体 demo 无关——
 31 个 demo 都靠它开窗口/解析命令行/抓帧——是平台层而非示例层。
-旧路径 `demos/_harness.py` 保留为薄兼容层。）
+旧路径 `examples/_harness.py` 保留为薄兼容层。）
 
-设计目标：每个 ``demos/*.py`` 只关心"这一帧画什么"，其余全部由本模块兜底。
+设计目标：每个 ``examples/*.py`` 只关心"这一帧画什么"，其余全部由本模块兜底。
 
 命令行（所有 demo 一致）::
 
-    python demos/<name>.py                 正常运行
-    python demos/<name>.py --smoke [秒]    冒烟：N 秒后自动关闭（默认 2.0）
-    python demos/<name>.py --shot          按时抓帧存 docs/ 后自动关闭
-    python demos/<name>.py --size 960x540  指定窗口尺寸
-    python demos/<name>.py --fps 30        指定逻辑刷新率
+    python examples/<name>.py                 正常运行
+    python examples/<name>.py --smoke [秒]    冒烟：N 秒后自动关闭（默认 2.0）
+    python examples/<name>.py --shot          按时抓帧存 docs/ 后自动关闭
+    python examples/<name>.py --size 960x540  指定窗口尺寸
+    python examples/<name>.py --fps 30        指定逻辑刷新率
 
 实测坑位（pyglet 2.1.16 / Win10 150% DPI，全部在本模块内一次性兜住）：
 
@@ -452,7 +452,7 @@ def orbit_camera_input(app, camera, invert_y=False):
     return on_drag, on_scroll
 
 
-# 公共面（旧路径 `demos/_harness.py` 的 `from world3d.platform.app import *` 靠它转发）
+# 公共面（旧路径 `examples/_harness.py` 的 `from world3d.platform.app import *` 靠它转发）
 __all__ = [
     'PROJECT_ROOT', 'DOCS_DIR', 'COL_TITLE', 'COL_STATUS', 'COL_HELP',
     'parse_args', 'capture', 'Hud', 'make_fullscreen_quad', 'DemoApp', 'run',

@@ -18,9 +18,9 @@
 
 用法::
 
-    python demos/director.py                          # 打开默认演出（祭坛环绕）
-    python demos/director.py --shot-json shots/x.shot.json
-    python demos/director.py --smoke 4
+    python examples/director.py                          # 打开默认演出（祭坛环绕）
+    python examples/director.py --shot-json shots/x.shot.json
+    python examples/director.py --smoke 4
 
 操作::
 
@@ -62,7 +62,7 @@ import sys
 # `scripts/verify_demos.py` 的 `issubclass(cls, DemoApp)` 判定为假 ——
 # 症状是"验收表里这个 demo 的截图数恒为 0"、"录制脚本走进裸 App 分支后
 # TypeError: unexpected keyword 'shots'"。P2-1 起真身在 `world3d/platform/app.py`，
-# 旧路径 `demos/_harness.py` 只是薄兼容层（不要再用）。
+# 旧路径 `examples/_harness.py` 只是薄兼容层（不要再用）。
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
 if _ROOT not in sys.path:
@@ -263,7 +263,7 @@ class KeyframePanel:
         ``Batch`` 不持有 ``Shape``/``Label`` 对象的引用，只被批创建、无人引用的
         图元会被 GC 回收，**表现为"代码跑了但屏幕上什么都没有"**（实测：最小
         探针里持有引用的红块渲染、不持有引用的绿块全黑）。这是本工程踩过的
-        第 N 个 pyglet 静默陷阱，见 `demos/README.md` 的坑位表。
+        第 N 个 pyglet 静默陷阱，见 `examples/README.md` 的坑位表。
         """
         if not self._ready:
             return

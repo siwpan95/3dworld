@@ -12,9 +12,9 @@ logic.nordic_scene 的程序化场景）；配乐由 logic.nordic_audio 离线�
 
 用法::
 
-    python demos/nordic_saga.py                正常跑（60s 循环 + 配乐）
-    python demos/nordic_saga.py --smoke 2      冒烟
-    python demos/nordic_saga.py --shot         抓帧到 docs/ 后关闭
+    python examples/nordic_saga.py                正常跑（60s 循环 + 配乐）
+    python examples/nordic_saga.py --smoke 2      冒烟
+    python examples/nordic_saga.py --shot         抓帧到 docs/ 后关闭
 
 按键：ESC 退出  SPACE 暂停  B Bloom  O SSAO  F2 性能面板
 """

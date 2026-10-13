@@ -21,7 +21,7 @@
 在片元里失控，否则一个坏像素就能拖垮整帧。
 
 性能：1280x720 在核显上大约 45~60fps（取决于显卡与是否启用阴影）。
-掉帧明显时用 ``python demos/raymarch_sdf.py --size 960x540``，
+掉帧明显时用 ``python examples/raymarch_sdf.py --size 960x540``，
 像素少了 44%，步进次数不变，画面内容完全一样。降采样是这里唯一的
 "免费"提速手段；减 MAX_STEPS 会先让远景地面出现条纹瑕疵（步进提前 break）。
 
@@ -37,10 +37,10 @@
 
 用法::
 
-    python demos/raymarch_sdf.py
-    python demos/raymarch_sdf.py --smoke 3
-    python demos/raymarch_sdf.py --shot
-    python demos/raymarch_sdf.py --size 960x540      # 掉帧时用这个
+    python examples/raymarch_sdf.py
+    python examples/raymarch_sdf.py --smoke 3
+    python examples/raymarch_sdf.py --shot
+    python examples/raymarch_sdf.py --size 960x540      # 掉帧时用这个
 
 按键：鼠标拖动改方位角/俯仰角，滚轮推拉距离，1/2/3 切换材质配色，
       T 切换软阴影，A 切换自动环绕，SPACE 暂停，ESC 退出。

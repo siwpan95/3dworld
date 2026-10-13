@@ -9,9 +9,9 @@
 
 运行::
 
-    python demos/voidward.py
-    python demos/voidward.py --smoke
-    python demos/voidward.py --shot
+    python examples/voidward.py
+    python examples/voidward.py --smoke
+    python examples/voidward.py --shot
 
 合规：致敬 Elite(1984) 的「惯性飞行 + 贸易 + 战斗」；**全部数值/命名/文案原创**。
 """

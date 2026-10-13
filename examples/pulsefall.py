@@ -9,9 +9,9 @@
 
 运行::
 
-    python demos/pulsefall.py
-    python demos/pulsefall.py --smoke
-    python demos/pulsefall.py --shot
+    python examples/pulsefall.py
+    python examples/pulsefall.py --smoke
+    python examples/pulsefall.py --shot
 
 合规：致敬下落式音击品类；**谱面/曲目/命名全部程序化原创**。
 """

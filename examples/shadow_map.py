@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """阴影贴图（两趟渲染 / render-to-texture）：光源深度图 + PCF 软阴影。
 
-这是 demos/ 里唯一一个**渲染两趟**的例子，也是唯一用到
+这是 examples/ 里唯一一个**渲染两趟**的例子，也是唯一用到
 ``pyglet.image.Framebuffer`` 的例子：
 
 1. **第一趟（深度趟）**：把相机放到光源位置（平行光 → 正交投影），
@@ -22,8 +22,8 @@
 
 用法::
 
-    python demos/shadow_map.py
-    python demos/shadow_map.py --shot       两张不同光照角度的验证图
+    python examples/shadow_map.py
+    python examples/shadow_map.py --shot       两张不同光照角度的验证图
 
 按键：L 光源方位 +15°　B 切换 bias　S 阴影开关　A 自动环绕相机　
 SPACE 暂停　鼠标拖动/滚轮　ESC 退出

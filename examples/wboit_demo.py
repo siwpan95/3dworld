@@ -11,9 +11,9 @@
 
 运行::
 
-    python demos/wboit_demo.py
-    python demos/wboit_demo.py --smoke
-    python demos/wboit_demo.py --shot
+    python examples/wboit_demo.py
+    python examples/wboit_demo.py --smoke
+    python examples/wboit_demo.py --shot
 
 合规：本 demo 的 WBOIT 为独立实现（McGuire 2013 的公开算法）；
 参考 Easy3D 仅"问题意识"（透明靠排序不可靠），未借鉴其代码（GPL-3.0）。

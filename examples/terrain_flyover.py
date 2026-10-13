@@ -27,9 +27,9 @@
 
 用法::
 
-    python demos/terrain_flyover.py
-    python demos/terrain_flyover.py --smoke 2
-    python demos/terrain_flyover.py --shot
+    python examples/terrain_flyover.py
+    python examples/terrain_flyover.py --smoke 2
+    python examples/terrain_flyover.py --shot
 
 按键：R 换种子重建地形，鼠标拖动/滚轮改视角，SPACE 暂停，ESC 退出。
 """

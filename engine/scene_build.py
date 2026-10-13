@@ -36,7 +36,7 @@ JSON 约定（engine 原生字段 + 扩展 ``mesh``）::
 - ``material``：``preset``（engine.material.PRESETS 的键）+ 覆盖字段。
 
 配套：``scripts/scene_build.py``（CLI：--validate / --dry-run）、
-``demos/scene_viewer.py``（热重载查看器）、``docs/LLM场景生成工作流.md``。
+``examples/scene_viewer.py``（热重载查看器）、``docs/LLM场景生成工作流.md``。
 """
 from __future__ import annotations
 

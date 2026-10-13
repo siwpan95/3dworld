@@ -10,7 +10,7 @@
 #   particles   —— 粒子上限与种子（内核 emit 爆炸/命中/受击，每帧驱动 update）
 #   pathing     —— formation 编队图案的共同核（ring/grid 委托，line/v 内核自算）
 #
-# 本文件同时是 demos/swarmward.py 的实际挂载声明（host.tree.mount_tree 加载本文件）——
+# 本文件同时是 examples/swarmward.py 的实际挂载声明（host.tree.mount_tree 加载本文件）——
 # 「demo 怎么挂的 = headless 验证怎么挂的」，接线只有这一份。
 #
 # 运行（headless 验证）：python -m cli.config_boot storm

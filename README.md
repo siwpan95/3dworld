@@ -1,7 +1,7 @@
 # 3dworld — pyglet 三维世界示例
 
 用 Python + pyglet 从零构建三维世界与**动画演出**：时间轴 / 关键帧插值 /
-层级骨骼 / 程序化场景，外加一组单文件 3D 示例（`demos/`）。
+层级骨骼 / 程序化场景，外加一组单文件 3D 示例（`examples/`）。
 
 当前面貌：
 
@@ -10,7 +10,7 @@
 - `kkrieger_demo.py` —— **150 秒六幕程序化走廊漫游 + 程序化配乐**（致敬 .kkrieger）：
   走廊舱门/管道/货箱/频闪 → 大厅纪念碑/全息扫描/升降平台 → 核心过载 →
   撤离时逐段熄灯 → 重启突入（核心爆发白闪）→ 白闪传送至环面结反应堆圣殿；
-- `demos/` —— **31 个独立示例与工具**：无限隧道、SDF 光线步进、GPU 实例化粒子、
+- `examples/` —— **31 个独立示例与工具**：无限隧道、SDF 光线步进、GPU 实例化粒子、
   太阳系、程序化地形飞行、体素面剔除、水面波动、3D 鸟群、阴影贴图、
   方块世界、引擎综合展示、材质实验室、《诺德之境》、可漫步场景（S1 场景交互化）、
   方块世界可交互版（挖掘/放置 + 区块化重建）、KID-A WALKER 3D（无限走廊 + 能量/碎片）、
@@ -50,7 +50,7 @@ presentation/        表现层：装配窗口事件 → 逻辑层 → 渲染
   hud.py               幕字幕（淡入/停留/淡出）+ 状态行
   timeline_ui.py       底部时间轴面板（播放/循环/拖动/幕标记）
   shot.py              离屏抓帧（glReadPixels，DPI 无关）
-demos/               31 个单文件示例与工具 + 公共骨架 _harness.py（详见 demos/README.md）
+examples/               31 个单文件示例与工具 + 公共骨架 _harness.py（详见 examples/README.md）
 games/               玩法内核层（P0-3 起）：games/<名>/kernel.py，8 个 Cordis 内核 + 各自的子包说明
 host/                宿主层：tree.py（配置树挂载/就绪等待/entry 白名单）· registry.py（服务短名表 23 条）
                       pipeline.py（场景校验流水线，Cordis 化：checker→loader→reporter）
@@ -59,7 +59,7 @@ configs/             9 棵配置树（cordis.*.yml）：声明"本次挂哪些�
 world3d/             库入口（发行名 3dworld / 导入名 world3d）：薄门面 + py.typed
   platform/app.py     **平台层骨架**（P2-1）：窗口/DPI/命令行/HUD/截图/主循环 + 7 个工具
                      32 个 demo 与脚本统一 `from world3d.platform.app import ...`
-                     （旧路径 demos/_harness.py 是薄兼容层）
+                     （旧路径 examples/_harness.py 是薄兼容层）
 engine/              引擎层（P3-2：引擎级件陆续下沉到这里，见 docs/引擎设计.md）
   fsm.py              确定性有限状态机（时间窗 + 事件转移，P0-5 自研）
   orchestration.py    事件总线 + 声明式 when→then 级联（P0-5 自研）
@@ -101,9 +101,9 @@ docs/                设计文档 + 渲染验证截图
 综合演示（把上面全部跑一遍）：
 
 ```bat
-python demos/engine_showcase.py            正常运行
-python demos/engine_showcase.py --bench 5  5 秒基准（实测 ~115 fps @720p）
-python demos/engine_showcase.py --shot     抓帧到 docs/ 后关闭
+python examples/engine_showcase.py            正常运行
+python examples/engine_showcase.py --bench 5  5 秒基准（实测 ~115 fps @720p）
+python examples/engine_showcase.py --shot     抓帧到 docs/ 后关闭
 ```
 
 按键：`F2` 性能面板 · `B` Bloom · `O` SSAO · `V` 相机切换 · `1/2/3` 调试视图 ·
@@ -134,7 +134,7 @@ world3d-info                :: 自检：版本 / 依赖 / GL 能力 / cordis / �
 P2「分层归位」会把它们收进 `world3d.*` 命名空间。
 
 **库与仓库的边界**：`pip install` 装的是**引擎库**（engine/core/host/cli/games + vendored cordis）。
-`demos/`（示例）、`scripts/`（批量验收 / 离线录制 / 打包）、`configs/`（配置树）、`assets/` 属
+`examples/`（示例）、`scripts/`（批量验收 / 离线录制 / 打包）、`configs/`（配置树）、`assets/` 属
 **仓库资产**，不随 wheel 分发 —— 所以：
 
 - 面向仓库的工具用 `python scripts/<名>.py`（如 `scripts/verify_demos.py`、`scripts/record_all.py`）；
@@ -203,11 +203,11 @@ python kkrieger_demo.py --shot     抓一组验证截图（9 张）到 docs/（�
 > "platform" 模式下实际 framebuffer = 请求尺寸，但 viewport setter 会乘
 > scale → 渲染放大裁切；本 Demo 统一设 `pyglet.options['dpi_scaling'] = 'real'`。
 
-## demos/ —— 31 个单文件 3D 示例与工具
+## examples/ —— 31 个单文件 3D 示例与工具
 
 ```bat
-python demos\demoscene_tunnel.py --smoke     冒烟
-python demos\solar_system.py                 1..8 聚焦行星
+python examples\demoscene_tunnel.py --smoke     冒烟
+python examples\solar_system.py                 1..8 聚焦行星
 python scripts\verify_demos.py               批量验收（冒烟 + 截图 + 退出码）
 ```
 
@@ -245,7 +245,7 @@ python scripts\verify_demos.py               批量验收（冒烟 + 截图 + �
 | `kid_a_walker_3d.py` | **KID-A WALKER 3D**（arcade 伪 3D 重制为真 3D）：41 房间模版 → 区块无限走廊 + 能量/碎片系统 |
 | `director.py` | **可视化导演台**（**工具**）：关键帧编排相机运镜 / 环境光 / 物件 TRS，导出「演出 JSON」并可回放与录制（`record_all.py` 的 `director_20s`）；`--shot-json` 载入既有演出 |
 
-详见 [demos/README.md](demos/README.md)（含统一命令行与踩坑清单）。
+详见 [examples/README.md](examples/README.md)（含统一命令行与踩坑清单）。
 
 ## 测试与验收
 

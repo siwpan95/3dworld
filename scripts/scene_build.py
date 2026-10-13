@@ -6,7 +6,7 @@
     python scripts/scene_build.py docs/llm_scene_demo.json --validate   # 只校验
     python scripts/scene_build.py docs/llm_scene_demo.json --dry-run    # 校验+CPU 构建
 
-交互式渲染请用 ``demos/scene_viewer.py --file <json>``（热重载查看器）。
+交互式渲染请用 ``examples/scene_viewer.py --file <json>``（热重载查看器）。
 """
 import argparse
 import os
@@ -41,7 +41,7 @@ def main(argv=None):
         total = count(data.get('root', {}))
         print(f'[dry-run] CPU build OK, total vertices = {total}')
     elif n_err == 0:
-        print('[hint] render it with: python demos/scene_viewer.py --file '
+        print('[hint] render it with: python examples/scene_viewer.py --file '
               + args.json_path)
     return 0 if n_err == 0 else 1
 
