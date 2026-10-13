@@ -38,6 +38,7 @@ from engine.timeline import (     # noqa: E402
 )
 from engine.frustum import Frustum, AABB, Sphere   # noqa: E402
 from engine.greedy_mesh import layer_mesh, merge_rects   # noqa: E402  纯函数，无 GL
+from engine.baked_mesh import unit_cube, unit_sphere      # noqa: E402  纯函数，无 GL
 from engine.fsm import Machine, machine_from_keys        # noqa: E402  纯逻辑，无 GL
 from engine.orchestration import Bus                     # noqa: E402  纯逻辑，无 GL
 
@@ -50,5 +51,6 @@ __all__ = [
     'Sampler', 'Channel', 'Timeline', 'PlaybackController',
     'Frustum', 'AABB', 'Sphere',
     'layer_mesh', 'merge_rects',
+    'unit_cube', 'unit_sphere',
     'Machine', 'machine_from_keys', 'Bus',
 ]

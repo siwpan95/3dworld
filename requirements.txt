@@ -1,14 +1,13 @@
-# 3dworld 运行时依赖 —— clean clone 执行 `pip install -r requirements.txt` 即可跑通
-# 全部 31 个 demo 与 129 项测试，无需手工设置 CORDIS_SRC 或创建 .pth。
+# 3dworld 运行时依赖 —— **以 pyproject.toml 为单一事实来源**
+#
+# 本文件已改为"转发"：装上本项目自身即等于装上它的全部运行依赖
+# （pyglet 2.1.16 + PyYAML + watchdog —— 后两者是 vendored cordis 的硬依赖，
+#  成因说明见 pyproject.toml 的 dependencies 注释与 docs/cordis集成.md）。
+#
+# 这样做的原因：此前 requirements.txt 与项目元数据是**两份清单**，必然漂移
+# （上线前全检的 P0 发布阻断就是"依赖没声明全"）。现在只有一份。
+#
+# 用法（与 pip install -e . 等价，保留本文件是为了兼容既有文档与 CI）：
+-e .
 
-# 渲染/窗口层
-pyglet==2.1.16
-
-# ---- vendored cordis（vendor/cordis/src）的硬依赖 ------------------------
-# 上游 cordis 把 PyYAML 与 watchdog 标为 optional extra，但实为硬依赖：
-#   cordis/__init__.py 无条件 `from .hmr import Hmr`
-#   → hmr.py 顶层 `import yaml`，且模块级 `class _WatchHandler(FileSystemEventHandler)`
-#     把可能为 None 的名字当基类（缺 watchdog 时抛 TypeError: NoneType takes no arguments）
-# 因此二者缺一，`import cordis` 必失败。此前未声明，是本次上线前全检的 P0 发布阻断项。
-PyYAML>=6.0,<7
-watchdog>=4.0,<7
+# 备用路线见 requirements-pyglet1x.txt（cocos2d 兼容：pyglet 1.x 锁版）

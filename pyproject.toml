@@ -1,0 +1,93 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+# ============================================================================
+# 3dworld —— 程序化优先、确定性、可 headless 验证的纯 Python 3D 场景/动画引擎
+#
+# 命名（P1 已定）：**发行名 `3dworld` / 导入名 `world3d`** —— Python 的导入包名不能以
+# 数字开头（`import 3dworld` 是语法错，`'3dworld'.isidentifier()` 为 False），
+# 而 PEP 508 发行名允许。参见 `world3d/__init__.py` 的模块 docstring。
+#
+# 版本双轨（见 docs/5_引擎化改造规划.md §3.3）：
+#   * 库（本文件 version）用 **SemVer**，0.x 期间允许破坏性变更；
+#   * 发行版（Gitee release / exe / 成片）继续 **CalVer**。
+# ============================================================================
+[project]
+name = "3dworld"
+version = "0.1.0"
+description = "程序化优先、确定性、可 headless 验证的纯 Python 3D 场景/动画引擎（零外部素材）"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+authors = [{ name = "siwpan" }]
+keywords = ["3d", "engine", "pyglet", "opengl", "procedural", "animation", "headless"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Topic :: Multimedia :: Graphics :: 3D Rendering",
+  "License :: OSI Approved :: MIT License",
+]
+
+# 运行时依赖 —— **单一事实来源就是这里**（requirements.txt 已改为转发本文件，不再另列）
+dependencies = [
+  "pyglet==2.1.16",
+  # vendored cordis（vendor/cordis/src）的硬依赖：上游标为 optional extra，实为硬依赖
+  # （cordis/__init__.py 无条件 from .hmr import Hmr；hmr.py 顶层 import yaml，
+  #  且模块级把可能为 None 的 FileSystemEventHandler 当基类用）。详见 requirements.txt 的历史注释。
+  "PyYAML>=6.0,<7",
+  "watchdog>=4.0,<7",
+]
+
+[project.optional-dependencies]
+dev = ["ruff>=0.17.0", "coverage>=7.0"]
+# cocos2d 兼容路线备用（见 requirements-pyglet1x.txt）：pyglet 1.x 锁版
+pyglet1x = ["pyglet==1.5.30"]
+
+[project.urls]
+Homepage = "https://gitee.com/siwpan/3dworld"
+Source = "https://gitee.com/siwpan/3dworld"
+Changelog = "https://gitee.com/siwpan/3dworld/blob/master/CHANGELOG.md"
+
+# 库级 CLI 入口。
+# ⚠️ 边界：`world3d-config` / `world3d-pipeline` 需要仓库内的 `configs/*.yml` 与
+# `docs/` 场景样例 —— 它们是**仓库/开发期**工具（wheel 不携带 configs/，可用环境变量
+# `WORLD3D_CONFIGS` 指向别处的配置树）。`world3d-info` 是纯库自检，任何安装方式都可用。
+# 面向仓库的工具（批量验收 `scripts/verify_demos.py`、离线录制 `scripts/record_all.py`、
+# 打包 `scripts/build_exe.py`）依赖 demos/ 与 assets/，**不随 wheel 分发**，用
+# `python scripts/<名>.py` 运行。见 docs/分发指南.md。
+[project.scripts]
+world3d-info = "world3d._info:main"
+world3d-config = "cli.config_boot:main"
+world3d-pipeline = "host.pipeline:main"
+
+# ---------------------------------------------------------------------------
+# 打包范围（P1 用"顶层多包"，src/ 布局留到 P2 一次性切换 —— 规划 §7-Q2）
+#   * `where` 含 vendor/cordis/src：vendored cordis 必须随包分发，否则装上后
+#     `import cordis` 找不到（运行时的 `_cordis_locate.ensure()` 优先已安装的 cordis）。
+#   * demos/tests/scripts 不打包：它们是示例与仓库工具，不是库的一部分。
+# ---------------------------------------------------------------------------
+# 顶层**模块**（不是包）必须单独声明 —— packages.find 只找包，漏了它会出现
+# "装上后 host.tree 报 ModuleNotFoundError: No module named '_cordis_locate'"
+# （P1 验收在干净 venv 里实测到；editable 安装因为源码就在 sys.path 上而看不出）。
+[tool.setuptools]
+py-modules = ["_cordis_locate"]
+
+[tool.setuptools.packages.find]
+where = [".", "vendor/cordis/src"]
+include = ["world3d*", "engine*", "core*", "logic*", "presentation*", "host*",
+           "cli*", "games*", "cordis*"]
+exclude = ["demos*", "tests*", "scripts*", "docs*", "assets*", "recordings*", "levels*",
+           "shots*", "configs*"]
+
+[tool.setuptools.package-data]
+world3d = ["py.typed"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# 上线前全检跑出 931 项告警（BLE001 盲目 except / F401 未用导入 / S110 try-except-pass）。
+# 门禁先只钉住"能抓到真缺陷"的几条（F811 重复定义正是它抓到了 voxel_terrain 被覆盖的 update）。
+select = ["F", "E9"]
+ignore = ["F401", "F403", "F405"]

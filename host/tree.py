@@ -46,8 +46,13 @@ from cordis import Context, Loader  # noqa: E402
 from host import registry                        # noqa: E402  P0-4：服务短名 → 实现类
 from host.registry import SYNTH_PREFIX           # noqa: E402
 
-# 配置树住顶层 configs/（P0-2 起；此前散在 experiments/cordis/）
-CONFIG_DIR = os.path.join(ROOT, 'configs')
+# 配置树住顶层 configs/（P0-2 起；此前散在 experiments/cordis/）。
+#
+# ⚠️ 为什么要有环境变量逃生口：`configs/` 是**仓库资产**，不随 wheel 分发
+# （见 pyproject.toml 的 packages 说明）—— 所以非 editable 安装下 `ROOT` 落在
+# site-packages，那里没有 configs/。此时用 `WORLD3D_CONFIGS` 指向别处的配置树，
+# 或直接从仓库运行（仓库/editable 下 ROOT 就是仓库根，天然可用）。
+CONFIG_DIR = os.environ.get('WORLD3D_CONFIGS') or os.path.join(ROOT, 'configs')
 
 # 各配置树就绪所需的最低服务集（demo 与 headless 验证共用，避免两处漂移）
 WANT_TD = ('tower_defense', 'render', 'rules', 'economy', 'entity')

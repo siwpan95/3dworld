@@ -107,17 +107,36 @@ python demos/engine_showcase.py --shot     抓帧到 docs/ 后关闭
 
 设计与踩坑记录见 **docs/引擎设计.md**；引擎测试：`python -m tests.test_engine`。
 
-## 快速开始（推荐：项目级 venv 隔离）
+## 快速开始
 
 ```bat
-:: 在项目根目录执行（路径不含盘符，随处可用）
+:: 方式 A（推荐，当作项目开发 / 跑示例）：项目级 venv
 python -m venv .venv
 .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -e .            :: 依赖与元数据以 pyproject.toml 为唯一来源
+                            :: （requirements.txt 已改为转发它，等价于旧用法）
 python main.py
+
+:: 方式 B（当作**库**装进任意环境）
+pip install .               :: 或 pip install "git+https://gitee.com/siwpan/3dworld.git"
+python -c "import world3d; print(world3d.__version__)"
+world3d-info                :: 自检：版本 / 依赖 / GL 能力 / cordis / 配置树位置
 ```
 
-- `requirements.txt` 锁定 pyglet 2.1.16。
+**命名**（P1 库化定）：**发行名 `3dworld` / 导入包名 `world3d`** —— Python 的导入包名不能以
+数字开头（`import 3dworld` 是语法错，`'3dworld'.isidentifier()` 为 `False`），而 PEP 508
+发行名允许。`world3d` 目前是**薄门面**（把引擎公共面从 `engine` 转发出来），
+`engine` / `core` / `host` / `games` 等仍是独立顶层包（旧导入路径零破坏）；
+P2「分层归位」会把它们收进 `world3d.*` 命名空间。
+
+**库与仓库的边界**：`pip install` 装的是**引擎库**（engine/core/host/cli/games + vendored cordis）。
+`demos/`（示例）、`scripts/`（批量验收 / 离线录制 / 打包）、`configs/`（配置树）、`assets/` 属
+**仓库资产**，不随 wheel 分发 —— 所以：
+
+- 面向仓库的工具用 `python scripts/<名>.py`（如 `scripts/verify_demos.py`、`scripts/record_all.py`）；
+- `world3d-config` / `world3d-pipeline` 需要 `configs/`：从仓库运行（或 editable 安装）天然可用，
+  非 editable 安装下用环境变量 `WORLD3D_CONFIGS` 指向配置树目录。
+
 - 若你的环境绑死 cocos2d（pyglet 1.x），无需安装任何东西，
   直接用系统 Python 跑 `pyglet_3d_demo_1x.py` 即可。
 

@@ -3,6 +3,51 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [未发布] — 引擎化改造 P1：库化（可安装 + 公共 API 面 + CLI 入口）
+
+依据 `docs/5_引擎化改造规划.md` §6-P1。P0 把试点全量转正后，P1 让仓库**能像库一样被安装使用**。
+
+### 新增
+
+- **`pyproject.toml`**（PEP 621，单一事实来源）：元数据 / 依赖 / extras（`dev`、`pyglet1x`）/
+  库级入口点 / 打包范围 / ruff 配置。**库版本用 SemVer，从 `0.1.0` 起步**（发行版仍用 CalVer）。
+- **`world3d/` 薄门面包**：把引擎公共面从 `engine` 转发出来（公共面由 `engine.__all__` 收口，
+  不维护第二份清单）；含 `py.typed`。**发行名 `3dworld` / 导入名 `world3d`** —— 导入包名不能以
+  数字开头（`import 3dworld` 是语法错、`'3dworld'.isidentifier()` 为 False），PEP 508 发行名允许。
+- **库级 CLI 入口**：`world3d-info`（环境自检：版本/依赖/GL/cordis/配置树，任何安装方式可用）、
+  `world3d-config`（配置树 headless 验收）、`world3d-pipeline`（场景校验流水线）。
+- `world3d/_info.py`：自检实现（全部带兜底，缺 GL / 缺可选件都不炸）。
+
+### 变更
+
+- **依赖收口为一份**：`requirements.txt` 改为**转发**（内容就是 `-e .`）—— 此前它与项目元数据是
+  两份清单、必然漂移（上线前全检的 P0 发布阻断即"依赖没声明全"）。`requirements-pyglet1x.txt`
+  作为 cocos2d 兼容路线备用保留。
+- `host/tree.py`：配置树目录支持 **`WORLD3D_CONFIGS`** 环境变量覆盖（`configs/` 是仓库资产、
+  不随 wheel 分发，非 editable 安装下需要逃生口）。
+- `engine/__init__.py`：公共面补 `unit_cube` / `unit_sphere`（与 `layer_mesh` / `merge_rects` 同族）。
+- `README.md`：安装段重写（方式 A 项目 venv / 方式 B 当库装）+ 说明"库 vs 仓库资产"的边界。
+
+### 修掉的两个打包缺陷（**在干净 venv 里装一遍才发现**）
+
+1. **顶层模块没被打包**：`_cordis_locate.py` 是**模块不是包**，`packages.find` 只找包 →
+   装上后 `host.tree` 报 `ModuleNotFoundError: No module named '_cordis_locate'`。
+   **editable 安装看不出来**（源码本来就在 `sys.path` 上），只有非 editable 装才暴露。
+   修复：`[tool.setuptools] py-modules = ["_cordis_locate"]`。
+2. `world3d-info` 取依赖版本用 `__import__(n).__version__` → `watchdog 4.x` 没有该属性，
+   直接 `AttributeError`。改为 `importlib.metadata.version('<发行名>')`。
+
+### 验收（实测：另建一个干净 venv，用 `E:\Python314` 的完整 Python）
+
+| 步骤 | 结果 |
+|------|------|
+| `pip install .`（非 editable） | `import world3d` → **0.1.0**，公共面 28 项；`engine/core/logic/presentation/host/cli/games` 全部可导入（旧路径零破坏） |
+| `world3d-info` | `pyglet=2.1.16 PyYAML=6.0.3 watchdog=6.0.0`；`cordis` 解析到**装出来的副本**（vendored 打包成功）；GL `(4,6) Intel UHD 630`；着色器 19 / 服务表 23；配置树缺失时给出 `WORLD3D_CONFIGS` 提示 |
+| `pip install -e .` | `cordis` 解析回仓库 `vendor/cordis/src` |
+| `scripts/run_all_tests.py`（用该 venv 跑） | 7/7 模块 / **140 项** / `ALL_TESTS_PASSED` |
+| `world3d-config all` | **9 个 OK 标记**（TD/GODHAND/FPS/BOXWARD/STORM/HALL/VOID/PULSE/CORES） |
+| `world3d-pipeline` | `PIPELINE_OK` |
+
 ## [未发布] — 引擎化改造 P0：`experiments/` 全量转正
 
 依据 `docs/5_引擎化改造规划.md`（全哥立项）。目标：把仓库从"演示合集"改造为
