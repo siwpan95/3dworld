@@ -22,7 +22,7 @@ pyglet.options['dpi_scaling'] = 'real'
 
 from pyglet.math import Mat4, Vec3
 
-from core.kkrieger_scene import KKRenderer
+from presentation.kkrieger_scene import KKRenderer
 from engine.audio import TimelineAudio
 from logic.animation import quat_to_mat4
 from logic.camera import look_at_matrix

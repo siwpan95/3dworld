@@ -23,7 +23,7 @@ import math
 import pyglet
 from pyglet.math import Mat4, Vec3
 
-from core.renderer import WorldRenderer
+from presentation.world_renderer import WorldRenderer
 from logic.animation import Timeline, quat_to_mat4
 from logic.camera import (DIST_MAX, DIST_MIN, PITCH_MAX, PITCH_MIN, OrbitCamera,
                           look_at_matrix)

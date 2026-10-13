@@ -7,7 +7,7 @@
 低角度仰拍龙焰喷墙 → 推轨贴近符文 → 冲天拉升追龙远去 → 回落开场。
 
 一切几何与材质都是程序生成的（engine.proctex 的北欧图案集 +
-core.nordic_scene 的程序化场景）；配乐由 logic.nordic_audio 离线合成，
+logic.nordic_scene 的程序化场景）；配乐由 logic.nordic_audio 离线合成，
 与动画共用事件时刻，音画逐拍对齐。
 
 用法::
@@ -30,7 +30,7 @@ if ROOT not in sys.path:
 
 from pyglet.math import Vec3                                      # noqa: E402
 
-from core.nordic_scene import (CAMPFIRE, build_nordic_scene,      # noqa: E402
+from logic.nordic_scene import (CAMPFIRE, build_nordic_scene,      # noqa: E402
                                snow_height)
 from engine.app import EngineApp, run                             # noqa: E402
 from engine.camera import Camera                                  # noqa: E402

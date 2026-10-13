@@ -113,7 +113,7 @@ def _ease_keys(keys, subdiv=4):
 def _arm_ik(target_world):
     """两连杆逆运动学：返回 (转台 Y 角, 大臂 Z 角, 小臂相对 Z 角)，单位度。
 
-    几何约定（与 core/renderer.build_arm 一致）：肩关节在
+    几何约定（与 presentation/world_renderer.build_arm 一致）：肩关节在
     ``ARM_BASE + (0, SHOULDER_H, 0)``，大臂沿局部 +Y、绕 Z 旋转，小臂接在
     大臂末端再绕 Z 旋转；转台绕 Y 旋转负责方位。绕 Z 转 θ 把 +Y 映到
     ``(-sinθ, cosθ)``，所以"从 +Y 偏向 +X"对应 θ 为负。

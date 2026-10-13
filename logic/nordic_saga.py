@@ -9,7 +9,7 @@
 所有周期都整除 60s（1/1.5/2/2.5/3/4/5/6/10/12/15/20/30），整圈自旋走
 ``_spin(t, 整数圈)``，保证 t=60 与 t=0 逐帧一致；龙在首尾都远在画面外。
 
-与 core/nordic_scene.py 的布局常量对齐（导入而非复写），
+与 logic/nordic_scene.py 的布局常量对齐（导入而非复写），
 与 logic/nordic_audio.py 的事件时刻共用常量（FIRE/RUNE/TAKEOFF）。
 """
 import math
@@ -17,7 +17,7 @@ from bisect import bisect_right
 
 from pyglet.math import Vec3
 
-from core.nordic_scene import DRAGON_HOVER
+from logic.nordic_scene import DRAGON_HOVER
 from engine.mathkit import (quat_from_axis_angle, quat_mul,
                             quat_normalize, trs_decompose)
 

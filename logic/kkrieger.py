@@ -54,11 +54,11 @@ ACTS = (
     (118.0, '第六幕 · 圣殿', '白闪传送：环面结反应堆点火'),
 )
 
-# 圣殿（与 core/kkrieger_scene.py 对齐）
+# 圣殿（与 presentation/kkrieger_scene.py 对齐）
 KNOT = (0.0, 5.0, -89.5)       # 环面结反应堆枢轴
 K2_BOOM_T = 141.5              # 反应堆点火爆发（音频在 kkrieger_audio 同用）
 
-# ---- 场景常量（与 core/kkrieger_scene.py 对齐；测试会拿这里的半径校验几何） ----
+# ---- 场景常量（与 presentation/kkrieger_scene.py 对齐；测试会拿这里的半径校验几何） ----
 DOOR_OPEN_T = (5.0, 10.0, 15.0)          # 三道舱门开始开启的时刻
 # 撤离时反向关闭，但必须晚于镜头通过的时刻（镜头 t≈8.8 / 13.7 / 19.6 往里，
 # t≈86.5 过 z=-32、t≈90 过 z=-14）——关早了镜头会从门板里穿过去。
@@ -85,7 +85,7 @@ SPARK_DIRS = (
     (0.20, 0.95, -0.45), (-0.20, -0.95, -0.45),
 )
 
-# 相机漫游关键帧：(时间, eye, target)——与 core/kkrieger_scene.py 布局对齐
+# 相机漫游关键帧：(时间, eye, target)——与 presentation/kkrieger_scene.py 布局对齐
 _CAM_KEYS = (
     (0.0,  (0.0, 9.0, 12.0),    (0.0, 1.6, -24.0)),   # 第一幕：高空俯瞰走廊入口
     (3.0,  (0.0, 4.2, 6.0),     (0.0, 1.6, -30.0)),   # 俯冲
@@ -200,7 +200,7 @@ def _pulse(t, period, phase=0.0):
 
 
 # -------------------------------------------------------- 场景动画表 --
-# 命名约定由 core/kkrieger_scene.py 定义；未知名返回 None（静默跳过），
+# 命名约定由 presentation/kkrieger_scene.py 定义；未知名返回 None（静默跳过），
 # 这样场景可以自由增删对象而不必同步改本模块。
 def _ring_pose(i, t):
     axis = ((0, 1, 0), (1, 0, 0), (0, 0, 1))[i % 3]

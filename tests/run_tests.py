@@ -651,7 +651,7 @@ def test_kkrieger_timeline():
 def test_nordic_saga_timeline():
     """诺德之境 60s 五幕：相机/龙轨迹/符文/周期件全链路（无窗口）。"""
     from logic import nordic_saga as ns
-    from core.nordic_scene import DRAGON_HOVER
+    from logic.nordic_scene import DRAGON_HOVER
     assert ns.DURATION == 60.0
     assert len(ns.ACTS) == 5 and ns.ACTS[0][0] == 0.0 and ns.ACTS[4][0] == 50.0
     # 相机循环闭合：t=0 与 t=60 完全一致
@@ -707,7 +707,7 @@ def test_nordic_saga_timeline():
 def test_nordic_camera_path_clearance():
     """诺德之境镜头净空：不穿地、不撞龙语墙/石柱/拱门，且不贴脸巨龙。"""
     from logic import nordic_saga as ns
-    from core.nordic_scene import COL_ROWS, COL_X
+    from logic.nordic_scene import COL_ROWS, COL_X
     t = 0.0
     while t <= ns.DURATION:
         eye, _ = ns.camera_pose(t)
@@ -734,7 +734,7 @@ def test_nordic_camera_path_clearance():
 
 def test_nordic_scene_geometry():
     """诺德之境静态几何：无窗口构建、UV 完整、规模合理（回归 merge 丢 UV）。"""
-    from core import nordic_scene as nsc
+    from logic import nordic_scene as nsc
     acc = {}
     nsc._add_ground(acc)
     nsc._add_mountains(acc)
@@ -771,7 +771,7 @@ def test_kkrieger_camera_path_clearance():
     这一条是给"看着还行"的运镜兜底的——早期机身位就卡在大厅立柱里。
     """
     from logic.kkrieger import camera_pose, DURATION
-    from core.kkrieger_scene import (ATRIUM_H, CORRIDOR_H, CORRIDOR_W, DOOR_Z,
+    from presentation.kkrieger_scene import (ATRIUM_H, CORRIDOR_H, CORRIDOR_W, DOOR_Z,
                                      MONUMENT, ATRIUM_Z0)
     columns = [(-5.5, -60), (5.5, -60), (-5.5, -72), (5.5, -72), (-7.0, -66), (7.0, -66)]
     # 两次"白闪传送"是全屏爆亮遮蔽下的刻意剪辑（117.9→118.2 进圣殿、
