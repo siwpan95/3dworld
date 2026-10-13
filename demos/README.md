@@ -1,6 +1,6 @@
 # demos — 单文件 3D 示例与工具集
 
-每个 demo 都是**独立可跑的单文件脚本**，共用 `_harness.py` 里的 `DemoApp`
+每个 demo 都是**独立可跑的单文件脚本**，共用 `platform/app.py` 里的 `DemoApp`（P2-1 起真身在此；`demos/_harness.py` 是薄兼容层）
 骨架（窗口 / DPI / 命令行 / HUD / 截图 / 暂停），不改变主工程
 `core → logic → presentation` 的分层约定。
 
@@ -73,7 +73,7 @@ python scripts\verify_demos.py --only boids,water  只验指定 demo
 | `pulsefall.py` | 交互 | **《落音 / Pulsefall》**（§16 **下落式音击**）：4 轨道（DFJK）+ 3 谱面（BPM 90/120/150，**种子复现**）+ 判定 3 档（PERFECT ±40ms / GOOD ±90ms / MISS）+ 血量与连击得分 + 结算（P/G/M + 准确率 + 最大连击）；音乐由 **audio 核按谱面程序化合成**（三层：低音/和弦/主旋律）；F4/F5 offset 校准、G 自动演奏 | `pulsefall_01..02.png` |
 | `director.py` | 工具 | **可视化导演台（③）**：把关键帧系统（`engine/shot.py` + `engine/timeline.py`）和 `TimelineUI` 串成"**编排 → 预览 → 导出 → 录制**"闭环。三个编辑目标用 `T` 循环：`$camera`（position/target/fov）、`$env`（sun_intensity/sun_dir/ibl_intensity，**真·灯光演出**，渲染器每帧 apply）、场景节点（TRS，键盘微调）。`K` 记帧 / `DEL` 删帧 / `[ ]` 选通道 / `I` 换插值 / `M` 加幕 / `F2` 导出演出 JSON / `O` 载入 / `R` 重载场景；右侧**关键帧检察器**显示每通道的插值与键刻度（可点行选中、点键 seek）；内置默认演出「绕祭坛闭环环绕 + 主体自转 + 太阳随相机扫过」，`--shot-json <path>` 可回放导出的运镜 | `director_a..d.png` |
 
-> 上表 31 项与 `demos/*.py`（不含 `_harness.py`）一一对应，也是
+> 上表 31 项与 `demos/*.py`（不含 `_harness.py` 兼容层）一一对应，也是
 > `scripts/verify_demos.py` 逐项冒烟的对象；唯一不参与截图阶段的是
 > `scene_viewer.py`——它由 `--file` 驱动、没有固定剧照时刻。
 
@@ -182,11 +182,11 @@ python demos\voxel_terrain.py   --bench 5 --flag reseed        :: 渐进
   （`GL_COLOR_ATTACHMENT0|GL_DEPTH_ATTACHMENT`）当成 `glClear` 的掩码传下去，
   驱动报 `GL_INVALID_VALUE`；要自己 `glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)`。
 - **DPI**：`pyglet.options['dpi_scaling'] = 'real'` 必须在建窗口前设置，
-  `_harness` 已经统一处理；截图走 `glReadPixels` 按实际 buffer 尺寸读，
+  `platform/app.py` 已经统一处理；截图走 `glReadPixels` 按实际 buffer 尺寸读，
   不用 `get_color_buffer()`（后者会按被 DPI 放大的 VIEWPORT 读，出黑边）。
 - **旋转**：用 `logic.animation.quat_to_mat4`，pyglet 自带
   `Quaternion.to_mat4()` 实测是转置的。
 - **顶点色要 4 元组**：着色器属性是 `vec4`，返回 3 元组会让顶点缓冲少 1/4 的
   float，报 `Invalid data size for 'colors'`（地形渐进重建时踩过）。
-- **路径**：不许写死盘符，一律用 `_harness.PROJECT_ROOT` / `DOCS_DIR`；
+- **路径**：不许写死盘符，一律用 `platform.app.PROJECT_ROOT` / `DOCS_DIR`；
   控制台输出一律 ASCII（中文在 GBK 代码页的 cmd 里会变乱码）。

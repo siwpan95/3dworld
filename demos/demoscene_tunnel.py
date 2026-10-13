@@ -2,7 +2,7 @@
 """无限隧道（demoscene 经典）：全屏片元着色器 + 时间 uniform。
 
 本 demo 同时充当 `demos/` 的**参考样板**：它演示了所有 demo 共用的骨架
-（`demos/_harness.py` 的 DemoApp）以及"纯片元着色器"这一类 demo 的标准写法：
+（`world3d/platform/app.py` 的 DemoApp）以及"纯片元着色器"这一类 demo 的标准写法：
 
 - 几何只有一个 NDC 全屏四边形（`make_fullscreen_quad`），不含任何顶点动画；
 - 画面 100% 由 fragment shader 用极坐标隧道公式算出来（无贴图、无外部素材）；
@@ -24,7 +24,17 @@ import pyglet
 from pyglet.gl import GL_DEPTH_TEST, GL_TRIANGLES, glDisable
 from pyglet.graphics.shader import Shader, ShaderProgram
 
-from _harness import DemoApp, make_fullscreen_quad, run
+# ---- sys.path 引导（平台/引擎/逻辑各顶层包）-------------------------------
+# ⚠️ 必须**显式**写：P2-1 之前这行是隐式的 —— `from _harness import ...`（裸名）时
+# `_harness` 自己会插项目根；改成 `from world3d.platform.app import ...` 后不再隐式生效，
+# 少了它就会 ModuleNotFoundError: No module named 'world3d'（P2-1 全量验收实测）。
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from world3d.platform.app import DemoApp, make_fullscreen_quad, run
 
 VERTEX_SRC = '''#version 330 core
 in vec3 position;

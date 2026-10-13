@@ -22,7 +22,7 @@
 全 Cordis 化时，RenderService 会接管 GL 上下文；此处为保持离线可录制，宿主保留
 pyglet 直接绘制（内核的 RenderService 仅做 headless 记账与回滚语义）。
 
-复用：demos/_harness.DemoApp/run、logic.camera.OrbitCamera、engine.picking、
+复用：platform/app.DemoApp/run、logic.camera.OrbitCamera、engine.picking、
 engine.audio（SfxPlayer/Track），以及 games/godhand/kernel
 （共同核 + 神之手内核，12 核契约见 core/contracts.py）。
 
@@ -42,7 +42,14 @@ from pyglet.graphics.shader import Shader, ShaderProgram
 from pyglet.math import Mat4, Vec3
 from pyglet.window import mouse
 
-from _harness import DemoApp, run
+# ---- sys.path 引导（平台/引擎/逻辑各顶层包）-------------------------------
+# ⚠️ 必须**显式**写：P2-1 之前这行是隐式的 —— `from _harness import ...`（裸名）时
+# `_harness` 自己会插项目根；改成 `from world3d.platform.app import ...` 后不再隐式生效，
+# 少了它就会 ModuleNotFoundError: No module named 'world3d'（P2-1 全量验收实测）。
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from world3d.platform.app import DemoApp, run
 from logic.camera import OrbitCamera
 from engine.picking import ray_from_screen
 from engine.audio import Track, render_wav, SfxPlayer

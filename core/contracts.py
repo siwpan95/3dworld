@@ -151,7 +151,7 @@ class InputCore(Protocol):
     """鼠标拖拽/滚轮/键盘 → 平移/缩放/选取；事件到动作映射。
 
     现有模块：``engine.camera.OrbitCamera`` / ``engine.camera.FlyCamera`` /
-    ``_harness`` 的 ``on_key`` / ``on_mouse_*``
+    ``platform.app`` 的 ``on_key`` / ``on_mouse_*``
     现状：**已具备**（相机与 harness 事件），事件映射层 → **待抽离**
     提供为 Cordis 服务名：``input``
     """
@@ -686,7 +686,8 @@ def verify(verbose: bool = True) -> dict[str, Any]:
     返回 ``{服务名: 'ok' / 'pending' / 'err:<reason>'}``。
     """
     import importlib, os, sys
-    # demos/* 内部用 ``from _harness import ...``（_harness.py 就在 demos/ 下），
+    # demos/* 内部用 ``from world3d.platform.app import ...``（P2-1 起真身在 world3d/platform/app.py；
+    # 旧路径 demos/_harness.py 是薄兼容层），
     # 必须让 demos/ 进 sys.path 才能让 những 模块被 import（否则报
     # ModuleNotFoundError: No module named '_harness'，属路径问题非代码缺失）。
     _demos = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'demos')

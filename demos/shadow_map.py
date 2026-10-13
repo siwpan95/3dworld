@@ -42,7 +42,17 @@ from pyglet.image import Framebuffer, Texture
 from pyglet.image.buffer import Renderbuffer
 from pyglet.math import Mat4, Vec3
 
-from _harness import DemoApp, orbit_camera_input, run
+# ---- sys.path 引导（平台/引擎/逻辑各顶层包）-------------------------------
+# ⚠️ 必须**显式**写：P2-1 之前这行是隐式的 —— `from _harness import ...`（裸名）时
+# `_harness` 自己会插项目根；改成 `from world3d.platform.app import ...` 后不再隐式生效，
+# 少了它就会 ModuleNotFoundError: No module named 'world3d'（P2-1 全量验收实测）。
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from world3d.platform.app import DemoApp, orbit_camera_input, run
 from core.geometry import box_data
 from engine.soft_shadow import pcss_glsl
 from logic.animation import quat_from_axis_angle, quat_to_mat4

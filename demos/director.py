@@ -54,24 +54,31 @@ import math
 import os
 import sys
 
-# 项目根（engine/presentation）+ 本目录（_harness）都进 sys.path。
+# 项目根进 sys.path（`platform` / `engine` / `presentation` / `host` 都是顶层包）。
 #
-# ⚠️ 必须用**裸模块名** ``from _harness import ...``，不要写 ``demos._harness``：
-# 后者会让同一个文件被当成两个模块导入，`DemoApp` 成了两个不同的类对象，
-# 于是 `scripts/record_all.py` / `scripts/verify_demos.py` 的
-# `issubclass(cls, DemoApp)` 判定为假 —— 症状是"验收表里这个 demo 的截图数
-# 是 0"、"录制脚本走进裸 App 分支然后 TypeError: unexpected keyword 'shots'"。
-# 全仓 21 个 demo 里 18 个都是裸名写法，跟齐。
+# ⚠️ 导入路径必须**全仓一致**：一律 `from world3d.platform.app import ...`。
+# 历史教训（P0-3 实踩）：曾写成 `from demos._harness import ...`，于是同一个文件被当成
+# 两个模块导入、`DemoApp` 成了两个不同的类对象，`scripts/record_all.py` /
+# `scripts/verify_demos.py` 的 `issubclass(cls, DemoApp)` 判定为假 ——
+# 症状是"验收表里这个 demo 的截图数恒为 0"、"录制脚本走进裸 App 分支后
+# TypeError: unexpected keyword 'shots'"。P2-1 起真身在 `world3d/platform/app.py`，
+# 旧路径 `demos/_harness.py` 只是薄兼容层（不要再用）。
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
-for _p in (_ROOT, _HERE):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
 import pyglet  # noqa: E402
 from pyglet import shapes, text  # noqa: E402
 
-from _harness import DemoApp, PROJECT_ROOT, run  # noqa: E402
+# ---- sys.path 引导（平台/引擎/逻辑各顶层包）-------------------------------
+# ⚠️ 必须**显式**写：P2-1 之前这行是隐式的 —— `from _harness import ...`（裸名）时
+# `_harness` 自己会插项目根；改成 `from world3d.platform.app import ...` 后不再隐式生效，
+# 少了它就会 ModuleNotFoundError: No module named 'world3d'（P2-1 全量验收实测）。
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from world3d.platform.app import DemoApp, PROJECT_ROOT, run  # noqa: E402
 from engine.mathkit import quat_mul, quat_normalize  # noqa: E402
 from engine.shot import CAMERA_NODE, ENV_NODE, Shot, ShotPlayer  # noqa: E402
 from engine.timeline import INTERPOLATIONS, quat_from_axis_angle  # noqa: E402
@@ -879,7 +886,7 @@ class DirectorApp(DemoApp):
 
 # ------------------------------------------------------------------ 入口 --
 def _extract_shot_json(argv):
-    """从 argv 里摘出 ``--shot-json``（_harness.parse_args 不认识它）。
+    """从 argv 里摘出 ``--shot-json``（world3d.platform.app.parse_args 不认识它）。
 
     必须在 ``parse_args`` 之前摘掉 —— argparse 会把它当成 ``--shot`` 的
     前缀歧义（实测：``unrecognized arguments: --shot-json x``）。

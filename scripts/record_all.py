@@ -127,7 +127,7 @@ def find_app_class(mod, cls_name):
     import inspect
     if cls_name:
         return getattr(mod, cls_name)
-    from _harness import DemoApp
+    from world3d.platform.app import DemoApp
     for _, obj in vars(mod).items():
         if inspect.isclass(obj) and issubclass(obj, DemoApp) and obj is not DemoApp:
             return obj
@@ -136,7 +136,7 @@ def find_app_class(mod, cls_name):
 
 def build_app(entry):
     """按入口构造 App 实例（三类宿主：harness DemoApp / engine EngineApp / presentation 裸 App）。"""
-    from _harness import DemoApp, parse_args as harness_args
+    from world3d.platform.app import DemoApp, parse_args as harness_args
     from engine.app import EngineApp, parse_args as engine_args
 
     mod = import_module(entry['mod'], entry['name'])

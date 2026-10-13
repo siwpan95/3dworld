@@ -30,6 +30,13 @@ if ROOT not in sys.path:
 
 from pyglet.math import Vec3                                      # noqa: E402
 
+# ---- sys.path 引导（平台/引擎/逻辑各顶层包）-------------------------------
+# ⚠️ 必须**显式**写：P2-1 之前这行是隐式的 —— `from _harness import ...`（裸名）时
+# `_harness` 自己会插项目根；改成 `from world3d.platform.app import ...` 后不再隐式生效，
+# 少了它就会 ModuleNotFoundError: No module named 'world3d'（P2-1 全量验收实测）。
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from logic.nordic_scene import (CAMPFIRE, build_nordic_scene,      # noqa: E402
                                snow_height)
 from engine.app import EngineApp, run                             # noqa: E402

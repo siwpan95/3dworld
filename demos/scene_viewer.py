@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pyglet  # noqa: E402
 
-from demos._harness import (DemoApp, PROJECT_ROOT, orbit_camera_input,  # noqa: E402
+from world3d.platform.app import (DemoApp, PROJECT_ROOT, orbit_camera_input,  # noqa: E402
                             run)
 
 DEFAULT_JSON = os.path.join(PROJECT_ROOT, 'docs', 'llm_scene_demo.json')
@@ -34,7 +34,7 @@ _ENV_KEYS = ('sun_dir', 'sun_color', 'sun_intensity', 'sky_zenith',
 
 
 def _extract_file(argv):
-    """从 argv 中摘出 --file（_harness.parse_args 不认识它）。"""
+    """从 argv 中摘出 --file（world3d.platform.app.parse_args 不认识它）。"""
     args = list(argv)
     path = None
     if '--file' in args:

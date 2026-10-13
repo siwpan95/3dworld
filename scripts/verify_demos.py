@@ -83,7 +83,7 @@ def _read_shots(path, name):
             return list(mod.SHOTS or ())
         # demos/ 的约定：SHOTS 是 DemoApp 子类的类属性，从模块里找出那个子类
         import inspect
-        from _harness import DemoApp
+        from world3d.platform.app import DemoApp
         for _n, obj in vars(mod).items():
             if inspect.isclass(obj) and issubclass(obj, DemoApp) and obj is not DemoApp:
                 return list(getattr(obj, 'SHOTS', ()) or ())

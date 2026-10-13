@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Boids 3D 鸟群 —— **原生实例化渲染**（pyglet 2.1.16 ``vertex_list_instanced``）。
 
-结构照抄 ``demos/demoscene_tunnel.py`` 的骨架（``_harness.DemoApp``），
+结构照抄 ``demos/demoscene_tunnel.py`` 的骨架（``platform.app.DemoApp``），
 逻辑层用 ``logic.boids.Flock``（纯数学、无 GL），本文件只负责"把状态画出来"。
 
 ## 为什么要用实例化
@@ -60,7 +60,17 @@ from pyglet.gl import (GL_BLEND, GL_DEPTH_TEST, GL_LINES, GL_ONE_MINUS_SRC_ALPHA
 from pyglet.graphics.shader import Shader, ShaderProgram
 from pyglet.math import Vec3
 
-from _harness import DemoApp, orbit_camera_input, run
+# ---- sys.path 引导（平台/引擎/逻辑各顶层包）-------------------------------
+# ⚠️ 必须**显式**写：P2-1 之前这行是隐式的 —— `from _harness import ...`（裸名）时
+# `_harness` 自己会插项目根；改成 `from world3d.platform.app import ...` 后不再隐式生效，
+# 少了它就会 ModuleNotFoundError: No module named 'world3d'（P2-1 全量验收实测）。
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from world3d.platform.app import DemoApp, orbit_camera_input, run
 from logic.boids import DOMAIN, Flock, PRESET_LABELS
 from logic.camera import OrbitCamera
 

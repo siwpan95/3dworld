@@ -3,6 +3,60 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [未发布] — 引擎化改造 P2-1/P2-2：分层归位
+
+依据 `docs/5_引擎化改造规划.md` §6-P2。P1 让仓库"能装"，P2 让**分层真的成立**。
+
+### P2-1 平台层抽出（`demos/_harness.py` → `world3d/platform/app.py`）
+
+`_harness.py` 是与任何具体 demo 都无关的**平台层**（32 个 demo/脚本靠它开窗口、解析命令行、
+抓帧、HUD、主循环），却寄生在 `demos/` 里。现在正名为 `world3d/platform/app.py`：
+
+- 全部 20 个 demo + 2 个脚本（`verify_demos` / `record_all`）的导入统一为
+  `from world3d.platform.app import ...`；顺手修掉 `demos/scene_viewer.py` 里
+  `from demos._harness import ...` 这个**全仓唯一的不一致形态**（它会让同一个文件被当成两个
+  模块导入、`DemoApp` 变成两个类对象，`issubclass` 判定失败）；
+- `world3d/platform/app.py` 收口了 `__all__`（兼容层靠它转发，所以必须显式声明）；
+- **旧路径 `demos/_harness.py` 保留为薄兼容层**（`from world3d.platform.app import *`），
+  实测旧用法仍可用且是同一个类对象。
+
+#### ⚠️ 硬约束：顶层包不能叫 `platform`
+
+一开始按规划写成顶层 `platform/`，**立刻炸**：它**遮蔽标准库的 `platform` 模块**
+（pyglet 自己就 `import platform` 取 `platform.architecture()`），单测与 `main.py` 同时报
+`AttributeError: module 'platform' has no attribute 'architecture'`。
+而规划 §3.2 的目标结构本来就是 `world3d/platform/` —— 于是直接落到**最终位置**，
+一举免掉 P2-4 的二次搬迁。**同类命名约束**：导入包名不能以数字开头（P1 的 `world3d`）。
+
+### P2-2 `core/` 越界清出
+
+| 旧（越界） | 新（归位） | 理由 |
+|-----------|-----------|------|
+| `core/renderer.py`（`WorldRenderer`） | `presentation/world_renderer.py` | 是 `main.py` 48s 演出的渲染器 |
+| `core/kkrieger_scene.py`（`KKRenderer`） | `presentation/kkrieger_scene.py` | 同理，kkrieger 漫游的表现层渲染器 |
+| `core/nordic_scene.py`（`build_nordic_scene`） | `logic/nordic_scene.py` | 是场景**内容/布局**，被 `logic/nordic_saga.py` 与 demo 消费 |
+
+同步 7 个消费方 + 3 处测试导入 + 文档对齐说明；`docs/架构设计_3D动画方向.md` 那张
+2026-10-08 的分层快照加了失效注（指向当前权威文档）。
+`core/geometry.py` / `core/resources.py` 是否随之迁走**留作后续评估**。
+
+### 两个已踩的迁移坑（写进规划 §6 检查表）
+
+1. **引用形态三种**都要 grep：`from core.<mod> import X` / **`from core import <mod> as y`** /
+   `import core.<mod>` —— P2-2 漏了第二种，被 `test_nordic_scene_geometry` 抓出来；
+2. **路径层级推导要同步改**：`world3d/platform/app.py` 找仓库根要 `dirname` 三次
+   （`demos/_harness.py` 是两次）。"少一层就炸"这类问题在 P0-3（内核 `_ROOT`）也踩过一次。
+
+### 验收（实测，未设 `CORDIS_SRC`）
+
+| 门禁 | 结果 |
+|------|------|
+| 兼容层自检 | `demos/_harness.DemoApp is world3d.platform.app.DemoApp` → **True**；`__all__` 全部转发到位 |
+| `scripts/run_all_tests.py` | 7/7 模块 / **140 项** / `ALL_TESTS_PASSED` |
+| `python main.py --shot` / `python kkrieger_demo.py --shot` | `EXIT_OK`（4 张 / 9 张） |
+| `scripts/verify_demos.py`（31 个全量冒烟 + 截图） | 见提交信息（本批的最强门禁：所有 demo 都改了导入） |
+| `python -m cli.config_boot all` | 9 个 OK 标记 |
+
 ## [未发布] — 引擎化改造 P1：库化（可安装 + 公共 API 面 + CLI 入口）
 
 依据 `docs/5_引擎化改造规划.md` §6-P1。P0 把试点全量转正后，P1 让仓库**能像库一样被安装使用**。

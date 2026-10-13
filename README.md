@@ -56,6 +56,10 @@ host/                宿主层：tree.py（配置树挂载/就绪等待/entry �
                       pipeline.py（场景校验流水线，Cordis 化：checker→loader→reporter）
 cli/                 引擎 CLI：config_boot.py（每棵配置树的 headless 验收，与 demo 共用 host.tree）
 configs/             9 棵配置树（cordis.*.yml）：声明"本次挂哪些服务、各带什么 config"
+world3d/             库入口（发行名 3dworld / 导入名 world3d）：薄门面 + py.typed
+  platform/app.py     **平台层骨架**（P2-1）：窗口/DPI/命令行/HUD/截图/主循环 + 7 个工具
+                     32 个 demo 与脚本统一 `from world3d.platform.app import ...`
+                     （旧路径 demos/_harness.py 是薄兼容层）
 engine/              引擎层（P3-2：引擎级件陆续下沉到这里，见 docs/引擎设计.md）
   fsm.py              确定性有限状态机（时间窗 + 事件转移，P0-5 自研）
   orchestration.py    事件总线 + 声明式 when→then 级联（P0-5 自研）
