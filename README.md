@@ -275,6 +275,7 @@ python -m tests.test_source2        Source 2 解析：VPK / KV3 v5 / LZ4 block�
 python -m tests.test_meshopt        meshopt 顶点/索引解码：golden 对齐官方 WASM（5 项，零依赖）
 python -m tests.test_source2_model  vmdl_c → MeshData 转换：合成容器 + 压缩路径（5 项）
 python -m tests.test_sandward       沙垒演示场：路线可通行/巡游/碰撞/UV 密度（5 项，零 GL）
+python -m tests.test_proctex        程序化纹理 × PBR 图集：通道打包逐像素（4 项，零 GL）
 python -m tests.test_csm            级联阴影 CSM（20 项：分割/角点/光盒/纹素吸附/GLSL 展开）
 python -m tests.test_volumetrics    体积雾/光轴（12 项：闭式积分可加性/HG 归一/抖动同式/GLSL 组合）
 python -m tests.test_dof            景深 DoF（12 项：CoC/超焦距/景深端点恒等式/散景面积均匀）

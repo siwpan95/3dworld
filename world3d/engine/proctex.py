@@ -101,6 +101,18 @@ def height_to_normal(heights, size, strength=2.0):
     return bytes(out)
 
 
+def _quantize_height(h):
+    """高度场 ``list[float]`` → 0..255 字节（PBR 轮的 POM/通道视图用）。
+
+    值域裁剪是必要的：部分生成器的高度含负项（如 rock 的裂缝下沉）。
+    """
+    out = bytearray(len(h))
+    for i, v in enumerate(h):
+        q = int(v * 255.0 + 0.5)
+        out[i] = 0 if q < 0 else (255 if q > 255 else q)
+    return bytes(out)
+
+
 def _blank(size):
     return bytearray(size * size * 4)
 
@@ -133,7 +145,8 @@ def make_marble(size=256, seed=1, vein_scale=4.0):
             _px(mr, size, x, y, 255, rough, 6)        # 非金属
             h[y * size + x] = n * 0.6 + vein * 0.4
     return dict(base=bytes(base), mr=bytes(mr),
-                normal=height_to_normal(h, size, 2.4), size=size)
+                normal=height_to_normal(h, size, 2.4), size=size,
+                height=_quantize_height(h))
 
 
 def make_rust_metal(size=256, seed=2, rust_scale=5.0):
@@ -252,7 +265,8 @@ def make_brushed(size=256, seed=5):
             _px(mr, size, x, y, 255, 60 + 50 * fine, 255)
             h[y * size + x] = fine
     return dict(base=bytes(base), mr=bytes(mr),
-                normal=height_to_normal(h, size, 0.9), size=size)
+                normal=height_to_normal(h, size, 0.9), size=size,
+                height=_quantize_height(h))
 
 
 # ------------------------------------------------- 北欧题材（nordic）--
@@ -278,7 +292,8 @@ def make_wood_planks(size=256, seed=6, planks=5):
             _px(mr, size, x, y, 255, 208 - 66 * k, 0)
             h[y * size + x] = 0.0 if gap else k * 0.55
     return dict(base=bytes(base), mr=bytes(mr),
-                normal=height_to_normal(h, size, 2.4), size=size)
+                normal=height_to_normal(h, size, 2.4), size=size,
+                height=_quantize_height(h))
 
 
 def make_thatch(size=256, seed=7):
@@ -318,7 +333,8 @@ def make_rock(size=256, seed=8):
             _px(mr, size, x, y, 255, 168 + 58 * n, 0)
             h[y * size + x] = n * 0.6 + fold * 0.35 - crack * 0.55
     return dict(base=bytes(base), mr=bytes(mr),
-                normal=height_to_normal(h, size, 3.0), size=size)
+                normal=height_to_normal(h, size, 3.0), size=size,
+                height=_quantize_height(h))
 
 
 def make_rune_stone(size=256, seed=9, cols=4, rows=5):
@@ -509,7 +525,8 @@ def make_sandstone(size=256, seed=20):
             _px(mr, size, x, y, 255, 150 + 40 * n, 8)
             h[y * size + x] = n * 0.5 + band * 0.3 + fine * 0.2
     return dict(base=bytes(base), mr=bytes(mr),
-                normal=height_to_normal(h, size, 1.2), size=size)
+                normal=height_to_normal(h, size, 1.2), size=size,
+                height=_quantize_height(h))
 
 
 def make_plaster(size=256, seed=21):
@@ -526,7 +543,8 @@ def make_plaster(size=256, seed=21):
             _px(mr, size, x, y, 255, 205 + 20 * n, 4)
             h[y * size + x] = n * 0.7 + streak * 0.3
     return dict(base=bytes(base), mr=bytes(mr),
-                normal=height_to_normal(h, size, 0.9), size=size)
+                normal=height_to_normal(h, size, 0.9), size=size,
+                height=_quantize_height(h))
 
 
 PATTERNS = {
@@ -602,38 +620,61 @@ _ATLAS_CELLS = {
 
 def make_atlas(names=('sandstone', 'plaster', 'crate', 'metal', 'sand'),
                cell=128, cols=3, seed=0):
-    """程序化纹理图集：把多个生成器的 albedo 排成网格（供图集 UV 采样）。
+    """程序化纹理图集（**三通道**）：把多个生成器的输出排成网格（供 PBR 采样）。
 
     行优先（第 0 格在数据最前）；**数据 row0 在 GL 的 v 小侧**（pyglet
     ImageData 上传实测：v=0.25 采到数据第一行）——``texproj.Atlas`` 的
-    矩形计算与此同一约定（v0 = row/rows）。返回 ``dict(width, height, base,
-    cell, cols, rows, names)``。片元侧按 ``fract(uv)`` 平铺 + 半像素内缩
-    防渗色（见 ``presentation/sandward_scene`` 的 shader）。
+    矩形计算与此同一约定（v0 = row/rows）。片元侧按 ``fract(uv)`` 平铺 +
+    半像素内缩防渗色（见 ``presentation/sandward_scene`` 的 shader）。
+
+    返回 ``dict(width, height, cell, cols, rows, names)`` + 三张同格图集：
+
+    * ``base``   —— albedo（RGB，A=255）
+    * ``normal`` —— 切线空间法线（RGB）+ **A = 高度**（§19 声明性挪用：POM 与
+      通道视图用；glTF 生态 normal 图 A 普遍空闲）
+    * ``mr``     —— glTF ORM 惯例：R=255（AO 保留位）/ **G=粗糙度** / **B=金属度**
     """
     names = list(names)
     rows = (len(names) + cols - 1) // cols
     width, height = cols * cell, rows * cell
-    out = bytearray(width * height * 4)
+    base_out = bytearray(width * height * 4)
+    norm_out = bytearray(width * height * 4)
+    mr_out = bytearray(width * height * 4)
     for i, nm in enumerate(names):
         gen = _ATLAS_CELLS.get(nm)
         if gen is None:
             raise ValueError(f'图集没有生成器 {nm!r}（可选 {sorted(_ATLAS_CELLS)}）')
         pat = gen(size=cell, seed=seed + i * 7)
-        src = pat['base']
+        nrm_src = pat['normal']
+        h_src = pat.get('height')
         cx, cy = (i % cols) * cell, (i // cols) * cell
         for y in range(cell):
             si = y * cell * 4
             di = ((cy + y) * width + cx) * 4
-            out[di:di + cell * 4] = src[si:si + cell * 4]
-    return dict(width=width, height=height, base=bytes(out), cell=cell,
-                cols=cols, rows=rows, names=names)
+            base_out[di:di + cell * 4] = pat['base'][si:si + cell * 4]
+            mr_out[di:di + cell * 4] = pat['mr'][si:si + cell * 4]
+            # 法线：整行先原样拷贝（RGBA 步长一致），再把 A 逐像素替换为高度
+            # （写 ``cell*3`` 字节是错的：按 RGBA 步长只覆盖 3/4 的像素——
+            #  测试逐像素对拍当场抓出）
+            norm_out[di:di + cell * 4] = nrm_src[si:si + cell * 4]
+            if h_src is None:
+                for x in range(cell):
+                    norm_out[di + x * 4 + 3] = 255
+            else:
+                hi = y * cell
+                for x in range(cell):
+                    norm_out[di + x * 4 + 3] = h_src[hi + x]
+    return dict(width=width, height=height, cell=cell, cols=cols, rows=rows,
+                names=names, base=bytes(base_out), normal=bytes(norm_out),
+                mr=bytes(mr_out))
 
 
-def atlas_texture(atlas, cache_id='atlas'):
-    """上传图集为单张 GL 纹理（CLAMP + LINEAR、**不带 mip**）。
+def atlas_texture(atlas, channel='base', cache_id='atlas'):
+    """上传图集的某一**通道**为单张 GL 纹理（CLAMP + LINEAR、**不带 mip**）。
 
     图集格内平铺由片元 ``fract`` 完成，跨格不会采样——所以用 CLAMP 防越界；
     无 mip 是因为 ``fract`` 处的屏幕导数无意义（会整格跳变）。
+    ``channel`` ∈ ``{'base', 'normal', 'mr'}``（缓存键含通道，互不串图）。
     """
     import ctypes
 
@@ -644,7 +685,7 @@ def atlas_texture(atlas, cache_id='atlas'):
                            GL_TEXTURE_WRAP_S, GL_TEXTURE_WRAP_T, GLint,
                            glActiveTexture, glBindTexture, glGetIntegerv,
                            glTexParameteri)
-    key = (atlas['width'], atlas['height'], tuple(atlas['names']))
+    key = (channel, atlas['width'], atlas['height'], tuple(atlas['names']))
     cache = PATTERN_CACHE.setdefault(cache_id, {})
     if key in cache:
         return cache[key]
@@ -653,7 +694,7 @@ def atlas_texture(atlas, cache_id='atlas'):
     glGetIntegerv(GL_TEXTURE_BINDING_2D, ctypes.byref(bound))
     try:
         img = pyglet.image.ImageData(atlas['width'], atlas['height'], 'RGBA',
-                                     atlas['base'])
+                                     atlas[channel])
         tex = img.get_texture()
         glBindTexture(GL_TEXTURE_2D, tex.id)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
