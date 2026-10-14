@@ -3,6 +3,69 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [未发布] — P5：内核脚手架 + CI 扩到 Linux
+
+P4 之后的两件"自选收尾"。做完之后有个额外收获：**给内核写模板这个动作本身，
+逼出了一个全仓隐患**（见下）。
+
+### 新增
+
+- **`scripts/new_kernel.py`** —— 生成新玩法内核 + 配置树 + 单测，并**自动登记三张表**
+  （`host/registry.py` 的服务短名表、`host/tree.py` 的 `WANT_<名>`、`cli/config_boot.py`
+  的 `CONFIGS`）与 `run_all_tests.MODULES`。写盘前一律 `ast.parse` 守卫。
+  `--undo` 撤销（含从三张表摘除），**逐字节还原**。
+- **`config_boot` 表驱动 + 通用 runner** —— `CONFIGS`（kind → yml / 所需服务 / 是否需要
+  GL 就绪）+ `RUNNERS`，`all` 的顺序从 `CONFIGS` 派生；没在 `RUNNERS` 里的 kind 走
+  `run_generic`（纯逻辑内核的通用 headless 验收：四条断言 —— 服务真挂上 / `inject == []`
+  与 `require_gl=False` **配对校验** / `auto_step` 真跑到 `won` / `dispose` 后不可达）。
+  于是"接入一个新内核"从**改两处代码**降到**加一行数据**。
+- **门禁 `scaffold-kernel-valid`** —— 内核/配置树/测试模板 渲染 → `ast.parse` →
+  **真 import** → **按 `run_generic` 的契约真跑到 `won`**（不是只对片段）。
+- **门禁 `workflows-valid`** —— `.github/workflows/*.yml` 可解析、结构完整
+  （`on` / `runs-on` / 非空 `steps` / `uses` 钉版本）**且里面的命令可达**。
+  理由：**workflow 是本机跑不到的那一半**，它坏了本地没人会发现。
+- **`check_imports.py` 第二条不变量** —— 「仓库内自带 `__init__.py` 的目录不允许出现在
+  `sys.path` 上」。
+- **CI 新增 Linux job**（`ubuntu-latest`）：`PYGLET_HEADLESS=1` + Mesa llvmpipe（EGL）
+  让无头机器也有 GL 上下文；系统依赖清单是从**本仓锁定的 pyglet 源码里的 `load_library`
+  调用**读出来的（X11 一族 + GL/GLX + EGL + `libgl1-mesa-dri`），不是照抄博客。
+- `scripts/new_demo.py` 抽出 `register_test` / `unregister_test` / `write_preserving_eol`
+  供内核脚手架复用。
+
+### 修复（模板逼出来的全仓隐患）
+
+- **8 个 `games/<名>/kernel.py` 的自举块少算一层**（只有 brickward 是对的）：把 `world3d/`
+  推上 `sys.path` ⇒ **`world3d/platform/` 遮蔽标准库 `platform`**（pyglet 自己
+  `import platform`）⇒ `platform.system()` 抛 `AttributeError: module 'platform' has no
+  attribute 'system'`（实测复现）。已改成 4 层，并写清"为什么必须是四层"。
+- `check_imports.py` 删掉声明了却从未使用的 `SKIP_PREFIX`（陈旧死代码）。
+- 脚手架写盘改为**保持原文件行尾**：本仓 `core.autocrlf=true`，一律写 LF 会让
+  `git status` 把内容相同的文件一直标成 `M`（内容哈希其实等于 HEAD）——
+  "撤销干净"就变成"内容干净、状态栏不干净"，而人会开始忽略 `git status`。
+
+### 验收（实测）
+
+| 项 | 结果 |
+|----|------|
+| `python scripts/verify.py` | **16/16 通过** → `== VERIFY_OK ==` |
+| `python scripts/verify.py --selfcheck` | **16/16 拦得住** |
+| 脚手架实战（探针 `zzkern`） | `config_boot zzkern` → **`== ZZKERN_OK ==`**（won / 2.3s / 18 步）；单测 **7/7**；`verify.py` **精确红 3 条**（README 的内核 9→10、配置树 10→11、测试清单缺一行）；`--undo` 后 `git status` 干净、门禁回绿 |
+| 配置透传 | 改 yml 的 `seed:` → 日志 `seed=424242`、`steps=16`（跟着变） |
+| `check_imports.py` 反证 | `void` 改回 3 层 ⇒ 红且点名 `sys.path += world3d/`；还原 ⇒ 绿 |
+| 脚手架行为反证 | 模板 `STEP_HZ` 改坏 ⇒ 门禁给**契约级**原因（"`auto_step` 未在 120s 内收尾 —— `run_generic` 会判它只是能构造"） |
+| `scripts/run_all_tests.py` | **14/14 模块 / 281 项**（探针在场时 15/15 / 288 项） |
+| `python -m world3d.cli.config_boot all` | **10/10** 棵配置树 |
+| `python -m world3d.cli.frame_plan --all-toggles` | **16/16** |
+| `scripts/check_imports.py` | **117 模块 / 0 失败**（1 个按设计跳过） |
+| `scripts/verify_demos.py` | `ALL_DEMOS_OK (37 demos)` |
+| `workflows-valid` | 1 个 workflow / **2 个 job** 结构完整、10 条命令可达 |
+
+> ⚠ **一处必须说清的限制**：Linux job **未在真 runner 上跑过** —— 本机是 Windows，
+> 没有 Docker、没有 WSL，无法复现。因此"无头 GL 探针"（`config_boot all`）暂设
+> `continue-on-error: true`，等第一次真跑拿到输出后再升级为阻塞步骤。
+> 另外：workflow 只有 **GitHub** 会执行，而本仓 remote 只有 Gitee ⇒
+> **CI 目前不会被触发**，需要加 GitHub 镜像 remote（或改用 Gitee Go）。
+
 ## [未发布] — P4：机械门禁 + 文档站 + 脚手架 —— **路线全部收口**
 
 引擎化的最后一环不是功能，而是**防止前面所有东西慢慢腐掉**。

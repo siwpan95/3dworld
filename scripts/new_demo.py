@@ -246,7 +246,30 @@ def render_test(name):
         name=name, upper=name.upper(), title=name.replace('_', ' '))
 
 
-def _register_test(name, quiet=False):
+def write_preserving_eol(path, text):
+    """按**原文件的行尾**写回。
+
+    为什么值得单独一个函数：本仓库 `core.autocrlf=true`（工作区是 CRLF、库里是 LF）。
+    脚本若一律写 LF，虽然**归一化后内容完全相同**（`git hash-object` 与 HEAD 一致），
+    但 `git status` 会把这些文件一直标成 `M` / `needs update` —— 于是"脚手架生成后
+    撤销干净"这句话就变成了"内容干净但状态栏不干净"，人会开始忽略 status。
+    新建文件走 LF（入库时由 git 归一化）。
+    """
+    try:
+        with open(path, 'rb') as f:
+            raw = f.read()
+        crlf = raw.count(b'\r\n')
+        eol = '\r\n' if crlf > raw.count(b'\n') - crlf else '\n'
+    except OSError:
+        eol = '\n'
+    text = text.replace('\r\n', '\n')
+    if eol == '\r\n':
+        text = text.replace('\n', '\r\n')
+    with open(path, 'w', encoding='utf-8', newline='') as f:
+        f.write(text)
+
+
+def register_test(name, quiet=False):
     """把新测试模块登记进 `scripts/run_all_tests.py` 的 MODULES（幂等）。"""
     path = os.path.join(ROOT, 'scripts', 'run_all_tests.py')
     text = open(path, encoding='utf-8').read()
@@ -263,10 +286,37 @@ def _register_test(name, quiet=False):
     entry = (f"    ('{mod}', 'ALL_{name.upper()}_TESTS_PASSED', '{name}'),\n")
     new = text[:m.end(1)] + entry + text[m.end(1):]
     ast.parse(new)                      # 改坏了立刻抛，不写盘
-    open(path, 'w', encoding='utf-8', newline='\n').write(new)
+    write_preserving_eol(path, new)
     if not quiet:
         print(f'[new] 已登记进 run_all_tests.py：{mod}')
     return True
+
+
+def unregister_test(name, quiet=False):
+    """把测试模块从 `run_all_tests.py` 的 MODULES 里摘掉（`new_kernel.py --undo` 用）。
+
+    按**整行**摘除（不是正则替换片段）：`MODULES` 里的一行是自足的，
+    摘行不会误伤相邻条目。返回摘掉的行数（0 = 本来就没有）。
+    """
+    path = os.path.join(ROOT, 'scripts', 'run_all_tests.py')
+    text = open(path, encoding='utf-8').read()
+    mod = f'tests.test_{name}'
+    out, n = [], 0
+    for ln in text.split('\n'):
+        if f"'{mod}'" in ln and ln.strip().startswith('('):
+            n += 1
+            continue
+        out.append(ln)
+    if not n:
+        if not quiet:
+            print(f'[undo] {mod} 不在 MODULES 里，跳过')
+        return 0
+    new = '\n'.join(out)
+    ast.parse(new)
+    write_preserving_eol(path, new)
+    if not quiet:
+        print(f'[undo] 已从 run_all_tests.py 摘除：{mod}')
+    return n
 
 
 def main(argv=None) -> int:
@@ -299,7 +349,7 @@ def main(argv=None) -> int:
     print(f'[new] 已生成 {rel}（{len(text.splitlines())} 行）')
 
     if args.test and args.register:
-        _register_test(name)
+        register_test(name)
 
     print()
     print('[new] 接下来（**跑一次门禁，它会列出还差哪几处**）：')

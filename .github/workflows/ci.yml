@@ -5,6 +5,13 @@ name: CI
 #   1) clean clone + `pip install -r requirements.txt` 之后能跑（P0：环境可复现）
 #   2) 过程中**不设置 CORDIS_SRC** —— 强制走 vendored cordis 的自动回退路径，
 #      一旦有人把接线改回"必须手工设置"就会在这里红掉。
+#
+# P5-b 起是**两个 job**：
+#   * `regression`（windows-latest）—— **发布口径**：能开真窗口、能出成片、能跑全量 demo；
+#   * `regression-linux`（ubuntu-latest）—— **别人 clone 下来第一件事**：
+#     没有显示器、没有显卡驱动时还能不能跑。Linux 上的依赖清单是从**本项目锁定的
+#     pyglet 源码**里读出来的（它用 ctypes 直接 dlopen，见下面的 apt 步骤注释），
+#     不是照抄博客。
 on:
   push:
     branches: [master]
@@ -13,8 +20,7 @@ on:
 jobs:
   regression:
     # 说明：本项目渲染层基于 pyglet + OpenGL，开发与验收均在 Windows 上完成。
-    # Linux runner 无 GL 上下文，GL 用例会走 `_gl_available()` 的 SKIP 分支
-    # （不是失败，但等于没测到），故暂只跑 Windows；等接入 EGL/OSMesa 再扩。
+    # Windows runner 有真实的显示服务器与驱动，GL 用例是**真跑**而不是 SKIP。
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,13 +41,15 @@ jobs:
           python -c "import world3d._cordis_locate as L; L.ensure(); import cordis; print('cordis ->', cordis.__file__)"
 
       - name: 机械门禁（文档/计数/链接 ↔ 实现，<1 秒）
-        # P4 新增。它抓过两类"没有任何测试会发现"的问题：
+        # P4 新增。它抓过三类"没有任何测试会发现"的问题：
         #   ① 测试模块注册了却不在 README 清单里；
-        #   ② 本文件里那条 `import _cordis_locate` 没跟着 P2-4 的搬运改掉（P4-b 实测抓到）。
+        #   ② 本文件里那条 `import _cordis_locate` 没跟着 P2-4 的搬运改掉（P4-b 实测抓到）；
+        #   ③ 内核模板腐掉（P5-a 新增 scaffold-kernel-valid）。
         run: python scripts/verify.py
 
-      - name: 全仓可达性（每个模块都 import 一遍）
+      - name: 全仓可达性（每个模块都 import 一遍 + sys.path 不变量）
         # 单测只覆盖被引用的模块；没被任何测试 import 的模块改坏了单测不会红。
+        # P5-a 起还断言"仓库内的包目录不许上 sys.path"（曾让 world3d/platform 遮蔽标准库 platform）。
         run: python scripts/check_imports.py
 
       - name: 契约自检
@@ -49,3 +57,81 @@ jobs:
 
       - name: 一键回归
         run: python scripts/run_all_tests.py --quiet
+
+  # ------------------------------------------------------------------ Linux
+  regression-linux:
+    runs-on: ubuntu-latest
+    env:
+      # pyglet 在 Linux 默认走 Xlib，没有 DISPLAY 时第一次 import 显示后端就抛
+      #   pyglet.display.xlib.NoSuchDisplayException: Cannot connect to "None"
+      # `pyglet.options['headless'] = True` 让它改走 EGL；已核实**本仓锁定的
+      # pyglet 2.1.16** 支持环境变量形态（`pyglet/__init__.py:319` 读 `PYGLET_<选项名>`），
+      # 所以这里不用改一行业务代码。环境变量天然满足"必须在 import pyglet 之前生效"。
+      PYGLET_HEADLESS: '1'
+      # 无 GPU 的 runner 只能靠 Mesa 的软件光栅器（llvmpipe）。
+      LIBGL_ALWAYS_SOFTWARE: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 系统依赖（库名取自 pyglet 源码里的 load_library 调用，不是猜的）
+        # pyglet 用 ctypes **直接 dlopen** 这些 .so，缺一个就在 import 期炸：
+        #   pyglet/libs/x11/{xlib,xf86vmode,xinerama,xinput,xrandr,xrender,xsync}.py
+        #     -> X11 / Xxf86vm / Xinerama / Xi / Xrandr / Xrender / Xext
+        #   pyglet/gl/lib_glx.py  -> GL
+        #   pyglet/libs/egl/egl.py -> EGL（headless 模式走这条）
+        # 注意：**即使开 headless，X11 那几个库也必须装** —— `import pyglet` 会
+        # 无条件加载 xlib 事件循环（pyglet/app/__init__.py 的 else 分支）。
+        # libgl1-mesa-dri 提供 llvmpipe/swrast，EGL 才能在没有 GPU 时建出上下文。
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libx11-6 libxxf86vm1 libxinerama1 libxi6 libxrandr2 libxrender1 libxext6 \
+            libgl1 libglx-mesa0 libegl1 libgl1-mesa-dri \
+            libopenal1 libsndfile1
+
+      - name: 安装运行时依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 环境自检（渲染器 / 依赖 / cordis / 配置树）
+        # `world3d-info` 的每一项都有兜底（缺 GL 只打印 `<异常>` 字符串，不失败），
+        # 所以它在这里的角色是**记录证据**：无头成功的标志是 renderer 里出现 llvmpipe。
+        run: world3d-info
+
+      - name: 验证 vendored cordis 自动接线（不设 CORDIS_SRC）
+        shell: bash
+        run: |
+          unset CORDIS_SRC
+          python -c "import world3d._cordis_locate as L; L.ensure(); import cordis; print('cordis ->', cordis.__file__)"
+
+      - name: 机械门禁
+        run: python scripts/verify.py
+
+      - name: 全仓可达性 + sys.path 不变量
+        run: python scripts/check_imports.py
+
+      - name: 帧图门禁（纯逻辑，不需要 GL）
+        run: python -m world3d.cli.frame_plan --all-toggles
+
+      - name: 一键回归（GL 用例：EGL 可用就真跑，不可用则 SKIP 并打印原因）
+        # `_gl_available()` 用的是 `try: Window(...) except Exception: SKIP`，
+        # 所以"无头 GL 没配好"在这里表现为**跳过**而不是失败 —— 这是刻意的：
+        # 这一份 job 要保证的是"没有显示器的机器上，非 GL 部分依然全绿"。
+        # 真跑到了没有，看上面 `world3d-info` 的 renderer 与下面的探针。
+        run: python scripts/run_all_tests.py
+
+      - name: 无头 GL 探针（EGL + llvmpipe）
+        # ⚠ **这一条尚未在真 Linux runner 上实测过**（本机是 Windows，无 Docker/WSL 可复现），
+        # 所以故意不阻塞：先跑一次拿真实输出，确认真能建出上下文之后，
+        # 把 `continue-on-error` 去掉、并把 `config_boot all` 提升为阻塞步骤。
+        # 它验的是 `config_boot` 的 10 棵配置树（其中 8 棵 `require_gl=True`，
+        # 需要内核真的拿到 GL 句柄）。
+        continue-on-error: true
+        run: |
+          python -c "import pyglet; from pyglet.gl import gl_info; import pyglet.window as W; w = W.Window(64, 64, visible=False); print('GL version :', gl_info.get_version()); print('GL renderer:', gl_info.get_renderer())"
+          python -m world3d.cli.config_boot all

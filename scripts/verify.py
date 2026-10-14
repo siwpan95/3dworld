@@ -410,6 +410,35 @@ def g_pyrefs(root, verbose):
     return f'{n} 处 `python -c` 里的 import/from 全部可达（含 .github/workflows）'
 
 
+def _load_script(path, tag):
+    """按**路径 + 唯一模块名**加载一个仓库内脚本。
+
+    ⚠ 不能 `import`：`sys.modules` 会缓存第一次的导入，selfcheck 在沙箱里改过的副本
+    就**永远不会被重新加载**（P4-b 实踩：破坏用例照样 PASS）。
+    """
+    from importlib.machinery import SourceFileLoader
+    loader = SourceFileLoader(f'_{tag}_{abs(hash(path))}', path)
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+def _ensure_import_roots(root):
+    """把**真实仓库根**放到 `sys.path` 前面、把被检的 `root`（selfcheck 里是沙箱）放到后面。
+
+    **门禁之间不能互相污染 import 状态**：selfcheck 的沙箱不拷 `vendor/`（50MB→2MB 的
+    取舍），所以一旦沙箱里的 `world3d` 抢先被 import 进 `sys.modules`，后面**依赖 cordis**
+    的门禁（内核模板：内核就是 cordis Service）就会连带报「未找到 cordis 包」——
+    那是沙箱的局限，不是被检对象的缺陷。P5-a 加内核模板门禁时正是这么被 selfcheck
+    抓出来的（"沙箱基线就是 FAIL"），根因却在**上一条**门禁把沙箱插到了 sys.path[0]。
+    """
+    if ROOT not in sys.path:
+        sys.path.insert(0, ROOT)
+    if root not in sys.path:
+        sys.path.append(root)
+
+
 @gate('scaffold-templates-valid', '脚手架模板仍能渲染 / 可解析 / 关键属性齐全')
 def g_scaffold(root, verbose):
     """模板会**随项目演进腐掉**（导入路径改名、`DemoApp` 钩子改名、返回类型变了）——
@@ -420,19 +449,11 @@ def g_scaffold(root, verbose):
 
     ⚠ "模板能跑"（`--smoke` 真开窗口）由本批**手测**过（`examples/zzprobe.py --smoke 3
     → EXIT_OK`）；门禁只做静态 + import 校验 —— 真跑要 GL 且会破坏 <1s 预算。
-
-    ⚠ 加载 `new_demo` 要**按路径 + 唯一模块名**，不能 `import`：`sys.modules` 会缓存
-    第一次的导入，selfcheck 在沙箱里改过的副本就**永远不会被重新加载**（我这版一开始
-    就是这么写的，破坏用例照样 PASS —— 又是 selfcheck 抓出来的）。
     """
-    from importlib.machinery import SourceFileLoader
     scaffold = os.path.join(root, 'scripts', 'new_demo.py')
     if not os.path.exists(scaffold):
         raise Skip('scripts/new_demo.py 不存在')
-    loader = SourceFileLoader(f'_scaffold_{abs(hash(root))}', scaffold)
-    spec = importlib.util.spec_from_loader(loader.name, loader)
-    N = importlib.util.module_from_spec(spec)
-    loader.exec_module(N)
+    N = _load_script(scaffold, 'scaffold')
     demo = N.render_demo('zzprobe')
     test = N.render_test('zzprobe')
 
@@ -458,8 +479,7 @@ def g_scaffold(root, verbose):
 
     # 真 import 一次（`ast` 抓不到"import 了不存在的名字"）
     with tempfile.TemporaryDirectory() as td:
-        if root not in sys.path:
-            sys.path.insert(0, root)
+        _ensure_import_roots(root)
         for fn, text, label in (('zzprobe_demo.py', demo, 'demo'),
                                 ('test_zzprobe.py', test, 'test')):
             path = os.path.join(td, fn)
@@ -474,9 +494,197 @@ def g_scaffold(root, verbose):
     return f'两套模板渲染 + ast + 真 import + {len(need_demo) + len(need_test)} 项关键片段全通过'
 
 
+@gate('scaffold-kernel-valid', '内核模板：渲染 → ast → 真 import → 跑通 run_generic 的契约')
+def g_kernel_scaffold(root, verbose):
+    """内核模板比 demo 模板**更容易腐**，因为它在**别的文件里**被三处引用：
+
+    * `cli/config_boot.run_generic` 按 `inject / status / auto_step` 三条约定验收它；
+    * `host/tree.py` 的 `WANT_<名>` 决定就绪判定要等哪些服务；
+    * `host/registry.py` 的 `SERVICES` 决定服务短名解析成哪个类。
+
+    所以这条门禁不止"片段对得上"，而是**把模板真跑一遍**，四段：
+    渲染 → `ast.parse` → 真 import → **按 `run_generic` 的断言跑一次**（跑出 `won`）。
+
+    ⚠ 真 import 用 `exec` + 自造模块，而不是落盘到 `world3d/games/<名>/`：
+    模板是靠 `__file__` 算自举根的，所以把 `__file__` 设成"将要去的位置"
+    （`<root>/world3d/games/zzkern/kernel.py`）就能让自举块算出**真实的仓库根** ——
+    顺带把"自举块层数对不对"也验了（层数错了 `_ROOT` 就不是仓库根）。
+    测试模板则靠**把渲染出的内核先塞进 `sys.modules`** 才 import 得动
+    （它 `from world3d.games.<名>.kernel import …`，而那个包此刻并不存在）。
+    """
+    import types
+
+    scaffold = os.path.join(root, 'scripts', 'new_kernel.py')
+    if not os.path.exists(scaffold):
+        raise Skip('scripts/new_kernel.py 不存在')
+    N = _load_script(scaffold, 'kernelscaffold')
+    name, up = 'zzkern', 'ZZKERN'
+    cls = N._cls_name(name)
+    src = {
+        'init': N.render_games_init(name),
+        'kernel': N.render_kernel(name),
+        'test': N.render_test(name),
+        'config': N.render_config(name),
+    }
+    for label in ('init', 'kernel', 'test'):
+        try:
+            ast.parse(src[label])
+        except SyntaxError as e:
+            raise Fail(f'{label} 模板渲染后不是合法 Python：{e}')
+
+    # ---- 关键片段（**带冒号/括号**：'def status' 会被 'def status_broken' 匹配到）----
+    need_kernel = (f'class {cls}(Service):', '    inject = []',
+                   '    def status(self) -> str:', '    def auto_step(self, dt: float):',
+                   'def make_offline(', '__all__', f"super().__init__(ctx, '{name}')")
+    miss = [w for w in need_kernel if w not in src['kernel']]
+    if miss:
+        raise Fail(f'内核模板缺关键片段：{miss}')
+    need_cfg = (f'- name: {name}', '- name: render', '  config:', f'    seed: {N.SEED}')
+    miss = [w for w in need_cfg if w not in src['config']]
+    if miss:
+        raise Fail(f'配置树模板缺关键片段：{miss}')
+    need_test = ('def main() -> int:', 'sys.exit(main())', f'ALL_{up}_TESTS_PASSED',
+                 f'ALL_{up}_TESTS_FAILED', 'make_offline')
+    miss = [w for w in need_test if w not in src['test']]
+    if miss:
+        raise Fail(f'测试模板缺关键片段：{miss}')
+
+    # ---- 真 import（`exec` + 自造模块：见 docstring）----
+    #
+    # ⚠ 用 `_ensure_import_roots`：**真实仓库根在前、被检 root 在后**。内核是本仓库里
+    # 唯一"必须依赖 cordis"的模板，而沙箱不拷 `vendor/` —— 若沙箱的 `world3d` 抢先被
+    # import，`ensure()` 就会报「未找到 cordis 包」（沙箱的局限，不是模板的问题）。
+    # 模板自身要验的是**自举根算得对不对**，那条仍按被检 root 断言（见下面的 `_ROOT` 检查）。
+    _ensure_import_roots(root)
+    import world3d._cordis_locate as _loc                      # noqa: PLC0415
+    _loc.ensure()
+
+    pkg = f'world3d.games.{name}'
+    kpath = os.path.join(root, 'world3d', 'games', name, 'kernel.py')
+    saved = {k: sys.modules.get(k) for k in (pkg, pkg + '.kernel')}
+    try:
+        pkgmod = types.ModuleType(pkg)
+        pkgmod.__path__ = []
+        sys.modules[pkg] = pkgmod
+        kmod = types.ModuleType(pkg + '.kernel')
+        kmod.__file__ = kpath
+        sys.modules[pkg + '.kernel'] = kmod
+        exec(compile(src['kernel'], kpath, 'exec'), kmod.__dict__)     # noqa: S102
+        tmod = types.ModuleType(f'zz_test_{name}')
+        tmod.__file__ = os.path.join(root, 'tests', f'test_{name}.py')  # 自举块要它
+        exec(compile(src['test'], tmod.__file__, 'exec'), tmod.__dict__)  # noqa: S102
+    except Exception as e:                                             # noqa: BLE001
+        raise Fail(f'模板真 import 失败（{type(e).__name__}: {e}）'
+                   f' —— 模板引用了已不存在/已改名的符号')
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                sys.modules.pop(k, None)
+            else:
+                sys.modules[k] = v
+
+    # ---- 自举块层数：`_ROOT` 必须等于仓库根（少一层就会让 world3d/ 遮蔽标准库）----
+    if os.path.abspath(getattr(kmod, '_ROOT', '')) != os.path.abspath(root):
+        raise Fail(f'内核模板的自举根算错了：_ROOT={getattr(kmod, "_ROOT", None)!r}，'
+                   f'应为仓库根 {root!r}（层数错会让 world3d/ 上 sys.path ⇒ 遮蔽 platform）')
+
+    # ---- 按 `run_generic` 的断言跑一次（模板必须真的能满足那份契约）----
+    K = getattr(kmod, cls)
+    if list(getattr(K, 'inject', None) or []) != []:
+        raise Fail(f'内核模板的 inject={getattr(K, "inject", None)!r} 不是 []，'
+                   f'与 run_generic 的"纯逻辑内核"契约不符')
+    k = kmod.make_offline(kmod.DEFAULT_SEED)
+    st0 = k.status()
+    if st0 not in ('playing', 'prep'):
+        raise Fail(f'内核模板 status() 初值 {st0!r} 不在 (playing, prep) —— '
+                   f'run_generic 会直接断言失败')
+    t = 0.0
+    while k.status() not in ('won', 'lost') and t < 120.0:
+        k.auto_step(1.0 / 60.0)
+        t += 1.0 / 60.0
+    if k.status() != 'won':
+        raise Fail(f'内核模板 auto_step 未在 120s 内收尾（state={k.status()!r}）'
+                   f' —— run_generic 会判它"只是能构造"')
+    return (f'内核/配置树/测试三套模板渲染 + ast + 真 import + '
+            f'{len(need_kernel) + len(need_cfg) + len(need_test)} 项关键片段，'
+            f'并按 run_generic 契约跑到 won（{t:.1f}s / {k.steps} 步）')
+
+
 #: 允许在任何 `python -c` 里出现的非本项目模块
 _STDLIB_HINTS = {'pyglet', 'yaml', 'cordis', 'os', 'sys', 'json', 'math', 're', 'time',
                  'platform', 'pathlib', 'subprocess'}
+
+
+@gate('workflows-valid', 'CI workflow 可解析 / 结构完整 / 里面的命令都可达')
+def g_workflows(root, verbose):
+    """`.github/workflows/*.yml` 是**本机跑不到的那一半**（只有 push 到 GitHub 才会执行），
+    所以它坏了也**没人会在本地发现** —— 正好是"机械门禁该管的事"。
+
+    三层检查：YAML 可解析 → 结构完整（`on` + 每个 job 有 `runs-on` 与非空 `steps`，
+    每个 step 有 `run` 或 `uses`，`uses` 必须带版本）→ **命令可达**
+    （`run` 里的 `python -m X` / `python <文件>.py` 目标真实存在）。
+
+    ⚠ YAML 1.1 会把裸 `on:` 解析成**布尔 True**（`{True: [...]}`），所以检查"有没有
+    `on`"必须同时认 `'on'` 与 `True` 两个键 —— 只查字符串会永远报"缺 on"。
+    """
+    import yaml
+    wf = os.path.join(root, '.github', 'workflows')
+    if not os.path.isdir(wf):
+        raise Skip('.github/workflows 不存在')
+    files = sorted(f for f in os.listdir(wf) if f.endswith(('.yml', '.yaml')))
+    if not files:
+        raise Skip('.github/workflows 下没有 workflow')
+    bad, n_jobs, n_cmds = [], 0, 0
+    for fn in files:
+        rel = f'.github/workflows/{fn}'
+        try:
+            data = yaml.safe_load(_read(root, rel))
+        except yaml.YAMLError as e:
+            raise Fail(f'{rel} 不是合法 YAML：{e}')
+        if not isinstance(data, dict):
+            raise Fail(f'{rel} 顶层不是映射')
+        if 'on' not in data and True not in data:
+            bad.append(f'{rel}: 缺 `on`（触发条件）')
+        jobs = data.get('jobs')
+        if not isinstance(jobs, dict) or not jobs:
+            bad.append(f'{rel}: 缺 `jobs`')
+            continue
+        for jname, job in jobs.items():
+            n_jobs += 1
+            if not isinstance(job, dict):
+                bad.append(f'{rel}:{jname} 不是映射')
+                continue
+            if 'runs-on' not in job:
+                bad.append(f'{rel}:{jname} 缺 `runs-on`')
+            steps = job.get('steps')
+            if not isinstance(steps, list) or not steps:
+                bad.append(f'{rel}:{jname} 缺 `steps`')
+                continue
+            for i, st in enumerate(steps):
+                if not isinstance(st, dict) or not (st.get('run') or st.get('uses')):
+                    bad.append(f'{rel}:{jname} 第 {i + 1} 步既没有 run 也没有 uses')
+                    continue
+                uses = st.get('uses')
+                if uses and '@' not in str(uses):
+                    bad.append(f'{rel}:{jname} 第 {i + 1} 步的 uses={uses!r} 没钉版本')
+                run = st.get('run')
+                if not isinstance(run, str):
+                    continue
+                for mod in set(re.findall(r'python -m ([\w.]+)', run)):
+                    n_cmds += 1
+                    if mod.split('.')[0] in TOOLING_MODULES:
+                        continue
+                    if not _module_exists(root, mod):
+                        bad.append(f'{rel}:{jname} `python -m {mod}` 目标不存在')
+                for script in set(re.findall(r'python ([\w./-]+\.py)', run)):
+                    n_cmds += 1
+                    cands = ([script] if script.split('/')[0] in ('scripts', 'examples')
+                             else [script, f'scripts/{script}', f'examples/{script}'])
+                    if not any(os.path.exists(os.path.join(root, c)) for c in cands):
+                        bad.append(f'{rel}:{jname} `python {script}` 文件不存在')
+    if bad:
+        raise Fail(f'{len(bad)} 处 workflow 问题：' + '；'.join(bad[:6]))
+    return f'{len(files)} 个 workflow / {n_jobs} 个 job 结构完整，{n_cmds} 条命令可达'
 
 
 @gate('cli-usage-names', 'cli/*.py 的用法 docstring 里的模块名 == 真实模块名')
@@ -643,6 +851,12 @@ BREAKS = [
     ('scaffold-templates-valid', '把模板里的关键钩子改名',
      _subst('scripts/new_demo.py', '    def render(self):',
             '    def render_broken(self):')),
+    ('scaffold-kernel-valid', '把内核模板的 status() 改名（破坏 run_generic 的契约）',
+     _subst('scripts/new_kernel.py', '    def status(self) -> str:',
+            '    def status_broken(self) -> str:')),
+    ('workflows-valid', '把 workflow 里的一条命令指到不存在的模块',
+     _subst('.github/workflows/ci.yml', 'python scripts/verify.py',
+            'python scripts/verify_broken.py')),
 ]
 
 

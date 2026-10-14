@@ -1,7 +1,8 @@
 # P4 机械门禁与文档站 设计说明（**P4 收口 = 全部路线完成**）
 
 > 轨道：**P4 收尾（文档站 / 门禁 / 脚手架 / CI）**。P0 ✅ / P1 ✅ / P2 ✅ / P3 ✅ / **P4 ✅**。
-> 相关：`scripts/verify.py`（**14 条门禁** + `--selfcheck`）· `scripts/docs_index.py`（索引生成器）·
+> 相关：`scripts/verify.py`（**14 条门禁** + `--selfcheck`；P5-a 又加了 2 条 → **16 条**，
+> 见 `docs/P5_内核脚手架与CI_design_note.md`）· `scripts/docs_index.py`（索引生成器）·
 > `docs/README.md`（生成物）· `scripts/new_demo.py`（脚手架）· `.githooks/pre-commit` ·
 > `.github/workflows/ci.yml`（已挂门禁）· CHANGELOG「P4」段。
 >
@@ -203,8 +204,11 @@ python scripts\new_demo.py <名字> --force             :: 覆盖已存在的文
    （`configs/cordis.*.yml`）还没有模板 —— 这两样要同步的地方更多（`host/registry.py`
    服务短名表、`config_boot` 期望的 OK 标记、README 的内核计数），
    等下一次真新增时再按"今天踩了什么"补模板，比现在凭想象写更准；
-4. **CI 只在 `windows-latest` 上跑**：Linux runner 无 GL 上下文，GL 用例会走
-   `_gl_available()` 的 SKIP 分支（**不是失败，但等于没测到**），等接入 EGL/OSMesa 再扩；
+4. ~~**CI 只在 `windows-latest` 上跑**：Linux runner 无 GL 上下文，GL 用例会走
+   `_gl_available()` 的 SKIP 分支（不是失败，但等于没测到），等接入 EGL/OSMesa 再扩。~~
+   → **P5-b 已扩**（`PYGLET_HEADLESS=1` + Mesa llvmpipe/EGL）。但那条 Linux job
+   **未在真 runner 上验证过**，且**本仓 remote 只有 Gitee ⇒ workflow 不会被触发** ——
+   两条限制见 `docs/P5_内核脚手架与CI_design_note.md` §5、§8；
 5. **`pyrefs-exist` 的判定是"文件存在"而不是"真能 import"**：所以它能抓"模块被改名/搬走"，
    抓不到"模块在但符号被删"（后者由 `scaffold-templates-valid` 的真 import 在模板范围内覆盖）。
    要全仓覆盖需要把 117 个模块全 import 一遍 —— 那是 `scripts/check_imports.py` 的职责，

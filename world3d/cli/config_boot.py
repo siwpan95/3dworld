@@ -10,6 +10,14 @@
 2. 断言 yaml 的 ``config`` 真正到达服务（TD：gold=300 / total_waves=5；神之手：mana 基数 0）；
 3. ``dispose`` 内核 fiber，断言 GL 资源随内核可逆回滚（live → 0）。
 
+## 表驱动（P5-a）
+
+`CONFIGS`（kind → yml / 所需服务 / 是否需要 GL 就绪）+ `RUNNERS`（kind → 验收函数），
+**`all` 的顺序从 `CONFIGS` 派生**（`ALL_KINDS`）——"新增一个内核"从"改 6 处"
+降到"`CONFIGS` 加一行"（改名/新增都不会漏改 `all` 的清单）。
+没在 `RUNNERS` 里的 kind 走 `run_generic`（纯逻辑内核的通用验收），
+所以 `scripts/new_kernel.py` 生成的内核**零代码**接入。
+
 运行（无需显示器 / 不依赖 GL 窗口）::
 
     python -m world3d.cli.config_boot td
@@ -48,17 +56,30 @@ from world3d.games.tower_defense.kernel import (  # noqa: E402
 )
 
 CONFIGS = {
-    'td': ('cordis.td.yml', WANT_TD),
-    'godhand': ('cordis.godhand.yml', WANT_GODHAND),
-    'fps': ('cordis.fps.yml', WANT_FPS),
-    'cores': ('cordis.cores.yml', WANT_CORES),
-    'puzzle': ('cordis.puzzle.yml', WANT_PUZZLE),
-    'storm': ('cordis.storm.yml', WANT_STORM),
-    'hall': ('cordis.hall.yml', WANT_HALL),
-    'void': ('cordis.void.yml', WANT_VOID),
-    'pulse': ('cordis.pulse.yml', WANT_PULSE),
-    'brickward': ('cordis.brickward.yml', WANT_BRICKWARD),
+    'td': ('cordis.td.yml', WANT_TD, True),
+    'godhand': ('cordis.godhand.yml', WANT_GODHAND, True),
+    'fps': ('cordis.fps.yml', WANT_FPS, True),
+    'puzzle': ('cordis.puzzle.yml', WANT_PUZZLE, True),
+    'storm': ('cordis.storm.yml', WANT_STORM, True),
+    'hall': ('cordis.hall.yml', WANT_HALL, True),
+    'void': ('cordis.void.yml', WANT_VOID, True),
+    'pulse': ('cordis.pulse.yml', WANT_PULSE, True),
+    'brickward': ('cordis.brickward.yml', WANT_BRICKWARD, False),
+    # 全共同核自检（无内核）—— 放在最后，"all" 的收尾是核体检
+    'cores': ('cordis.cores.yml', WANT_CORES, False),
 }
+"""``kind`` → ``(yml 文件名, 就绪所需服务集, 是否需要 GL 就绪)``。
+
+⚠ 第三个字段不是"这个树会不会用 GL"，而是**内核自己取不取 GL 句柄**：
+`await_ready(require_gl=True)` 等的是 ``ctx.render.live_count() > 0`` —— 内核
+`inject = []`（纯逻辑）时永远等不到东西，会在 8 秒后抛"未就绪"。
+brickward 与脚手架生成的纯逻辑内核对 `render` 只"挂给 demo 用"，所以是 False。
+
+⚠ **新增内核只需在这里加一行**（表驱动的意义见 `RUNNERS` 的说明）。
+"""
+
+#: ``kind`` 的**运行顺序**（`config_boot all`）。从 CONFIGS 派生 ⇒ 不必两处维护。
+ALL_KINDS = tuple(CONFIGS)
 
 
 async def _rollback(ctx, kernel, render, label):
@@ -72,7 +93,7 @@ async def _rollback(ctx, kernel, render, label):
     print(f"== {label}_OK ==")
 
 
-async def run_td(ctx):
+async def run_td(ctx, seeds=None):
     kernel = ctx.tower_defense
     render = ctx.render
     # config 传递核验：yaml 声明值须到达服务，且与内核默认一致（防配置树与玩法漂移）
@@ -96,7 +117,7 @@ async def run_td(ctx):
     await _rollback(ctx, kernel, render, 'TDKERNEL')
 
 
-async def run_godhand(ctx):
+async def run_godhand(ctx, seeds=None):
     kernel = ctx.godhand
     render = ctx.render
     terrain = ctx.terrain
@@ -289,7 +310,7 @@ async def run_brickward(ctx, seeds=None):
     print("== BRICKWARD_OK ==")
 
 
-async def run_cores(ctx):
+async def run_cores(ctx, seeds=None):
     """全共同核自检（P0-4）：断言 10 个共同核均经配置树挂载且**可用**。
 
     不只是"属性存在"——逐个调用关键方法验证**行为**（非仅 isinstance 检查）。
@@ -575,40 +596,95 @@ async def run_pulse(ctx, seeds=None):
     await _rollback(ctx, kernel, render, 'PULSEKERNEL')
 
 
+async def run_generic(ctx, kind, seeds=None):
+    """**通用 headless 验收** —— 脚手架生成的新内核走这里，不必为它写专属 runner。
+
+    这是 P5-a 的关键让步：原来 `run_one` 是一串 `if/elif`，**新增一个内核要改两处**
+    （CONFIGS 加一行 + 加一个分支）。而脚手架能安全自动改的只有**数据行** ——
+    自动插一个 `elif` 分支要重写控制流，那是最容易改坏的一类改动。所以改成
+    `RUNNERS` 表 + 这个**按约定工作**的通用 runner：新内核只要满足约定，就**零代码**接入。
+
+    ## 约定（由门禁 `scaffold-kernel-templates-valid` 钉住）
+
+    新内核是**纯逻辑内核**：`inject = []`、零 GL，并暴露三个成员 ——
+
+    * `status()` → 字符串状态，初值 `'playing'`，终局 `'won'` / `'lost'`；
+    * `auto_step(dt)` → 确定性推进一帧（headless 可跑，不碰窗口/GL）；
+    * `ctx.fiber.dispose()` → cordis Service 自带，用于回滚。
+
+    ## 四条断言（每条都能被反例打穿）
+
+    1. **服务真挂上**且**行为自检**（`status()` 初值合法）—— 不用 `isinstance`
+       （`ctx.<名>` 每次访问返回**代理**，`is` 比对恒假，P0 实踩过）；
+    2. `inject == []` —— 与配置树的 `require_gl=False` **配对校验**：内核悄悄改成
+       `inject = ['render']` 而树里仍是 False，就会得到"服务就绪但内核没跑"的假绿；
+    3. **`auto_step` 跑到终局**（`won`）—— 证明内核真的能收尾，而不是"能构造就算数"
+       （B2b 的史莱姆 AI 就曾在"关卡能通关、单测全绿"下一次没跑）；
+    4. **`dispose` 后服务不可达** —— 回滚彻底（`getattr(ctx, kind) is None`）。
+    """
+    kernel = getattr(ctx, kind, None)
+    assert kernel is not None, f'服务短名 {kind!r} 未挂载（检查 configs/cordis.{kind}.yml）'
+
+    inject = getattr(kernel, 'inject', None)
+    assert inject == [], (
+        f'新内核 {kind!r} 的 inject={inject!r} 不是 []：本通用 runner 只接**纯逻辑内核**'
+        f'（配置树里它的 require_gl 是 False）。要用 GL，请给它写专属 runner 并把'
+        f'CONFIGS 的第三项改成 True。')
+
+    st0 = kernel.status()
+    seed = getattr(kernel, 'seed', None)
+    # 种子（若内核有）：用来**证明配置树的 `config:` 真的到达了服务** ——
+    # 改 yml 里的 seed 这一行，这里必须跟着变（P5-a 的实战检验就这么验的）。
+    print(f"[config] kind={kind} inject=[] status={st0}"
+          + (f' seed={seed}' if seed is not None else ''))
+    assert st0 in ('playing', 'prep'), f'{kind}: status() 初值异常 {st0!r}'
+
+    dt = 1.0 / 60.0
+    t = 0.0
+    while kernel.status() not in ('won', 'lost') and t < 120.0:
+        kernel.auto_step(dt)
+        t += dt
+    st = kernel.status()
+    print(f"RESULT kind={kind} state={st} t={t:.1f}s steps={getattr(kernel, 'steps', '?')}")
+    assert st == 'won', (
+        f'{kind}: auto_step 未在 120s 内收尾（state={st!r}）—— 纯逻辑内核必须能'
+        f'headless 跑到 won，否则它只是"能构造"而已')
+
+    await kernel.ctx.fiber.dispose()
+    assert getattr(ctx, kind, None) is None, f'{kind}: dispose 后服务仍可达（回滚不彻底）'
+    print(f"== {kind.upper()}_OK ==")
+
+
+#: ``kind`` → headless 验收函数（签名统一 `(ctx, seeds)`）。
+#: **没在表里的 kind 走 `run_generic`** —— 于是"接入一个新内核" = CONFIGS 加一行。
+RUNNERS = {
+    'td': run_td,
+    'godhand': run_godhand,
+    'fps': run_fps,
+    'puzzle': run_puzzle,
+    'storm': run_storm,
+    'hall': run_hall,
+    'void': run_void,
+    'pulse': run_pulse,
+    'brickward': run_brickward,
+    'cores': run_cores,
+}
+
+
 async def run_one(kind, seeds=None):
-    name, want = CONFIGS[kind]
-    # 纯共同核配置树（cores）无内核取 GL 句柄 -> 不要求 GL 就绪；
-    # brickward 内核也是纯逻辑（`inject = []`）、从不取 GL 句柄 —— 它的 `render`
-    # 是给 demo 用的，所以同样不能等 `live_count() > 0`。
-    ctx = await mount_tree(config_path(name), want=want,
-                           require_gl=(kind not in ('cores', 'brickward')))
-    if kind == 'td':
-        await run_td(ctx)
-    elif kind == 'godhand':
-        await run_godhand(ctx)
-    elif kind == 'cores':
-        await run_cores(ctx)
-    elif kind == 'storm':
-        await run_storm(ctx, seeds)
-    elif kind == 'hall':
-        await run_hall(ctx, seeds)
-    elif kind == 'void':
-        await run_void(ctx, seeds)
-    elif kind == 'pulse':
-        await run_pulse(ctx, seeds)
-    elif kind == 'fps':
-        await run_fps(ctx, seeds)
-    elif kind == 'brickward':
-        await run_brickward(ctx, seeds)
+    yml, want, need_gl = CONFIGS[kind]
+    ctx = await mount_tree(config_path(yml), want=want, require_gl=need_gl)
+    runner = RUNNERS.get(kind)
+    if runner is None:
+        await run_generic(ctx, kind, seeds)
     else:
-        await run_puzzle(ctx, seeds)
+        await runner(ctx, seeds)
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="试点三 cordis.yml 配置树引导")
     ap.add_argument('kind', nargs='?', default='all',
-                    choices=['td', 'godhand', 'fps', 'puzzle', 'storm', 'hall', 'void', 'pulse',
-                             'brickward', 'cores', 'all'],
+                    choices=[*ALL_KINDS, 'all'],
                     help='运行哪个配置树（默认 all；cores = 全共同核自检）')
     ap.add_argument('--seeds', default=None,
                     help='fps/puzzle/storm/brickward 专属：逗号分隔多种子回归（如 --seeds 20261010,11,22）'
@@ -618,9 +694,7 @@ def main(argv=None):
         ap.error('--seeds 仅支持 fps / puzzle / storm / brickward')
     seeds = ([int(s) for s in args.seeds.split(',') if s.strip()]
              if args.seeds else None)
-    kinds = (['td', 'godhand', 'fps', 'puzzle', 'storm', 'hall', 'void', 'pulse',
-              'brickward', 'cores']
-             if args.kind == 'all' else [args.kind])
+    kinds = (list(ALL_KINDS) if args.kind == 'all' else [args.kind])
     for k in kinds:
         print(f"\n########## 配置树：{k} ##########")
         asyncio.run(run_one(k, seeds))

@@ -38,7 +38,10 @@ import os
 import sys
 
 # P0-3：本文件由 experiments/cordis/ 移到 games/<名>/，层级少一层
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# ⚠ P5-a 修正：这里必须**四层**（kernel.py -> <名>/ -> games/ -> world3d/ -> 仓库根）。
+# 少一层会把 `world3d/` 塞进 sys.path，于是 `world3d/platform/` 遮蔽**标准库 platform**
+# （pyglet 自己 `import platform`）—— 实测 `platform.system()` 抛 AttributeError。
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, ROOT)
 
 # ---- cordis 定位 ----

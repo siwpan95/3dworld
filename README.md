@@ -70,10 +70,11 @@ examples/              37 个单文件示例与工具（详见 examples/README.m
 configs/               10 棵配置树（cordis.*.yml）：
                        声明本次挂哪些服务、各带什么 config
 scripts/
-  verify.py            机械门禁 14 条：同一事实写在两处必须相等（<1 秒，pre-commit 会跑）
+  verify.py            机械门禁 16 条：同一事实写在两处必须相等（<1 秒，pre-commit 会跑）
   docs_index.py        docs/README.md 的生成器（门禁 docs-index-fresh 核对新鲜度）
   new_demo.py          脚手架：生成能开箱跑的新 demo / 新测试模块（模板被门禁钉住）
-  check_imports.py     全仓可达性门禁：world3d/ 下每个模块都 import 一遍
+  new_kernel.py        脚手架：生成新玩法内核 + 配置树 + 单测，并登记三张表（--undo 可撤销）
+  check_imports.py     全仓可达性门禁：world3d/ 下每个模块都 import 一遍（+ sys.path 不变量）
   verify_demos.py      demos 批量验收（冒烟 + 截图 + 退出码）
   run_all_tests.py     14 个测试模块的聚合 runner
   record_all.py        成片批量录制（ffmpeg）
@@ -300,7 +301,7 @@ kkrieger 六幕的循环连续性与舱门/平台/灯带状态机、**镜头穿�
 **全靠手改**，而手改每次都可能漏一处（示例数在 README 里就有 6 处）。
 
 ```bat
-python scripts\verify.py              # 14 条门禁（不联网、不跑构建、不改文件）
+python scripts\verify.py              # 16 条门禁（不联网、不跑构建、不改文件）
 python scripts\verify.py --list       # 只列名字与说明
 python scripts\verify.py --verbose    # 每条的证据（"6 处断言 == 37 个 demo"这种）
 python scripts\verify.py --fix        # 重生成生成物（docs/README.md）
@@ -318,7 +319,9 @@ python scripts\verify.py --selfcheck  # 沙箱里逐条注入破坏，证明门�
 | `docs-index-fresh` | `docs/README.md` == `scripts/docs_index.py` 重新生成的结果（新鲜度） |
 | `commands-exist` | 文档里写的每条 `python -m …` / `python <文件名>.py` 目标都存在（模板占位符不算） |
 | `pyrefs-exist` | 文档与 CI 里**每一处**一行式 `python -c "import <模块>"` 都指向**真实存在的模块** |
-| `scaffold-templates-valid` | 脚手架模板渲染 → `ast.parse` → **真 import** → 关键片段齐全 |
+| `scaffold-templates-valid` | demo / 测试脚手架模板渲染 → `ast.parse` → **真 import** → 关键片段齐全 |
+| `scaffold-kernel-valid` | 内核 / 配置树 / 测试模板渲染 → `ast.parse` → **真 import** → **按 `run_generic` 的契约跑到 won** |
+| `workflows-valid` | `.github/workflows/*.yml` 可解析、结构完整（`runs-on`/`steps`/`uses` 钉版本）、里面的命令可达 |
 | `cli-usage-names` | `cli/*.py` 用法 docstring 里的模块名 == 真实模块名 |
 | `readme-tree-real` | README「项目结构」树里列出的路径都真实存在 |
 
@@ -330,7 +333,13 @@ python scripts\verify.py --selfcheck  # 沙箱里逐条注入破坏，证明门�
 以及 `docs/P0-1_核心抽离_design_note.md` 里的 `from core import contracts`。
 **门禁不只防"未来会漂"，还会揭"现在就已经错了"。**
 
-`--selfcheck` 会给每条门禁注入一个**针对性破坏**并断言它变红（14/14 全拦得住）——
+加 `scaffold-kernel-valid`（P5-a）时，同样的机制又逼出一个**全仓隐患**：8 个
+`games/<名>/kernel.py` 的自举块少算一层，把 `world3d/` 推上了 `sys.path`，
+于是 `world3d/platform/` **遮蔽标准库 `platform`**（pyglet 自己 `import platform`）——
+`platform.system()` 直接 `AttributeError`。已修，并在 `scripts/check_imports.py` 落了
+一条不变量把这类问题钉死：**仓库内自带 `__init__.py` 的目录不许出现在 `sys.path` 上**。
+
+`--selfcheck` 会给每条门禁注入一个**针对性破坏**并断言它变红（16/16 全拦得住）——
 "永远为绿的门禁等于装饰品"，所以这一步不能省。
 
 **pre-commit 钩子**（可选，已在本仓库启用）：
@@ -341,10 +350,19 @@ git config core.hooksPath .githooks     # 装（已启用；--unset 即卸载）
 
 钩子只跑 `verify.py`（<1 秒），**找不到 Python 就跳过而不是拦下**；
 失败时打印下一步动作（`--fix` / `--verbose` / `--no-verify`）。
-CI（`.github/workflows/ci.yml`）里也挂了 `verify.py` + `check_imports.py` 两步 ——
+CI（`.github/workflows/ci.yml`）里挂了 `verify.py` + `check_imports.py` ——
 pre-commit 只在装了钩子的那台机器上跑，CI 才是"无论如何都会跑"的那一份。
 
-## 脚手架（`scripts/new_demo.py`）：新 demo / 新测试模块
+CI 现在是**两个 job**：`windows-latest`（发布口径：真窗口、真驱动，GL 用例真跑）与
+`ubuntu-latest`（别人 clone 下来第一件事：没有显示器、没有 GPU 时还能不能跑）。
+Linux 那份用 `PYGLET_HEADLESS=1` 让 pyglet 走 **EGL**（Mesa llvmpipe 软件渲染），
+系统依赖清单是**从本仓锁定的 pyglet 源码里的 `load_library` 调用读出来的**，不是照抄博客。
+⚠ 前提：workflow 只有 **GitHub** 会执行，而本仓当前 remote 只有 Gitee ⇒
+要让它真跑，需要加一个 GitHub 镜像 remote（或改用 Gitee Go）。
+
+## 脚手架（`scripts/new_demo.py` / `scripts/new_kernel.py`）
+
+### 新 demo / 新测试模块
 
 ```bat
 :: <名字> 要小写字母开头、只含小写字母与下划线（如 starfield / mathx）
@@ -353,6 +371,21 @@ python scripts\new_demo.py --test <名字> --register   :: → tests/test_<名�
 python scripts\new_demo.py <名字> --force             :: 覆盖已存在的文件
 ```
 
+### 新玩法内核 / 新配置树
+
+```bat
+:: 生成 world3d/games/<名字>/ + configs/cordis.<名字>.yml + tests/test_<名字>.py，
+:: 并自动登记 registry.SERVICES / tree.WANT_<名字> / config_boot.CONFIGS / run_all_tests.MODULES
+python scripts\new_kernel.py <名字>
+python scripts\new_kernel.py <名字> --undo            :: 撤销（含从三张表摘除，逐字节还原）
+```
+
+内核脚手架比 demo 那个值钱：新增一个内核要同步 **7 处**，其中**三张表**（`host/registry.py`、
+`host/tree.py`、`cli/config_boot.py`）漏一处就**静默失效** —— `registry` 漏了会让 cordis
+的 Loader 吞掉构造期异常，只报"服务未就绪"（P0-3 为此查了半天）。所以那三张表交给脚本改，
+**改完立刻 `ast.parse` 守卫**；`config_boot` 也已改成**表驱动 + 通用 runner**，
+于是生成的纯逻辑内核**零代码**接入 headless 验收。
+
 生成成功后，脚手架会把"**怎么先确认骨架能跑**"（冒烟命令 / 测试命令，都带真实名字）
 和"**还差哪几处要同步**"一起打印出来。
 
@@ -360,13 +393,16 @@ python scripts\new_demo.py <名字> --force             :: 覆盖已存在的文
 > 所以占位符一律写成 `<…>`（`<` 不在校验字符集里，天然被排除）。
 
 模板**不是伪代码**：它带着那些用血换来的行 —— `sys.path` 显式引导块
-（少这行会让**所有** demo 一起 `ModuleNotFoundError`）、`TITLE/HELP/SHOTS` 与
+（demo 少这行会让**所有** demo 一起 `ModuleNotFoundError`；内核少算一层则会把
+`world3d/` 推上 `sys.path`、遮蔽标准库 `platform`）、`TITLE/HELP/SHOTS` 与
 `setup/update/render` 钩子、测试模块的 runner + `ALL_*_TESTS_PASSED` 标记。
 生成之后**紧接着跑 `verify.py`**：它会列出"还差哪几处"（示例索引行 / README 的示例数 /
-测试清单）—— 新增东西要同步的地方由机器列，不靠记性。
+测试清单 / 内核与配置树计数）—— 新增东西要同步的地方由机器列，不靠记性。
 
-模板腐掉时**没人会发现**（直到下一个用它的人踩坑），所以门禁
-`scaffold-templates-valid` 把它钉在现状上：渲染 → `ast.parse` → **真 import** → 关键片段齐全。
+模板腐掉时**没人会发现**（直到下一个用它的人踩坑），所以两条门禁把它们钉在现状上：
+`scaffold-templates-valid`（demo / 测试模板）与 `scaffold-kernel-valid`
+（内核 / 配置树 / 测试模板 → 渲染 → `ast.parse` → **真 import** → **按 `run_generic`
+的契约真跑到 `won`**）。
 
 ## 性能基准（真实帧率）
 
