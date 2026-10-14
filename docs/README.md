@@ -5,7 +5,7 @@
 > 门禁 `docs-index-fresh`（`python scripts/verify.py`）会核对它是否最新，
 > 所以"新加了文档但忘了登记"会在验收里变红，而不是悄悄腐烂。
 
-共 **28 篇**，按轨道分组：
+共 **29 篇**，按轨道分组：
 
 ## P0 试点转正
 
@@ -71,6 +71,7 @@
 |------|--------|
 | [`LLM 场景生成工作流`](LLM场景生成工作流.md) | 只存「生成器名 + 参数 + 材质 + 变换」——几何在构建时由 world3d.engine.geometry 现… |
 | [`P4 机械门禁与文档站 设计说明（P4 收口 = 全部路线完成）`](P4_机械门禁与文档站_design_note.md) | 本轮改造里，同一件事被手改过 5~7 次，每一次都可能漏一处： |
+| [`P5-d：让 CI 真跑 —— 本机网络实测 / GitHub 镜像逐步操作 / 通了之后做什么`](P5-d_CI_运行与GitHub镜像.md) | CI 定义已经就绪但一次都没跑过（本仓只有 Gitee remote，而 workflow 只有 GitHub 执行… |
 | [`P5 内核脚手架 + CI 扩到 Linux 设计说明`](P5_内核脚手架与CI_design_note.md) | new_demo.py（P4-b）生成的是"一个单文件示例"，不碰引擎的任何注册表。 |
 | [`Cordis 集成（配置树 · 服务宿主）`](cordis集成.md) | 用 Cordis（「时空可组合性」元框架——插件即服务、 |
 | [`pyglet 3.0 迁移预研`](pyglet3_迁移预研.md) | 来源：https://pyglet.readthedocs.io/en/development/programmin… |

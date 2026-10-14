@@ -34,12 +34,17 @@ GitHub 仓库 → 填 GitHub 私人令牌（需 `repo` 权限）` ⇒ 之后**�
 
 ### 本批为"通了就能立刻看结果"做的准备
 
+- **逐步操作手册**：`docs/P5-d_CI_运行与GitHub镜像.md`
+  （前置 GitHub 空仓库 + PAT 权限、Gitee 表单四件事、5 分钟最短间隔、同步范围
+  = 分支/标签/提交但**不含 release 附件**、功能可能不对普通仓库开放时的退路）。
 - `.github/workflows/ci.yml` 新增 **`workflow_dispatch`**：镜像同步过去之后，可以先在
   GitHub 上**手动点一次**把两个 job 跑起来 —— 尤其是那个**从没在真 Linux runner 上跑过**
   的 `regression-linux`（它的无头 GL 探针目前是 `continue-on-error: true`，先拿一次真实输出，
   确认 EGL+llvmpipe 能建出上下文后再升级为阻塞步骤）。
 - 门禁 `workflows-valid` 保证 workflow 本身可解析、结构完整、里面的命令可达
   （否则镜像过去只会得到一个"永远不绿的 CI"，而本机看不到任何提示）。
+- ⚠ **我读不到 GitHub 的 CI 结果**（本机连不上 GitHub）—— 跑完请把 `Actions` 结论贴回来，
+  或给一个可用代理，我自己读。
 
 ## [未发布] — P5-c：攒批一次性重建发行版 → `v2026.10.14`
 
