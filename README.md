@@ -10,7 +10,7 @@
 - `kkrieger_demo.py` —— **150 秒六幕程序化走廊漫游 + 程序化配乐**（致敬 .kkrieger）：
   走廊舱门/管道/货箱/频闪 → 大厅纪念碑/全息扫描/升降平台 → 核心过载 →
   撤离时逐段熄灯 → 重启突入（核心爆发白闪）→ 白闪传送至环面结反应堆圣殿；
-- `examples/` —— **36 个独立示例与工具**：无限隧道、SDF 光线步进、GPU 实例化粒子、
+- `examples/` —— **37 个独立示例与工具**：无限隧道、SDF 光线步进、GPU 实例化粒子、
   太阳系、程序化地形飞行、体素面剔除、水面波动、3D 鸟群、阴影贴图、
   方块世界、引擎综合展示、材质实验室、《诺德之境》、可漫步场景（S1 场景交互化）、
   方块世界可交互版（挖掘/放置 + 区块化重建）、KID-A WALKER 3D（无限走廊 + 能量/碎片）、
@@ -50,7 +50,7 @@ presentation/        表现层：装配窗口事件 → 逻辑层 → 渲染
   hud.py               幕字幕（淡入/停留/淡出）+ 状态行
   timeline_ui.py       底部时间轴面板（播放/循环/拖动/幕标记）
   shot.py              离屏抓帧（glReadPixels，DPI 无关）
-examples/               36 个单文件示例与工具 + 公共骨架 _harness.py（详见 examples/README.md）
+examples/               37 个单文件示例与工具 + 公共骨架 _harness.py（详见 examples/README.md）
 games/               玩法内核层（P0-3 起）：games/<名>/kernel.py，9 个 Cordis 内核 + 各自的子包说明
 host/                宿主层：tree.py（配置树挂载/就绪等待/entry 白名单）· registry.py（服务短名表 24 条）
                       pipeline.py（场景校验流水线，Cordis 化：checker→loader→reporter）
@@ -203,7 +203,7 @@ python kkrieger_demo.py --shot     抓一组验证截图（9 张）到 docs/（�
 > "platform" 模式下实际 framebuffer = 请求尺寸，但 viewport setter 会乘
 > scale → 渲染放大裁切；本 Demo 统一设 `pyglet.options['dpi_scaling'] = 'real'`。
 
-## examples/ —— 36 个单文件 3D 示例与工具
+## examples/ —— 37 个单文件 3D 示例与工具
 
 ```bat
 python examples\demoscene_tunnel.py --smoke     冒烟
@@ -261,13 +261,13 @@ python -m tests.test_csm            级联阴影 CSM（20 项：分割/角点/�
 python -m tests.test_volumetrics    体积雾/光轴（12 项：闭式积分可加性/HG 归一/抖动同式/GLSL 组合）
 python -m tests.test_dof            景深 DoF（12 项：CoC/超焦距/景深端点恒等式/散景面积均匀）
 python -m tests.test_motionblur     运动模糊（9 项：静止零运动/1÷z 律/纯旋转与深度无关/三模块共存）
-python -m tests.test_framegraph     帧图（16 项：物理顺序/剔除/直通/别名/环与死链校验）
+python -m tests.test_framegraph     帧图（17 项：物理顺序/剔除/直通/别名/环与死链校验）
 python -m cli.frame_plan --all-toggles  帧图门禁：16 种效果组合的计划都必须合法且顺序正确
 python -m cli.config_boot all   9 个内核 + 13 共同核全部 headless 验收（10 棵树，逐项 OK 标记）
 python main.py --shot               主线演出渲染验证（4 张）
 python kkrieger_demo.py --shot      漫游渲染验证（9 张）
-python scripts\verify_demos.py      36 个 demo 逐个冒烟 + 截图
-python scripts\verify_demos.py --bench 3   36 个 demo 的真实帧率（vsync 与重绘节流全关）
+python scripts\verify_demos.py      37 个 demo 逐个冒烟 + 截图
+python scripts\verify_demos.py --bench 3   37 个 demo 的真实帧率（vsync 与重绘节流全关）
 ```
 
 单测覆盖：相机位姿与钳制（含**自定义范围**与非法范围拒绝）、look-at 矩阵性质、

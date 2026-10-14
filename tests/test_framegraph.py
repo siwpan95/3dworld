@@ -288,6 +288,31 @@ def test_compile_is_deterministic():
     print(f'  ok: 两次编译逐字一致；平级 pass 按声明顺序（{order}），不受名字字典序影响')
 
 
+def test_plan_exposes_resolved_reads_after_redirect():
+    """**渲染端必需的 API**：计划必须给出"重定向之后每个 pass 到底读哪张纹理"。
+
+    少了它，`disable()` 的"直通"在渲染端就落不了地 —— 渲染器会去绑一张**已被剔除**的
+    中间纹理（`hdr_dof`），而那张纹理根本没人写 ⇒ 黑屏。这是写 P3-b 的 demo 时才发现的
+    需求：**编译期算出来的信息，必须能交给执行端**。
+    """
+    full = standard_3d_plan().compile()
+    assert full.reads_of('motionblur_pass') == ('hdr_dof', 'distance', 'prev_view_proj')
+    g = standard_3d_plan()
+    g.disable('dof_pass')
+    p = g.compile()
+    assert p.reads_of('motionblur_pass') == ('hdr_fog', 'distance', 'prev_view_proj'), \
+        f'关掉景深后，运动模糊应直接读雾的输出：{p.reads_of("motionblur_pass")}'
+    assert p.reads_of('tonemap_pass') == ('hdr_mb',)
+    g2 = standard_3d_plan()
+    g2.disable('fog_pass', 'dof_pass', 'motionblur_pass')     # 三连关 ⇒ 链要解析到 hdr
+    p2 = g2.compile()
+    assert p2.reads_of('tonemap_pass') == ('hdr',), \
+        f'三个效果全关时，tonemap 应直接读场景色 hdr：{p2.reads_of("tonemap_pass")}'
+    assert p2.writes_of('tonemap_pass') == ('ldr',)
+    print(f'  ok: resolved 读写随直通更新（关景深后 mb 读 {p.reads_of("motionblur_pass")[0]}；'
+          f'三连关后 tonemap 读 {p2.reads_of("tonemap_pass")[0]}）')
+
+
 def test_plan_helper_api():
     plan = standard_3d_plan().compile()
     assert plan.position('depth_prepass') == 0
@@ -329,6 +354,8 @@ def main() -> int:
         ('test_aliasing_respects_same_pass_read_and_write',
          test_aliasing_respects_same_pass_read_and_write),
         ('test_compile_is_deterministic', test_compile_is_deterministic),
+        ('test_plan_exposes_resolved_reads_after_redirect',
+         test_plan_exposes_resolved_reads_after_redirect),
         ('test_plan_helper_api', test_plan_helper_api),
     ]
     failed = []

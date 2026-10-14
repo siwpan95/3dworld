@@ -1,7 +1,7 @@
 # P3-a 帧图（Frame Graph）设计说明
 
 > 轨道：**P3 帧图管线**。本批是 **P3-a：内核 + 编译期校验 + 门禁**；
-> **P3-b（图驱动渲染的 demo）** 留下一步。
+> **P3-b（图驱动渲染的 demo）见 `docs/P3-b_帧图驱动渲染_design_note.md`** —— 已交付。
 > 相关：`engine/framegraph.py` · `cli/frame_plan.py` · `tests/test_framegraph.py`（16 项）·
 > CHANGELOG「P3-a」段。
 
@@ -45,9 +45,9 @@
 
 ## 5. 已知不足 / 下一步（P3-b）
 
-1. **还没有"图驱动渲染"的 demo**：`plan.order` 目前没有 consumer（只有门禁与测试）。
-   P3-b 要做 `examples/frame_graph.py`：按 `plan.order` 逐 pass 派发、
-   开关效果时现场重编译并**把剔除与别名显示在 HUD 上**；
+1. ~~还没有"图驱动渲染"的 demo~~ → **P3-b 已交付**（`examples/frame_graph.py`）：
+   渲染循环遍历 `plan.order`、目标按资源声明创建、输入按 `plan.reads_of()` 绑定。
+   过程中发现计划必须暴露 **`resolved` 读写** —— 见 P3-b 的说明；
 2. **别名只算不用**：计划会报出"哪些资源可共用内存"，但真实的内存复用要交换 FBO 的纹理
    （或用 `glTextureView`），本批没做；
 3. **没有异步/多队列**：单队列顺序执行，没做 compute/graphics 并行；

@@ -3,6 +3,53 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [未发布] — P3-b：帧图驱动渲染（帧图拿到了自己的 consumer）
+
+P3-a 做出了帧图内核（声明 → 编译期校验 → 剔除 → 排序 → 别名），但它当时**没有 consumer** ——
+只有门禁与测试在读 `plan.order`。本批补上真正用它渲染的 demo，证明那套东西不是纸面工作。
+
+### 新增
+
+- **`examples/frame_graph.py`**（第 37 个示例）：渲染循环就是
+  `for name in self.plan.order: getattr(self, '_pass_' + name)()`。
+  * **离屏目标按资源声明创建**（`'screen'` / `(1024, 1024)` / `r32f` / `rgba16f` 都真的被用到）；
+  * **每个 pass 绑哪张纹理来自 `plan.reads_of(名字)`** —— 所以关掉一个效果时，
+    下游**自动**改读直通后的资源（关景深 ⇒ 运动模糊直接读雾的输出），渲染端一行都不用改；
+  * 按 `1`~`4` 现场开关四个效果会**重编译**，HUD 显示 pass 数 / 被剔除的 pass / 别名组数；
+  * 四个效果的 GLSL（`csm_glsl(1)` + `volumetric_glsl(fn, 'csm_shadow')` + `dof_glsl` + `mb_glsl`）
+    **拼在同一个片段里**运行。
+- **`FramePlan.resolved` / `reads_of()` / `writes_of()`** —— 计划现在给出**重定向之后**
+  每个 pass 真正读写的资源。这是写这个 demo 时才发现的**必需 API**：少了它，
+  `disable()` 的"直通"在渲染端落不了地（渲染器会去绑一张已被剔除的中间纹理 ⇒ 黑屏）。
+  **编译期算出来的信息，必须能交给执行端。**
+- `tests/test_framegraph.py` 增至 **17 项**（新增 `resolved` 读写随直通更新的守卫）；
+  README / examples/README 计数 36 → 37。
+
+### 修复（本轮两个，都是"位置很远的报错"）
+
+| # | 症状 | 根因 |
+|---|------|------|
+| 31 | `--flag off=fog,dof,motionblur` **只有第一个生效** | 平台层的 `--flag` **按逗号切分**（`--flag a,b` ≡ `--flag a --flag b`）⇒ 到手是 `{'off=fog','dof','motionblur'}` 三个 token，而我只取最后一个 `off=`。现在两种写法都认（`off=fog` 与裸 `fog`），并支持重复写 |
+| 32 | 同一个 flag 触发 `AttributeError: 'FrameGraphApp' object has no attribute 'targets'` | `setup()` 解析 flag 时会调 `_free_extra_targets()`，而那时离屏目标还没建 ⇒ 异常**打断了 setup 的循环**、后面的 flag 全被跳过。**报错信息与真实原因（flag 解析）离得很远**。已加守卫 |
+
+### 验收（实测）
+
+| 门禁 | 结果 |
+|------|------|
+| `python -m tests.test_framegraph` | **17/17** → `ALL_FRAMEGRAPH_TESTS_PASSED` |
+| `python -m cli.frame_plan --all-toggles` | **16 种组合**全部合法 → `== FRAME_PLAN_OK ==` |
+| `scripts/run_all_tests.py` | **13/13 模块 / 275 项** / `ALL_TESTS_PASSED` |
+| `python examples/frame_graph.py --smoke 5` | `EXIT_OK`（`[framegraph] 重编译 → 8 pass，别名组 3`） |
+| `... --flag off=fog,dof,motionblur` | 逐次重编译 **8 → 7 → 6 → 5** pass，剔除列表与别名组数同步变化 |
+| `... --shot` | `[shot] OK 2 files`（HUD 上直接读到 `帧图 8 pass [depth→shadow→scene→fog→dof→motionblur→tonemap→present] 别名组 3`） |
+| `python -m cli.config_boot all` | **10 个** OK 标记（零回归） |
+| `scripts/verify_demos.py` 全量 | `ALL_DEMOS_OK (37 demos)` |
+
+> **P3 到此收口**（P3-a 内核 + 门禁，P3-b 图驱动渲染）。
+> 从"注释里的顺序约定"到"编译期校验 + 门禁会红 + 渲染循环按计划走"，
+> 这条链现在**每一步都有证据**：`tests/test_framegraph.py` 17 项管编译期行为、
+> `cli/frame_plan` 管 16 种组合的顺序、`examples/frame_graph.py` 管"计划真的驱动了帧"。
+
 ## [未发布] — P3-a：帧图（Frame Graph）—— 把"这一帧跑哪些 pass"变成可编译的数据
 
 ④ 轨道那四个效果**互相共用资源**（三个都用同一张距离图、阴影图又给雾查），

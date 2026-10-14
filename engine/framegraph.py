@@ -85,14 +85,27 @@ class Pass:
 class FramePlan:
     """`compile()` 的产物：一条**可执行**的帧计划。"""
 
-    __slots__ = ('order', 'culled', 'aliases', 'lifetimes', 'resources')
+    __slots__ = ('order', 'culled', 'aliases', 'lifetimes', 'resources',
+                 'resolved', 'outputs')
 
-    def __init__(self, order, culled, aliases, lifetimes, resources):
+    def __init__(self, order, culled, aliases, lifetimes, resources,
+                 resolved=None, outputs=()):
         self.order = list(order)                # pass 名字，按执行顺序
         self.culled = list(culled)              # 被剔除的 pass 名
         self.aliases = [tuple(a) for a in aliases]   # [(资源 A, 资源 B)]：可共用内存
         self.lifetimes = dict(lifetimes)        # 资源名 -> (首次写, 末次读) 的序号
         self.resources = dict(resources)
+        #: **重定向之后**每个 pass 真正读/写哪些资源 —— 渲染端靠它决定绑哪张纹理。
+        #: 少了它，`disable()` 的"直通"在渲染端就落不了地（读到的是已被剔除的中间资源）。
+        self.resolved = {k: dict(v) for k, v in (resolved or {}).items()}
+        self.outputs = list(outputs)
+
+    def reads_of(self, pass_name):
+        """该 pass 执行时**实际**要读的资源名（已按直通重定向解析过）。"""
+        return tuple(self.resolved[pass_name]['reads'])
+
+    def writes_of(self, pass_name):
+        return tuple(self.resolved[pass_name]['writes'])
 
     def __repr__(self):
         return (f'<FramePlan {len(self.order)} passes, culled={len(self.culled)}, '
@@ -214,7 +227,10 @@ class FrameGraph:
         return FramePlan([p.name for p in ordered],
                          [p.name for p in self.passes if p.name not in alive],
                          aliases, lifetimes,
-                         {k: v for k, v in self.resources.items()})
+                         {k: v for k, v in self.resources.items()},
+                         resolved={p.name: {'reads': p.reads, 'writes': p.writes,
+                                            'kind': p.kind} for p in ordered},
+                         outputs=self._outputs)
 
     def _apply_disabled(self):
         """把被关掉的 pass 从图里摘掉，并把它的输出**重定向**到它的第一个输入。
