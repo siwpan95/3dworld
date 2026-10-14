@@ -186,6 +186,71 @@ def test_geometry_tangents():
           f'偏差 <{max(worst_t, worst_b):.1e}）')
 
 
+def _pom_reference(uv, vts, depth, height_fn, steps=12):
+    """POM 参考实现（**与沙垒 shader 同式**：陡峭视差 + 步内线性插值）。
+
+    抄自 ``presentation/sandward_scene.py`` 的 GLSL ``pom_uv``——它存在的意义
+    是：① 日后改 shader 时本 py 版必须同步（不一样了 = 有一方漏改）；
+    ② 让 POM 的数值性质可单测（GLSL 没法在 CI 里跑）。
+    """
+    layer_step = 1.0 / steps
+    dz = max(vts[2], 0.22)
+    delta = (vts[0] / dz * depth / steps, vts[1] / dz * depth / steps)
+    layer = 0.0
+    cur = uv
+    h = height_fn(cur)
+    for _ in range(steps):
+        if layer >= h:
+            break
+        cur = (cur[0] - delta[0], cur[1] - delta[1])
+        h = height_fn(cur)
+        layer += layer_step
+    h_prev = height_fn((cur[0] + delta[0], cur[1] + delta[1]))
+    layer_prev = layer - layer_step
+    denom = (h_prev - layer_prev) - (h - layer)
+    if abs(denom) < 1e-4:
+        w = 0.5
+    else:
+        w = max(0.0, min(1.0, (h_prev - layer_prev) / denom))
+    # mix(cur + delta, cur, w) = (cur + delta)(1-w) + cur·w = cur + delta(1-w)
+    return (cur[0] + delta[0] * (1.0 - w),
+            cur[1] + delta[1] * (1.0 - w))
+
+
+def test_pom_reference():
+    """§19.7 验收 1：POM 参考实现数值性质。"""
+    depth = 0.03
+    flat_full = lambda _uv: 1.0        # noqa: E731  满高（表面无凹陷）
+    flat_gone = lambda _uv: 0.0        # noqa: E731  谷底
+    # ① 垂直视线：零位移（不论高度场）
+    for hf in (flat_full, flat_gone):
+        u, v = _pom_reference((3.7, 2.1), (0.0, 0.0, 1.0), depth, hf)
+        assert abs(u - 3.7) < 1e-12 and abs(v - 2.1) < 1e-12, '垂直视线必须零偏移'
+    # ② 谷底（h=0）：视线直达，零位移
+    u, v = _pom_reference((3.7, 2.1), (0.6, 0.0, 0.8), depth, flat_gone)
+    assert abs(u - 3.7) < 1e-12 and abs(v - 2.1) < 1e-12, 'h=0 应零位移'
+    # ③ 斜视线 + 满高：位移朝 -vts.xy 方向（视线水平分量的反方向）
+    u, v = _pom_reference((3.7, 2.1), (0.6, 0.0, 0.8), depth, flat_full)
+    assert u < 3.7, 'u 应向视线水平分量的反方向（-x）位移'
+    assert abs(v - 2.1) < 1e-12, '视线无 y 分量则 v 不动'
+    # ④ 掠射 clamp：vts.z 极小时位移受 0.22 下限约束（不爆掉）
+    u_s, _ = _pom_reference((3.7, 2.1), (0.99, 0.0, 0.02), depth, flat_full)
+    u_c = _pom_reference((3.7, 2.1), (0.99, 0.0, 0.22), depth, flat_full)[0]
+    assert abs(u_s - u_c) < 1e-12, '掠射角应被 clamp 到同一结果（穿帮防护）'
+    max_shift = 0.99 / 0.22 * depth      # 12 步满载的位移上限（|vts.xy|/clamp*depth）
+    assert 3.7 - u_s < max_shift + 1e-9, '位移不得超过步长上限'
+    # ⑤ 半高平坦场（h=0.5）：位移量 ≈ 走完 0.5 层深对应的水平偏移
+    #    = 0.5 · depth · |vts.xy|/vts.z（± 一个步长的插值余量）
+    half = lambda _uv: 0.5             # noqa: E731
+    u, v = _pom_reference((3.7, 2.1), (0.6, 0.0, 0.8), depth, half)
+    expect = 0.5 * depth * (0.6 / 0.8)
+    got = 3.7 - u
+    assert abs(got - expect) < depth * 0.6 / 0.8 / 12 + 1e-9, \
+        f'半高场位移 {got:.5f} 应 ≈ {expect:.5f}'
+    assert abs(v - 2.1) < 1e-12, '视线无 y 分量则 v 不动'
+    print('  ok: POM 参考实现（垂直/谷底零偏移、斜视反向位移、掠射 clamp、半高位移量）')
+
+
 def main():
     print('test_arena_brushes_sane');   test_arena_brushes_sane()
     print('test_route_clear');          test_route_clear()
@@ -193,6 +258,7 @@ def main():
     print('test_collision_and_slide');  test_collision_and_slide()
     print('test_geometry_uv_density');  test_geometry_uv_density()
     print('test_geometry_tangents');    test_geometry_tangents()
+    print('test_pom_reference');        test_pom_reference()
     print('ALL_SANDWARD_TESTS_PASSED')
 
 

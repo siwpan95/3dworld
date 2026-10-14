@@ -31,7 +31,10 @@ from pyglet.math import Mat4
 from world3d.engine import proctex
 from world3d.logic.sandward import build_geometry
 
-MODE_NAMES = ('PBR', '棋盘格', 'UV 规则')
+MODE_NAMES = ('PBR', '棋盘格', 'UV 规则', '通道')
+
+#: 通道视图子项（模式 3，C 键循环）
+CHANNEL_NAMES = ('albedo', 'normal', 'rough', 'metal', 'height')
 
 #: 沙漠太阳：方向（地表→太阳，已归一）、暖白光与半球环境双色
 SUN_DIR = (0.42, 0.78, 0.28)
@@ -93,7 +96,8 @@ uniform sampler2D u_albedo;
 uniform sampler2D u_normal;
 uniform sampler2D u_mr;
 uniform int u_mode;
-uniform int u_dbg;            // TEMP 调试：0=正常；1=albedo 2=nrm_ts 3=mr 4=NoL 5=N 6=hemi 7=hand
+uniform int u_chan;           // 通道视图子项（模式 3）
+uniform float u_pom;          // POM 深度（0 = 关；贴图宽度比例，推荐 0.02~0.04）
 uniform vec2 u_cell_pad;
 uniform vec3 u_cam_pos;
 uniform vec3 u_sun_dir;
@@ -120,13 +124,55 @@ vec3 f_schlick(float u, vec3 f0) {
     return f0 + (vec3(1.0) - f0) * pow(1.0 - u, 5.0);
 }
 
-void main() {
-    vec2 t = fract(v_uv);
-    vec2 auv = mix(v_cell.xy + u_cell_pad, v_cell.zw - u_cell_pad, t);
+// ---- 图集采样坐标（格内平铺 t → 格矩形 mix + 半像素内缩）----
+vec2 atlas_uv(vec2 uv) {
+    vec2 t = fract(uv);
+    return mix(v_cell.xy + u_cell_pad, v_cell.zw - u_cell_pad, t);
+}
 
+// 高度场采样（normal.A，§19 声明性挪用）
+float height_at(vec2 uv) {
+    return texture(u_normal, atlas_uv(uv)).a;
+}
+
+// ---- POM：陡峭视差 12 步 + 步内线性插值（贴图数空间直接位移）----
+vec2 pom_uv(vec2 uv, vec3 vts) {
+    const int STEPS = 12;
+    float layer_step = 1.0 / float(STEPS);
+    // 掠射角 clamp：|z| 太小会让步长爆掉（穿帮来源）
+    vec2 delta = (vts.xy / max(vts.z, 0.22)) * (u_pom / float(STEPS));
+    float layer = 0.0;
+    vec2 cur = uv;
+    float h = height_at(cur);
+    for (int i = 0; i < STEPS; ++i) {
+        if (layer >= h) break;
+        cur -= delta;
+        h = height_at(cur);
+        layer += layer_step;
+    }
+    // 线性细化：在 (cur+delta, cur) 区间按高度差插值
+    float h_prev = height_at(cur + delta);
+    float layer_prev = layer - layer_step;
+    float denom = (h_prev - layer_prev) - (h - layer);
+    float w = abs(denom) < 1e-4 ? 0.5 : clamp((h_prev - layer_prev) / denom, 0.0, 1.0);
+    return mix(cur + delta, cur, w);
+}
+
+void main() {
     vec3 rgb;
     if (u_mode == 0) {
-        // ---- PBR：三通道采样 + GGX 直接光 + 半球环境 ----
+        // ---- PBR：三通道采样 + GGX 直接光 + 半球环境（+ 可选 POM 视差）----
+        vec3 N = normalize(v_n);
+        vec3 T = normalize(v_t);
+        vec3 B = normalize(cross(N, T) * v_hand);
+        vec3 V = normalize(u_cam_pos - v_wpos);
+        vec2 uv_tex = v_uv;
+        if (u_pom > 0.0) {
+            vec3 V_ts = vec3(dot(V, T), dot(V, B), dot(V, N));
+            uv_tex = pom_uv(v_uv, V_ts);
+        }
+        vec2 auv = atlas_uv(uv_tex);
+
         vec3 albedo = texture(u_albedo, auv).rgb;
         vec3 nrm_ts = texture(u_normal, auv).xyz * 2.0 - 1.0;
         vec4 mr = texture(u_mr, auv);
@@ -135,16 +181,12 @@ void main() {
         float ao = mr.r;
 
         // TBN：切线/手性由投影同源导出（+z 面 +1、-z 面 -1）
-        vec3 N = normalize(v_n);
-        vec3 T = normalize(v_t);
-        vec3 B = normalize(cross(N, T) * v_hand);
         vec3 n = normalize(mat3(T, B, N) * nrm_ts);
 
         // 顶点色（面明暗）降级为 AO 近似：轻调 albedo/环境，不承担光照
         float vao = dot(v_color.rgb, vec3(0.3333));
         albedo *= mix(0.90, 1.10, vao);
 
-        vec3 V = normalize(u_cam_pos - v_wpos);
         vec3 L = normalize(u_sun_dir);
         vec3 H = normalize(V + L);
         float NoL = max(dot(n, L), 0.0);
@@ -168,24 +210,25 @@ void main() {
         ambient *= mix(0.80, 1.0, vao) * ao;
 
         rgb = direct + ambient;
-        if (u_dbg == 1) rgb = albedo;
-        else if (u_dbg == 2) rgb = nrm_ts * 0.5 + 0.5;
-        else if (u_dbg == 3) rgb = mr.rgb;
-        else if (u_dbg == 4) rgb = vec3(NoL);
-        else if (u_dbg == 5) rgb = n * 0.5 + 0.5;
-        else if (u_dbg == 6) rgb = hemi;
-        else if (u_dbg == 7) rgb = vec3(v_hand * 0.5 + 0.5);
     } else if (u_mode == 1) {
         // 棋盘格：每半张贴图一个格（密度/扭曲/接缝目检）
         vec2 g = floor(v_uv * 2.0);
         float c = mod(g.x + g.y, 2.0);
         rgb = mix(vec3(0.86, 0.84, 0.80), vec3(0.16, 0.16, 0.18), c)
               * v_color.rgb;
-    } else {
+    } else if (u_mode == 2) {
         // UV 规则：贴图密度色阶（log2 映射，以 4 米/贴图为中位、约 ±2 倍跨度）
         float d = clamp(log2(v_extra / 4.0) * 0.5 + 0.5, 0.0, 1.0);
         rgb = mix(vec3(0.15, 0.40, 0.95), vec3(0.95, 0.72, 0.12), d);
         rgb *= 0.6 + 0.4 * v_color.rgb;
+    } else {
+        // 通道视图（C 键循环）：albedo / normal / rough / metal / height
+        vec2 auv = atlas_uv(v_uv);
+        if (u_chan == 0)      rgb = texture(u_albedo, auv).rgb;
+        else if (u_chan == 1) rgb = texture(u_normal, auv).rgb;
+        else if (u_chan == 2) rgb = vec3(texture(u_mr, auv).g);
+        else if (u_chan == 3) rgb = vec3(texture(u_mr, auv).b);
+        else                  rgb = vec3(texture(u_normal, auv).a);
     }
 
     float f = smoothstep(fog_near, fog_far, v_dist);
@@ -222,6 +265,8 @@ class SandRenderer:
             extra=('f', geo['extras']), normal=('f', geo['normals']),
             tangent=('f', geo['tangents']), hand=('f', geo['hands']))
         self.mode = 0
+        self.pom = 0.03                  # POM 深度（0=关；[ ] 键调整）
+        self.chan = 0
         self.program.use()
         self.program['u_cell_pad'] = pad
         self.program['u_albedo'] = 0
@@ -234,6 +279,16 @@ class SandRenderer:
     @property
     def mode_name(self):
         return MODE_NAMES[self.mode]
+
+    def set_pom(self, scale):
+        self.pom = max(0.0, min(0.08, float(scale)))
+
+    def set_chan(self, chan):
+        self.chan = chan % len(CHANNEL_NAMES)
+
+    @property
+    def chan_name(self):
+        return CHANNEL_NAMES[self.chan]
 
     def set_camera(self, x, y, z):
         self.cam = (float(x), float(y), float(z))
@@ -257,6 +312,8 @@ class SandRenderer:
         self.program.use()
         self.program['model'] = Mat4()
         self.program['u_mode'] = self.mode
+        self.program['u_chan'] = self.chan
+        self.program['u_pom'] = self.pom
         self.program['u_cam_pos'] = self.cam
         self.program['u_sun_dir'] = SUN_DIR
         self.program['u_sun_color'] = SUN_COLOR

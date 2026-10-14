@@ -7,9 +7,10 @@
 mr=ORM，零外部素材），光照为 **GGX 直接光 + 半球环境 + 法线贴图**（TBN 切线
 由投影同源导出）。三种显示模式演示不同视角：
 
-* **PBR**——真实观感（三通道 PBR 光照）；
+* **PBR**——真实观感（三通道 PBR 光照 + 可选 POM 视差，P 开/[ ] 调深）；
 * **棋盘格**——目检 UV 密度/扭曲/接缝（片元程序化棋盘，不采纹理）；
-* **UV 规则**——按贴图密度着色阶（world units per UV，冷→暖）。
+* **UV 规则**——按贴图密度着色阶（world units per UV，冷→暖）；
+* **通道视图**——C 键循环 albedo / normal / rough / metal / height 分通道单看。
 
 操作：WASD 走   拖拽 转视角   SHIFT 疾走   TAB 显示模式   R 重开
       SPACE 暂停   ESC 退出
@@ -28,11 +29,12 @@ from world3d.logic.sandward import (EYE_H, SandwardKernel, SPRINT_SPEED,
                                     WALK_SPEED)
 from world3d.presentation.sandward_scene import SandRenderer
 
-TITLE = '沙垒 / Sandward — UV 投影规则演示场（dust 风格 · 5 检查点）'
-HELP = ('WASD 走   拖拽 转视角   SHIFT 疾走   TAB 显示模式（材质/棋盘格/UV 规则）'
-        '   R 重开   SPACE 暂停   ESC 退出')
+TITLE = '沙垒 / Sandward — UV 投影规则演示场（dust 风格 · 5 检查点 · PBR）'
+HELP = ('WASD 走   拖拽 转视角   SHIFT 疾走   TAB 显示模式（PBR/棋盘格/UV 规则/通道）'
+        '   C 通道子项   P 视差开关   [ ] 视差深度   R 重开   SPACE 暂停   ESC 退出')
 SHOTS = ((13.0, 'docs/sandward_01.png'),        # 西北角场（沿环线）
-         (32.0, 'docs/sandward_02.png'))        # 东环 / 东南角场
+         (32.0, 'docs/sandward_02.png'),        # 东环 / 东南角场
+         (25.5, 'docs/sandward_03.png'))        # 北环东行（开阔全景）
 
 
 class SandwardApp(EngineApp):
@@ -48,6 +50,21 @@ class SandwardApp(EngineApp):
                      or bool(getattr(self.args, 'shot', False)))
         self.yaw = 0.0                            # 面向 -z（中庭方向）
         self.keys = set()
+        # ---- 演示/截图专用开关（--flag）----
+        # 注意：EngineApp 在 __init__ 里已把 SHOTS 快照成 self._shots——
+        # 这里要覆盖**快照**，改类属性/self.SHOTS 都不生效。
+        for f in self.args.flags:
+            if f.startswith('chan') and f[4:].isdigit():
+                self.renderer.set_mode(3)
+                self.renderer.set_chan(int(f[4:]))
+                self._shots = [(16.0, 'docs/sandward_04.png')]
+            elif f == 'chan':
+                self.renderer.set_mode(3)
+            elif f == 'nopom':
+                self.renderer.set_pom(0.0)
+                self._shots = [(40.0, 'docs/sandward_06.png')]
+            elif f == 'pomshot':
+                self._shots = [(40.0, 'docs/sandward_05.png')]
         self.renderer.apply_projection(self.window.width, self.window.height)
 
     def _seed(self):
@@ -62,6 +79,13 @@ class SandwardApp(EngineApp):
         self.keys.add(symbol)
         if symbol == key.TAB:
             self.renderer.set_mode(self.renderer.mode + 1)
+        elif symbol == key.C:
+            self.renderer.set_chan(self.renderer.chan + 1)
+        elif symbol == key.P:
+            self.renderer.set_pom(0.0 if self.renderer.pom > 0.0 else 0.03)
+        elif symbol in (key.BRACKETLEFT, key.BRACKETRIGHT):
+            step = 0.005 if symbol == key.BRACKETRIGHT else -0.005
+            self.renderer.set_pom(max(0.0, self.renderer.pom + step))
         elif symbol == key.R:
             self.k.restart()
 
@@ -72,7 +96,11 @@ class SandwardApp(EngineApp):
         self.yaw -= dx * 0.0042
 
     def status_text(self):
-        return (f'{self.k.status()}   模式 {self.renderer.mode_name} (TAB)'
+        r = self.renderer
+        pom = f'{r.pom:.3f}' if r.pom > 0.0 else 'OFF'
+        chan = f' · {r.chan_name} (C)' if r.mode == 3 else ''
+        return (f'{self.k.status()}   模式 {r.mode_name} (TAB){chan}'
+                f'   视差 {pom} (P/[ ])'
                 f'{"  [AUTO]" if self.auto else ""}'
                 f'{"  [PAUSED]" if self.paused else ""}')
 
