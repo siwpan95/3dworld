@@ -267,20 +267,40 @@ def _face_shade(normal):
     return sum(a * b for a, b in zip(normal, _LIGHT)) / (l * ll)
 
 
+def face_tangent(fn, proj):
+    """面切线（= 投影 ∇u 方向）与手性（§19 Step 2：投影同源）。
+
+    UV 是世界投影 ⇒ 面内切线无需从几何/UV 反解，**直接取投影的 u 方向**；
+    ``hand`` 使 ``B = cross(N, T) * hand == 投影 v 方向``——注意 ±轴面的
+    UV 映射相同，但 TBN 手性相反（+z 面 +1、−z 面 −1），必须逐面给出
+    （MeshData 的 3 分量切线没有 w 槽位，故本演示把 ``hands`` 单独传）。
+    """
+    tu, tv = proj.directions()
+    cx = fn[1] * tu[2] - fn[2] * tu[1]
+    cy = fn[2] * tu[0] - fn[0] * tu[2]
+    cz = fn[0] * tu[1] - fn[1] * tu[0]
+    h = cx * tv[0] + cy * tv[1] + cz * tv[2]
+    return tu, (1.0 if h >= 0.0 else -1.0)
+
+
 def build_geometry(brushes=None):
     """把 brush 表展平成渲染数组（纯数据，无 GL）。
 
-    返回 ``dict(positions, colors, uvs, cells, extras, indices, counts)``：
+    返回 ``dict(positions, colors, uvs, cells, extras, tangents, hands,
+    indices, counts)``：
 
     * ``uv``  = **世界投影 UV（贴图数）**——由 ``texproj.UvProjection`` 按面
       主导轴生成（这就是要被演示/目检的"贴图规则"本体）；
     * ``cell`` = 图集矩形 (u0,v0,u1,v1)（图集格内平铺在片元里做）；
-    * ``extra`` = 该材质的贴图密度（世界单位/UV，与 CS2 ``m_flUvDensity`` 同语义）。
+    * ``extra`` = 该材质的贴图密度（世界单位/UV，与 CS2 ``m_flUvDensity`` 同语义）；
+    * ``tangents`` = 逐顶点切线（每顶点 3 分量，= 投影 u 方向——UV 规则的第二次
+      兑现：TBN 零反解）；``hands`` = 逐顶点手性 ±1（PBR 法线贴图用）。
     """
     from world3d.engine.texproj import Atlas
     atlas = Atlas(ATLAS_NAMES, cols=3, rows=2)
     brushes = brushes if brushes is not None else build_arena()
     pos, col, uv, cell, extra, idx = [], [], [], [], [], []
+    tan, hands = [], []
     n = 0
     for (x0, z0, x1, z1, y0, y1, matname) in brushes:
         m = MATERIALS[matname]
@@ -293,6 +313,7 @@ def build_geometry(brushes=None):
         for (fn, order) in _FACES:
             axis = dominant_axis(fn)
             proj = UvProjection.from_tile(tile, axis=axis)
+            tu, hand = face_tangent(fn, proj)
             k = 0.4 + 0.6 * abs(_face_shade(fn))
             for vi in order:
                 x, y, z = v[vi]
@@ -302,7 +323,10 @@ def build_geometry(brushes=None):
                 uv.extend((u, w))
                 cell.extend(rect)
                 extra.append(tile)
+                tan.extend(tu)
+                hands.append(hand)
             idx.extend((n, n + 1, n + 2, n, n + 2, n + 3))
             n += 4
     return dict(positions=pos, colors=col, uvs=uv, cells=cell, extras=extra,
-                indices=idx, vertex_count=n, counts=len(brushes))
+                tangents=tan, hands=hands, indices=idx, vertex_count=n,
+                counts=len(brushes))

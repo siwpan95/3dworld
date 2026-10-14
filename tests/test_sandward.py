@@ -125,12 +125,73 @@ def test_geometry_uv_density():
           f'中位 {rep.median:.0f}）')
 
 
+def test_geometry_tangents():
+    """§19 Step 2：切线 = 投影 ∇u 方向（用实际 UV 数值反解梯度做独立验证）。"""
+    geo = build_geometry()
+    pos, uv = geo['positions'], geo['uvs']
+    tan, hands = geo['tangents'], geo['hands']
+    assert len(tan) == len(pos), 'tangents 应为逐顶点 3 分量'
+    assert len(hands) == geo['vertex_count'], 'hands 应为逐顶点 1 分量'
+    nquad = len(geo['indices']) // 6
+    worst_t = worst_b = 0.0
+    for f in range(nquad):
+        o = f * 4
+        p0 = pos[o * 3:o * 3 + 3]
+        p1 = pos[(o + 1) * 3:(o + 1) * 3 + 3]
+        p2 = pos[(o + 2) * 3:(o + 2) * 3 + 3]
+        t0 = uv[o * 2:o * 2 + 2]
+        t1 = uv[(o + 1) * 2:(o + 1) * 2 + 2]
+        t2 = uv[(o + 2) * 2:(o + 2) * 2 + 2]
+        # 由实际 UV 数值反解 ∇u/∇v（Gram 2×2；与 source2_survey 同法）
+        e1 = [p1[i] - p0[i] for i in range(3)]
+        e2 = [p2[i] - p0[i] for i in range(3)]
+        g11 = sum(a * a for a in e1)
+        g12 = sum(a * b for a, b in zip(e1, e2))
+        g22 = sum(a * a for a in e2)
+        det = g11 * g22 - g12 * g12
+        assert abs(det) > 1e-9, f'面 {f} 退化'
+
+        def grad(d1, d2):
+            a = (d1 * g22 - g12 * d2) / det
+            b = (g11 * d2 - g12 * d1) / det
+            return [a * e1[i] + b * e2[i] for i in range(3)]
+
+        gu = grad(t1[0] - t0[0], t2[0] - t0[0])
+        gv = grad(t1[1] - t0[1], t2[1] - t0[1])
+        lu = math.sqrt(sum(c * c for c in gu))
+        lv = math.sqrt(sum(c * c for c in gv))
+        nu = [c / lu for c in gu]
+        nv = [c / lv for c in gv]
+        T = tan[o * 3:o * 3 + 3]
+        h = hands[o]
+        assert abs(h) == 1.0, f'面 {f} 手性非 ±1：{h}'
+        worst_t = max(worst_t, max(abs(T[i] - nu[i]) for i in range(3)))
+        fn = _FACES[f % 6][0]
+        # B = cross(N, T) * hand == ∇v 方向
+        B = [h * (fn[1] * T[2] - fn[2] * T[1]),
+             h * (fn[2] * T[0] - fn[0] * T[2]),
+             h * (fn[0] * T[1] - fn[1] * T[0])]
+        worst_b = max(worst_b, max(abs(B[i] - nv[i]) for i in range(3)))
+        # 四个顶点切线一致 + 切线在面内（⊥ 法线）
+        for k in range(4):
+            Tk = tan[(o + k) * 3:(o + k) * 3 + 3]
+            assert max(abs(Tk[i] - T[i]) for i in range(3)) < 1e-12, \
+                f'面 {f} 顶点 {k} 切线与首顶点不一致'
+        dot_n = sum(T[i] * fn[i] for i in range(3))
+        assert abs(dot_n) < 1e-12, f'面 {f} 切线不在面内（T·N={dot_n}）'
+    assert worst_t < 1e-9, f'T ≈ ∇u 最大偏差 {worst_t:.2e}'
+    assert worst_b < 1e-9, f'B ≈ ∇v 最大偏差 {worst_b:.2e}'
+    print(f'  ok: 切线=∇u / 手性使 B=∇v（{nquad} 面全部逐面验证，'
+          f'偏差 <{max(worst_t, worst_b):.1e}）')
+
+
 def main():
     print('test_arena_brushes_sane');   test_arena_brushes_sane()
     print('test_route_clear');          test_route_clear()
     print('test_tour_completes');       test_tour_completes()
     print('test_collision_and_slide');  test_collision_and_slide()
     print('test_geometry_uv_density');  test_geometry_uv_density()
+    print('test_geometry_tangents');    test_geometry_tangents()
     print('ALL_SANDWARD_TESTS_PASSED')
 
 
