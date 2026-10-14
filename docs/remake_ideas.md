@@ -201,9 +201,11 @@ DeepSeek Harness 的运行时内核。
   + Aimlabs 手感件）、`core/particles_core.py` 加 `snapshot()`（共同核最小扩展）；
   `config_boot all` **六项**全绿、10/10 种子 10 波全通关（`STORMKERNEL_OK`，GL 3→0）。
 
-**下一步**：§13-16 四切片已交付（弹潮 v1.1 / 静馆 / 星阑 / 落音）；**新 note §17
-「阈廊 / Liminall」就绪**（kkrieger 基座 × 后室 Level 0 × P.T. 循环走廊，8 loops/3 谜，
-先问四答已收口）——**待全哥 review 放行后执行**（恐怖节奏表 8 圈文字稿先行）。
+**下一步**：**§17「阈廊 / Liminall」已执行完毕**（2026-10-14，见 §17.9）——
+kkrieger 基座 × 后室 Level 0 × P.T. 循环走廊，8 loops/3 谜全部落地；
+内核 + 表现 + 全合成音频 + 9 项单测全绿 + 16 条机械门禁全绿。
+待办：实机验证恐怖节奏（jump scare 观感/手电光柱/8 圈递进）与 `liminall_60s` 录制
+（本机跑，沙箱 GL 受限）。
 
 ---
 
@@ -984,3 +986,40 @@ Liminal Universe / Liminal Point / Liminalcore）均不同名，且证实「循�
 - jump scare 音爆合成观感 → 本机实测调参；
 - 第一人称控制器与 kkrieger 相机体系的融合（新写，rayhold 先例降险）；
 - 实体贴脸模型（简单几何 + 黑白贴图 + 高频抖动）观感 → 低多边形 + 暗场遮丑。
+
+### 17.9 执行结果（2026-10-14）
+
+- **内核** `world3d/logic/liminall.py`（约 640 行，纯数学零 GL）：`LiminallKernel`
+  ——8 圈事件表（**恐怖节奏文字稿即代码数据**：每圈装修变体参数集 props + 主事件 +
+  微事件 + 广播段）、loop 状态机（走廊/迷宫/终局三幕流转）、实体 stalk AI、
+  三谜题（灯语镜柜 / 涂鸦配电箱 / 电话三条件）、非线性传送矩阵（respawn 回标记点）、
+  headless auto-pilot（`_AutoPilot` 队列：move/hold/interact）。
+- **共同核式最小设计**：`rules` 事件不用（本作无 Cordis 层，kkrieger 家族同形）；
+  maze 走 `logic.liminall.maze_layout`（确定性随机分段 + BFS 可达保证 + far 素材格）。
+- **表现层**：`presentation/liminall_scene.py`（LimRenderer：KKRenderer 同款范式，
+  黄壁纸/潮毯/天花板程序化几何 + **装修变体层**（椅子/垂灯/涂鸦/红门/深墙/实体黑影/
+  手电）显隐由圈驱动 + 雾色随圈变红 + `u_light` 手电提亮 shader）；
+  装配层 = `examples/liminall.py`（EngineApp 子类 LimApp——与 pulsefall/voidward 的
+  交互 demo 家族同形，无第二套接线：
+  第一人称控制器 + P.T. 两动作（走/右键 zoom）+ E 上下文交互 + F 手电 +
+  jump scare 红字演出 + 广播字幕 + 后室音床）；`logic/liminall_audio.py`
+  （全合成三件：荧光灯 hum / 杂音广播 / scare 音爆，逼近距离抬升 hum 音量）。
+- **设计增强（执行中长出来的机制）**：**手电驱退**——L7/L8 手电照到实体→后退，
+  对视无光→冻结，背对→追。它同时是玩法自保手段与验收可解性的关键
+  （无手电时 auto-pilot 被堵在 L 形拐角 144 连抓死锁——实测发现）。
+- **验收**：`tests/test_liminall.py` **9 项全绿**（`ALL_LIMINALL_TESTS_PASSED`）：
+  ①8 圈事件表单调（radio 递增/每圈主事件/标题文字稿）；②**auto-pilot 3 seed 全流程
+  8 loops 全解 3 谜 → won**（§17.7 验收 1）；③实体三态（照退/对视冻/背对追）；
+  ④实体 home 距玩家 >5m（防守尸死锁）；⑤⑥⑦三谜题状态机；⑧迷宫确定性 + far 排序；
+  ⑨传送矩阵（respawn 回标记点）。`run_all_tests` 注册 15 模块；`verify.py`
+  **16 条门禁全绿**（README 计数同步：demo 38 / 测试模块 15）。
+- **执行中修的真 bug（三处死锁链）**：
+  1. **走廊移动不分轴**——L 形 AABB 整体判定把玩家卡死在 A/B 交界缝隙
+     → 改分轴滑动（与 `_maze_move` 同款）；
+  2. **实体 home 堵死必经之路**——固定 home 恰好守终点门，玩家冲门必被截杀
+     → home 动态取玩家对侧端点 + 抓杀后 1.5s 宽限 + grace 状态机
+     （原来 `_grace` 从未初始化，每帧把实体弹回 home 吞掉追击）；
+  3. **auto-pilot 的 wait 与 respawn 脱节**——被传走后原地白等，stare 永不凑满
+     → 新增 `hold` 动作（驻留目标点，被打断自动重新导航）。
+- 待办：实机验证恐怖节奏（**恐怖感是内容验收，沙箱测不了**——jump scare 音爆观感 /
+  手电光柱 / 8 圈递进压迫感）；`record_all liminall_60s` 实机录制。

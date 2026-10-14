@@ -44,6 +44,7 @@ MODULES = [
     ('tests.test_p2_render', 'ALL_P2_TESTS_PASSED', 'P2 渲染能力'),
     ('tests.test_skin', 'ALL_SKIN_TESTS_PASSED', '蒙皮骨骼'),
     ('tests.test_timeline_ui', 'ALL_TIMELINE_UI_TESTS_PASSED', '时间轴 UI 面板'),
+    ('tests.test_liminall', 'ALL_LIMINALL_TESTS_PASSED', '阈廊内核（后室 × P.T. 循环走廊）'),
 ]
 
 

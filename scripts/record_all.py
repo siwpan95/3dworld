@@ -111,6 +111,7 @@ ENTRIES = [
     dict(name='voidward_60s',        mod='examples/voidward.py',      cls='VoidwardApp',
          dur=60.0, size=DEMO_SIZE,
          flags='auto'),                            # 贸易脚本自动跑（够跑到资产达标）
+    dict(name='liminall_60s',        mod='examples/liminall.py',    cls='LimApp',      dur=60.0, size=None),
     dict(name='pulsefall_45s',       mod='examples/pulsefall.py',     cls='PulsefallApp',
          dur=45.0, size=DEMO_SIZE,
          flags='auto'),                            # 自动演奏一首谱面（BPM 90 / 16 小节 ≈ 42.7s）

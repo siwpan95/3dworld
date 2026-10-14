@@ -10,7 +10,7 @@
 - `kkrieger_demo.py` —— **150 秒六幕程序化走廊漫游 + 程序化配乐**（致敬 .kkrieger）：
   走廊舱门/管道/货箱/频闪 → 大厅纪念碑/全息扫描/升降平台 → 核心过载 →
   撤离时逐段熄灯 → 重启突入（核心爆发白闪）→ 白闪传送至环面结反应堆圣殿；
-- `examples/` —— **37 个独立示例与工具**：无限隧道、SDF 光线步进、GPU 实例化粒子、
+- `examples/` —— **38 个独立示例与工具**：无限隧道、SDF 光线步进、GPU 实例化粒子、
   太阳系、程序化地形飞行、体素面剔除、水面波动、3D 鸟群、阴影贴图、
   方块世界、引擎综合展示、材质实验室、《诺德之境》、可漫步场景（S1 场景交互化）、
   方块世界可交互版（挖掘/放置 + 区块化重建）、KID-A WALKER 3D（无限走廊 + 能量/碎片）、
@@ -36,7 +36,7 @@ world3d/              **唯一的顶层包**（P2-4 收口；发行名 3dworld /
                       拿到**同一个模块对象**；本模块是过渡件，外界迁完即删
   _cordis_locate.py   cordis 定位：先试已安装的，再退回 vendored `vendor/cordis/src`
   platform/           **平台层骨架**（P2-1）：窗口 / DPI / 命令行 / HUD / 截图 / 主循环
-    app.py            DemoApp · run · orbit_camera_input …（37 个 demo 的统一入口）
+    app.py            DemoApp · run · orbit_camera_input …（38 个 demo 的统一入口）
   core/               核心层：窗口 / 渲染 / 几何 / 资源（**允许** pyglet.gl）
     geometry.py        立方体/盒体/地面/静态合并盒体构建（ShaderProgram.vertex_list）
     resources.py       外部模型加载（当前 .obj）
@@ -66,7 +66,7 @@ world3d/              **唯一的顶层包**（P2-4 收口；发行名 3dworld /
   cli/                 引擎 CLI（`python -m world3d.cli.<名>`）
     config_boot.py     每棵配置树的 headless 验收（与 demo 共用 host.tree）
     frame_plan.py      帧图门禁：16 种效果组合的计划必须合法且顺序正确
-examples/              37 个单文件示例与工具（详见 examples/README.md）
+examples/              38 个单文件示例与工具（详见 examples/README.md）
 configs/               10 棵配置树（cordis.*.yml）：
                        声明本次挂哪些服务、各带什么 config
 scripts/
@@ -214,7 +214,7 @@ python kkrieger_demo.py --shot     抓一组验证截图（9 张）到 docs/（�
 > "platform" 模式下实际 framebuffer = 请求尺寸，但 viewport setter 会乘
 > scale → 渲染放大裁切；本 Demo 统一设 `pyglet.options['dpi_scaling'] = 'real'`。
 
-## examples/ —— 37 个单文件 3D 示例与工具
+## examples/ —— 38 个单文件 3D 示例与工具
 
 ```bat
 python examples\demoscene_tunnel.py --smoke     冒烟
@@ -269,6 +269,7 @@ python -m tests.test_gpu_cull       GPU 驱动渲染（7 项，含"GPU 剔除 ==
 python -m tests.test_p2_render      PCSS / WBOIT / 点云+EDL（7 项）
 python -m tests.test_timeline_ui    底部时间轴面板（9 项）
 python -m tests.test_brickward      《砖境》机关内核：BQM 致敬 B1~B3（65 项，零 GL）
+python -m tests.test_liminall       阈廊内核：后室 × P.T. 循环走廊（9 项，零 GL）
 python -m tests.test_csm            级联阴影 CSM（20 项：分割/角点/光盒/纹素吸附/GLSL 展开）
 python -m tests.test_volumetrics    体积雾/光轴（12 项：闭式积分可加性/HG 归一/抖动同式/GLSL 组合）
 python -m tests.test_dof            景深 DoF（12 项：CoC/超焦距/景深端点恒等式/散景面积均匀）
@@ -281,8 +282,8 @@ python scripts\check_imports.py          全仓可达性门禁：world3d/ 下 11
                                         （单测只覆盖被引用的模块，这个是「改漏」的唯一防线）
 python main.py --shot               主线演出渲染验证（4 张）
 python kkrieger_demo.py --shot      漫游渲染验证（9 张）
-python scripts\verify_demos.py      37 个 demo 逐个冒烟 + 截图
-python scripts\verify_demos.py --bench 3   37 个 demo 的真实帧率（vsync 与重绘节流全关）
+python scripts\verify_demos.py      38 个 demo 逐个冒烟 + 截图
+python scripts\verify_demos.py --bench 3   38 个 demo 的真实帧率（vsync 与重绘节流全关）
 ```
 
 单测覆盖：相机位姿与钳制（含**自定义范围**与非法范围拒绝）、look-at 矩阵性质、
@@ -303,7 +304,7 @@ kkrieger 六幕的循环连续性与舱门/平台/灯带状态机、**镜头穿�
 ```bat
 python scripts\verify.py              # 16 条门禁（不联网、不跑构建、不改文件）
 python scripts\verify.py --list       # 只列名字与说明
-python scripts\verify.py --verbose    # 每条的证据（"6 处断言 == 37 个 demo"这种）
+python scripts\verify.py --verbose    # 每条的证据（"7 处断言 == 38 个 demo"这种）
 python scripts\verify.py --fix        # 重生成生成物（docs/README.md）
 python scripts\verify.py --selfcheck  # 沙箱里逐条注入破坏，证明门禁拦得住
 ```
