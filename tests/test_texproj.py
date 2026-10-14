@@ -238,14 +238,15 @@ def test_wrap_modes():
 
 def test_atlas_grid_and_remap():
     atlas = Atlas(['sand', 'brick', 'wood', 'metal'], cols=2, rows=2)
-    assert atlas.rect('sand') == (0.0, 0.5, 0.5, 1.0), atlas.rect('sand')
-    assert atlas.rect('metal') == (0.5, 0.0, 1.0, 0.5), atlas.rect('metal')
+    # v 方向：第 0 行在 v 小侧（pyglet 上传实测约定，见 Atlas 文档）
+    assert atlas.rect('sand') == (0.0, 0.0, 0.5, 0.5), atlas.rect('sand')
+    assert atlas.rect('metal') == (0.5, 0.5, 1.0, 1.0), atlas.rect('metal')
     u, v = atlas.remap(0.5, 0.5, 'sand')
-    assert abs(u - 0.25) < EPS and abs(v - 0.75) < EPS, '格中心'
+    assert abs(u - 0.25) < EPS and abs(v - 0.25) < EPS, '格中心'
     u2, v2 = atlas.remap(1.5, 2.5, 'sand')
     assert abs(u2 - u) < EPS and abs(v2 - v) < EPS, '大 UV 先取小数（格内平铺）'
     u3, v3 = atlas.remap(0.0, 0.0, 'sand', padding=0.1)
-    assert abs(u3 - 0.05) < EPS and abs(v3 - 0.55) < EPS, 'padding 内缩'
+    assert abs(u3 - 0.05) < EPS and abs(v3 - 0.05) < EPS, 'padding 内缩'
     print('  ok: 图集网格排布 + 格内平铺 + padding 内缩')
 
 

@@ -542,7 +542,10 @@ def wrap_uv(u, wrap=TexWrap.REPEAT):
 class Atlas:
     """网格图集：名字 → 归一化矩形；``remap`` 支持**图集格内平铺**。
 
-    行优先排布，第 0 行在图片**顶部**；矩形按 GL 惯例（v 向上）输出。
+    行优先排布；**v 方向与 pyglet ImageData 上传后的实际行为一致**：
+    第 0 行在 **v 小侧**（实测：数据 row0 出现在 v∈[0,1/rows)——见
+    ``make_atlas`` 备注；凭"图片顶部在 v 大侧"的直觉写会整图上翻，
+    多格图集当场对调错格）。
     """
 
     __slots__ = ('names', 'cols', 'rows', '_rects')
@@ -564,7 +567,7 @@ class Atlas:
         for i, nm in enumerate(names):
             col, row = i % cols, i // cols
             u0, u1 = col / cols, (col + 1) / cols
-            v0, v1 = 1.0 - (row + 1) / rows, 1.0 - row / rows
+            v0, v1 = row / rows, (row + 1) / rows
             self._rects[nm] = (u0, v0, u1, v1)
 
     def rect(self, name):

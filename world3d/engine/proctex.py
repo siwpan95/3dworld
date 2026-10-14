@@ -23,6 +23,7 @@ __all__ = [
     'make_brushed',
     'make_wood_planks', 'make_thatch', 'make_rock', 'make_rune_stone',
     'make_snow', 'make_pine', 'make_dragon_scale',
+    'make_sandstone', 'make_plaster', 'make_atlas', 'atlas_texture',
     'texture', 'material_from', 'PATTERN_CACHE',
 ]
 
@@ -491,6 +492,43 @@ def make_aurora(size=64, seed=13):
                 normal=height_to_normal(flat, size, 0.0), size=size)
 
 
+def make_sandstone(size=256, seed=20):
+    """沙岩墙：水平沉积层带 + 细噪声（dust 系墙面基调）。
+
+    层带用 ``sin(v·6π)``（v=0/1 相位差为整周期 → REPEAT 无缝）。
+    """
+    base, mr, h = _blank(size), _blank(size), [0.0] * (size * size)
+    for y in range(size):
+        for x in range(size):
+            u, v = x / size, y / size
+            n = fbm(u, v, 3, cells=5, seed=seed)
+            band = 0.5 + 0.5 * math.sin(v * 6.0 * math.pi + n * 3.0)
+            fine = value_noise(u, v, cells_u=48, seed=seed + 5)
+            g = 176 + 26 * n + 14 * band + 10 * fine - 12
+            _px(base, size, x, y, g + 16, g + 4, g - 30)
+            _px(mr, size, x, y, 255, 150 + 40 * n, 8)
+            h[y * size + x] = n * 0.5 + band * 0.3 + fine * 0.2
+    return dict(base=bytes(base), mr=bytes(mr),
+                normal=height_to_normal(h, size, 1.2), size=size)
+
+
+def make_plaster(size=256, seed=21):
+    """石膏墙：近素暖灰 + 微弱斑驳 + 偶发水渍（dust 系浅色墙）。"""
+    base, mr, h = _blank(size), _blank(size), [0.0] * (size * size)
+    for y in range(size):
+        for x in range(size):
+            u, v = x / size, y / size
+            n = fbm(u, v, 4, cells=4, seed=seed)
+            stain = value_noise(u, v, cells_u=9, seed=seed + 3)
+            streak = max(0.0, stain - 0.62) * 2.2
+            g = 208 + 14 * n - 46 * min(1.0, streak)
+            _px(base, size, x, y, g + 8, g + 2, g - 8)
+            _px(mr, size, x, y, 255, 205 + 20 * n, 4)
+            h[y * size + x] = n * 0.7 + streak * 0.3
+    return dict(base=bytes(base), mr=bytes(mr),
+                normal=height_to_normal(h, size, 0.9), size=size)
+
+
 PATTERNS = {
     'marble': make_marble, 'rust_metal': make_rust_metal,
     'hex_panel': make_hex_panel, 'circuit': make_circuit,
@@ -500,6 +538,8 @@ PATTERNS = {
     'rock': make_rock, 'rune_stone': make_rune_stone, 'snow': make_snow,
     'pine': make_pine, 'dragon_scale': make_dragon_scale,
     'aurora': make_aurora,
+    # ---- 沙垒题材（sandward）：沙岩墙 / 石膏墙 ----
+    'sandstone': make_sandstone, 'plaster': make_plaster,
 }
 
 
@@ -547,6 +587,84 @@ def texture(pattern, key, cache_id):
 
 
 PATTERN_CACHE = {}
+
+
+# --------------------------------------------------------------- 图集 --
+#: 图集格的生成器名 → 图案函数（albedo 进图集；PBR 其余通道不进）
+_ATLAS_CELLS = {
+    'sandstone': make_sandstone,
+    'plaster': make_plaster,
+    'crate': make_wood_planks,
+    'metal': make_brushed,
+    'sand': make_rock,
+}
+
+
+def make_atlas(names=('sandstone', 'plaster', 'crate', 'metal', 'sand'),
+               cell=128, cols=3, seed=0):
+    """程序化纹理图集：把多个生成器的 albedo 排成网格（供图集 UV 采样）。
+
+    行优先（第 0 格在数据最前）；**数据 row0 在 GL 的 v 小侧**（pyglet
+    ImageData 上传实测：v=0.25 采到数据第一行）——``texproj.Atlas`` 的
+    矩形计算与此同一约定（v0 = row/rows）。返回 ``dict(width, height, base,
+    cell, cols, rows, names)``。片元侧按 ``fract(uv)`` 平铺 + 半像素内缩
+    防渗色（见 ``presentation/sandward_scene`` 的 shader）。
+    """
+    names = list(names)
+    rows = (len(names) + cols - 1) // cols
+    width, height = cols * cell, rows * cell
+    out = bytearray(width * height * 4)
+    for i, nm in enumerate(names):
+        gen = _ATLAS_CELLS.get(nm)
+        if gen is None:
+            raise ValueError(f'图集没有生成器 {nm!r}（可选 {sorted(_ATLAS_CELLS)}）')
+        pat = gen(size=cell, seed=seed + i * 7)
+        src = pat['base']
+        cx, cy = (i % cols) * cell, (i // cols) * cell
+        for y in range(cell):
+            si = y * cell * 4
+            di = ((cy + y) * width + cx) * 4
+            out[di:di + cell * 4] = src[si:si + cell * 4]
+    return dict(width=width, height=height, base=bytes(out), cell=cell,
+                cols=cols, rows=rows, names=names)
+
+
+def atlas_texture(atlas, cache_id='atlas'):
+    """上传图集为单张 GL 纹理（CLAMP + LINEAR、**不带 mip**）。
+
+    图集格内平铺由片元 ``fract`` 完成，跨格不会采样——所以用 CLAMP 防越界；
+    无 mip 是因为 ``fract`` 处的屏幕导数无意义（会整格跳变）。
+    """
+    import ctypes
+
+    import pyglet
+    from pyglet.gl import (GL_ACTIVE_TEXTURE, GL_CLAMP_TO_EDGE, GL_LINEAR,
+                           GL_TEXTURE_2D, GL_TEXTURE_BINDING_2D,
+                           GL_TEXTURE_MAG_FILTER, GL_TEXTURE_MIN_FILTER,
+                           GL_TEXTURE_WRAP_S, GL_TEXTURE_WRAP_T, GLint,
+                           glActiveTexture, glBindTexture, glGetIntegerv,
+                           glTexParameteri)
+    key = (atlas['width'], atlas['height'], tuple(atlas['names']))
+    cache = PATTERN_CACHE.setdefault(cache_id, {})
+    if key in cache:
+        return cache[key]
+    active, bound = GLint(), GLint()
+    glGetIntegerv(GL_ACTIVE_TEXTURE, ctypes.byref(active))
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, ctypes.byref(bound))
+    try:
+        img = pyglet.image.ImageData(atlas['width'], atlas['height'], 'RGBA',
+                                     atlas['base'])
+        tex = img.get_texture()
+        glBindTexture(GL_TEXTURE_2D, tex.id)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+        cache[key] = tex
+        return tex
+    finally:
+        glActiveTexture(active.value)
+        glBindTexture(GL_TEXTURE_2D, bound.value)
 
 
 def material_from(pattern_name, size=256, base_color=(1.0, 1.0, 1.0),

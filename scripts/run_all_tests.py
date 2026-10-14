@@ -49,6 +49,7 @@ MODULES = [
     ('tests.test_source2', 'ALL_SOURCE2_TESTS_PASSED', 'Source 2 解析（VPK / KV3 v5 / LZ4 block）'),
     ('tests.test_meshopt', 'ALL_MESHOPT_TESTS_PASSED', 'meshopt 解码（顶点/索引 codec）'),
     ('tests.test_source2_model', 'ALL_SOURCE2_MODEL_TESTS_PASSED', 'vmdl_c → MeshData 转换（合成容器）'),
+    ('tests.test_sandward', 'ALL_SANDWARD_TESTS_PASSED', '沙垒：场地/巡游/碰撞/UV 密度（纯数学）'),
 ]
 
 
