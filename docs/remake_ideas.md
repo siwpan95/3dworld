@@ -155,6 +155,13 @@ DeepSeek Harness 的运行时内核。
 - [ ] 每个内核 design note 顶部写「借鉴来源 + 许可证 + 借用范围」；
 - [ ] cordis 依赖：vendor 并锁 commit，登记 MIT 与借用 API 范围；
 - [ ] 本仓统一 MIT（已就位，仓库根 `LICENSE`）。
+- **Source 2 导入模块（§18）记账**：格式知识来源 = ValveResourceFormat /
+  ValvePak（MIT，C# 容器与 VBIB 解析参考）、kristiker/keyvalues3（MIT，Python
+  KV3 参考）、zeux/meshoptimizer（MIT，codec 算法与 `src/vertexcodec.cpp` /
+  `src/indexcodec.cpp` 逐位移植依据）；**本仓实现为纯 Python 自持重写**
+  （``world3d/importers/source2/``），不引入其代码或资产；研究期用
+  npm meshoptimizer（WASM）与 keyvalues3 库**仅作对拍 golden**（不进依赖表）。
+  只读**用户本地**游戏文件；仓库零资产、零再分发。
 
 ---
 
@@ -206,6 +213,12 @@ kkrieger 基座 × 后室 Level 0 × P.T. 循环走廊，8 loops/3 谜全部落�
 内核 + 表现 + 全合成音频 + 9 项单测全绿 + 16 条机械门禁全绿。
 待办：实机验证恐怖节奏（jump scare 观感/手电光柱/8 圈递进）——**成片已录**
 （`recordings/liminall_130s.mp4`，auto 全流程 8 loops 130s，见 §17.10）。
+
+**§18「UV 纹理坐标与贴图规则」已执行完毕**（2026-10-14，见 §18.12）——
+引擎级纹理规则（`engine/texproj.py`）＋ Source 2 自持导入模块
+（`world3d/importers/source2/`：VPK/KV3 v5/LZ4 block/meshopt，全部纯 Python）
+＋ 「沙垒 / Sandward」演示场（图集采样 + Tab 三显示模式）；真实数据对拍
+（27130 三角形）见 `docs/source2_survey.md`。待办：推送放行 + 发行版附件攒批。
 
 ---
 
@@ -1215,3 +1228,52 @@ scripts/source2_survey.py            # 对拍 survey（本地参考可选）
 5. proctex 图集扩展 + sandward 场景渲染（texproj 消费 + 三显示模式）；
 6. `examples/sandward.py` + auto 巡游 + record/verify 接线 + README 计数；
 7. `scripts/source2_survey.py` 对拍报告；§18 执行结果回填 + §7 记账。
+
+### 18.12 执行结果（2026-10-14，7 步全部落地）
+
+**交付物**（7 个提交，全部本地已入账；推送待放行）：
+
+| Step | 提交 | 内容 |
+| --- | --- | --- |
+| 1 | `d1b481c` | `engine/texproj.py`（+519 行）——投影/逆投影/反解/图集/密度 + 12 项单测 |
+| 2 | `022581d` | `importers/source2/{vpk,kv3,lz4block}.py`——纯 Py 自持 + 10 项单测 |
+| 3 | `5eda85f` | `importers/source2/meshopt.py`——标量路径逐位移植 + golden 夹具 5 项 |
+| 4 | `be43128` | `importers/source2/model.py`——vmdl_c → MeshData + 合成容器 5 项 |
+| 5 | `3f04d19` | `logic/sandward.py` + `presentation/sandward_scene.py` + demo + 截图（图集 + 三显示模式） |
+| 6 | 本条 | record 条目 + verify_demos + README/示例索引联动 |
+| 7 | 本条 | `scripts/source2_survey.py` + 对拍报告 + §7 记账 |
+
+**取证记录（都在真实数据上做，非合成）**：
+
+1. **KV3 v5 / LZ4 block 对拍 48/48**（`keyvalues3` 库独立实现对拍：26 个真实
+   worldnode CTRL 块 + 地图级 vwrld/vwnod 块 + 6 个 LZ4 手工用例）；
+2. **meshopt 解码 bit-exact**（官方 WASM 解码器对拍 14/14：5 组合成夹具 +
+   `antenna_card`/`dust_300d` 全部流——含 285KB 顶点流 / 93030 索引）；
+3. **vmdl_c → MeshData 真机复验**：`antenna_card`（26v/5 drawcall）与
+   `dust_300d`（23787v/6 drawcall）包围盒/材质/密度与手工复现一致；
+4. **对拍报告**（`docs/source2_survey.md`，27130 个真实三角形）：
+   - |cos(∇u,∇v)| 中位 **0.035**（近正交）；密度多档双峰（0–32 & 128–160 各 ~25%）；
+     轴对齐 42.2%（其余为大尺度斜铺/装饰网格）；面组统计 ±x/±y/±z 均衡；
+   - 引擎 texproj 输出同口径：|cos| = 0、轴对齐 100%、密度落 5 档
+     （96/128/144/160/176）——**规则同源、数值同型**。
+
+**执行中修的两个真 bug**（都是"真实运行才暴露"型）：
+
+1. **图集 v 方向整体对调**——`Atlas` 原按"数据第 0 行在 v 大侧"（图片直觉）
+   计算，但 pyglet `ImageData` 上传后**数据 row0 在 v 小侧**（专门写探针
+   `_texprobe.py` 渲染红/绿两行图集读回像素实证）；后果是**多格图集当场对调
+   错格**（首两帧截图中石膏墙采到金属格，整场偏灰白）。修 `Atlas` 矩形计算
+   （v0 = row/rows）并同步测试断言；重录截图后材质正确区分。
+2. **索引 codec u32 输出字节偏移**（`emit` 里照抄 u16 的 0/2/4 应为 0/4/8）——
+   真实地图全是 u16 索引所以带不出错，是**合成夹具**（486 索引 u32）抓出来的；
+   修后 14/14 全绿。
+
+**验收**：`tests/test_{texproj,source2,meshopt,source2_model,sandward}` 共
+**37 项全绿**；`verify.py` 20 条门禁全绿（README 计数 39 demo / 20 测试模块
+同步）；`check_imports` 130 模块 0 失败。
+
+**成片与截图**：`recordings/sandward_50s.mp4`（auto 巡游 43.6s → 录 50s）；
+`docs/sandward_01.png`（西北角场 · 沙岩/石膏/木箱材质区分）/ `sandward_02.png`。
+
+**待办**：`sandward_50s` 追加发行版（新附件，攒批放行）；Tab 三模式的
+"棋盘格 / UV 规则"两个模式建议本机目检一遍（截图只录了材质模式）。

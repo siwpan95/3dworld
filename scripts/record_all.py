@@ -130,6 +130,12 @@ ENTRIES = [
     dict(name='scene_viewer_45s',    mod='examples/scene_viewer.py',  cls='SceneViewerApp',
          dur=45.0, size=DEMO_SIZE,
          flags='orbit'),                           # `orbit` = 相机自转 8°/s ⇒ 45s 正好一圈
+    # sandward：EngineApp 宿主，必须给 size（同 liminall）。auto 巡游全程
+    # （出生 → 中庭 → 西北/东北/东南/西南四角场 → 回出生）30Hz 步进实测
+    # 43.6s；录 50s 含收尾停留。
+    dict(name='sandward_50s',        mod='examples/sandward.py',     cls='SandwardApp',
+         dur=50.0, size=DEMO_SIZE,
+         flags='auto'),
 ]
 
 FFMPEG_CANDIDATES = [
