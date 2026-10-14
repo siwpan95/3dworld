@@ -1040,3 +1040,178 @@ Liminal Universe / Liminal Point / Liminalcore）均不同名，且证实「循�
 - **recordings/ 一次性补全**：本地从 19 → **40 条**（与录制计划 40 条全对齐，
   369MB），其中 20 条是本轮补录/重录；**顺手抓出一条名不符实**：老
   `tower_defense_60s.mp4` 实际只有 15s（450 帧），已重录为真正的 60s。
+
+---
+
+## 18. UV 纹理坐标与贴图规则 · 引擎特性 + Source 2 导入模块（「沙垒 / Sandward」样板）
+
+> 状态：规划（待全哥 review 放行后执行）。
+> 缘起：全哥立项「引进 UV 纹理坐标设定与贴图规则，**贴图 UV 坐标转换为三维坐标**，
+> 以 CS:GO（本地为 Source 2 版 CS2）地图复刻为例，能成则惠及整个引擎」。
+> 合规：**格式与规则研究对标 Valve Source 2 生态（社区逆向成果）；不搬运原 IP 素材**，
+> 复刻产物一律程序化几何/纹理（§7 记账见 §18.10）。
+
+### 18.1 实证基础（2026-10-14 已完成，全链路可复现）
+
+**链路打通**（研究器材在隔离 venv：`C:\Users\psw\.workbuddy\binaries\python\envs\default`
++ node workspace 的 `meshoptimizer@1.3.0`；临时探针 `_vpk_*` / `_kv3_*` / `_meshopt_*` / `_uv_*` 未入库）：
+
+```
+de_dust2.vpk → vmdl_c 容器（块表） → KV3 binary v5（CTRL 元数据） → meshopt 解码 → 顶点/UV/索引
+```
+
+| 环节 | 事实（实测） |
+| --- | --- |
+| VPK | v2 目录树；de_dust2.vpk 631 条目；世界几何在 `worldnodes/n0_lr0_agg_merge_*.vmdl_c` |
+| 容器 | header(v12) + 12B/条块表（FourCC + 相对偏移 + 大小）；MVTX/MIDX/MDAT/CTRL/RERL/RED2/DATA |
+| KV3 | magic `0x4B563305` + format GUID `7412167c-06e9-4698-aff2-e63eb59037e7`；CTRL 块 **LZ4 压缩**（frame 16384）；`keyvalues3` 库解析 OK |
+| meshopt | MVTX/MIDX 首字节 `0xa1`/`0xe1` = vertex/index codec v1；npm **WASM** 解码器一次通过（PyPI 源码包因缺 Python.h 编译失败——正式模块要自持，见 §18.5） |
+| 顶点布局 | 主网格流：`POSITION` R32G32B32_FLOAT(fmt 6) + **`TEXCOORD0` "LowPrecisionUv" = R16G16_SNORM(fmt 37)**；切线帧流："CompressedTangentFrame"(fmt 42, 4B)；大地面另有 `texcoord3`(fmt 35, 4B) |
+
+**三重铁证**（`antenna_card` 26v / `dust_300d` 23787v·31010tri 两样本）：
+1. 解码 pos 包围盒 == MDAT `m_vMinBounds/m_vMaxBounds`（`[346,1417.656,468.498]→[2560,4224,927.25]` 一字不差）；
+2. 索引拓扑 == drawcall 划分（`m_nStartIndex/m_nIndexCount/m_nBaseVertex`）；
+3. UV 值域自洽（quad 角点 0/1、接缝重复列、±0.5 镜像；int16/32767 语义验证）。
+
+**「贴图规则」的实证发现**（dust_300d 全量统计）：
+- UV = **面片局部仿射投影**——∇u/∇v 近正交（|cos| 中位 0.06–0.09）、密度聚簇
+  （+Z 面 40% 落 **160–192 world-unit/UV** 档 + 256–320 次峰）、方向轴对齐为主 + 10–20° 集中斜铺；
+- 与 Source 1 **texinfo 公式同构**（`u = tv0 · p + tv0.w`）——工业标准「投影参数 → UV」即
+  「UV ↔ 3D 线性互转」的母题；
+- 每 drawcall 携带 **`m_flUvDensity`**（实测 258.9 / 219.1）——「贴图密度」是 Source 2 一等公民字段。
+
+**引擎现状**：`MeshData.uvs` + `compute_tangents` 已在（engine/geometry.py）；`proctex.py`
+程序化纹理已在；**presentation 渲染器尚未消费纹理**（首个采样接入点就在本 note）。
+
+### 18.2 先问结论（全哥 2026-10-14 定）
+
+| 问题 | 结论 |
+| --- | --- |
+| 模块范围 | **全量含贴图规则**（投影 + 双向 API + 关卡接入 + wrap/tiling/图集/密度校验） |
+| 样板深度 | **规则复刻 + 对拍**（程序化重建，不搬素材；真实数据统计分布对拍） |
+| 渲染消费 | **图集 + UV 采样**（程序化纹理图集 + sampler 路径 + 棋盘格目检） |
+| 工具链 | **升为引擎导入模块**（正式进 `world3d`，非临时 tools/） |
+
+### 18.3 命名核验
+
+**Sandward**（sand + ward，家族式后缀）。核验（2026-10-14）：
+`"Sandward"` 搜索**无精确命中**（近似者 "Sandwalkers 沙行者" 2025 在售、"Sunward" 有
+游戏/桌游占用——均不同名；**执行前补单轮单独核验**）。中文定 **「沙垒」**（沙 + 垒，
+竞技场地形感；同步补核验）。备选：`Dusthold`（hold 与 Rayhold 重复，弃）。
+
+### 18.4 设计 A · `engine/texproj.py` —— UV 投影与贴图规则（全量）
+
+**与 `proctex` 成对**：proctex 生成纹理**像素**，texproj 生成纹理**坐标**——引擎的
+「纹理规则」双子。纯数学、无 GL、可单测（依赖方向：被 geometry/关卡生成与渲染层消费）。
+
+1. **投影描述**（Texinfo 同构，数据即规则）：
+   ```python
+   UvProjection(axis='z'|'x'|'y'|'-z'…,      # 投影主轴（面法线主导轴自动或显式）
+                scale=(su, sv), rotation=0.0,  # UV 重复密度与斜铺角
+                offset=(ou, ov),              # 相位
+                texsize=None)                 # 贴图像素尺寸（密度换算用）
+   ```
+2. **双向 API（本特性题眼「UV 坐标转换为三维坐标」）**：
+   - `project_uv(p, proj) -> (u, v)`：三维点 → UV；
+   - `uv_to_world(uv, proj, plane) -> p`：UV → 三维点（给定投影平面，逆变换）；
+   - `face_basis(normal) -> (e1, e2)`：面主轴基（源几何的轴对齐惯例）；
+   - `fit_projection(points, uvs) -> UvProjection`：从真实数据**反解**投影参数
+     （最小二乘——对拍与「学习真实地图规则」共用）。
+3. **关卡几何自动 UV**：`uv_for_faces(mesh, rules)`——按面法线选投影、批量写
+   `MeshData.uvs`；与 `geometry.py` 生成器（box/plane 已有 uv）和贪心网格化
+   （`greedy_mesh`）接线——**任何程序化关卡几何一键获得合规 UV**。
+4. **贴图规则（全量项）**：
+   - `TexWrap`（repeat / clamp / mirror）枚举 + 渲染端 sampler 映射；
+   - `tiling`：以 scale 表达（UV = p·scale + offset）；
+   - **图集（Atlas）**：多材质 → 单图集网格映射，`atlas_rect(name)` + UV 重映射 +
+     边缘 padding 系数（防渗色）；
+   - **密度校验** `density_report(mesh, uv) -> 直方图/异常面`：按面统计 world-unit/UV
+     与 `m_flUvDensity` 同语义的口径；（对拍直接复用——§18.7）。
+
+### 18.5 设计 B · `world3d/importers/source2/` —— Source 2 资产导入（自持、零新依赖）
+
+**定位**：`world3d/importers/` 新顶层子包（与 cli 并列；语义「资产导入」可扩展其他来源；
+依赖方向 importers → engine/core，符合分层铁律）。
+**依赖政策（关键决策）**：§2.2「零外部依赖纪律」——正式模块**全自持**：
+研究期的 `keyvalues3` / npm-WASM 仅作 **golden 参考**（对拍），**不进依赖表**。
+
+| 文件 | 内容 | 规模估计 |
+| --- | --- | --- |
+| `vpk.py` | VPK v1/v2 目录树 + 单文件提取（纯 bytes 操作） | ~120 行 |
+| `lz4f.py` | LZ4 **frame** 解压（纯 Py：frame 头 + block 解压，CTRL 块 16384 帧实测吻合） | ~150 行 |
+| `kv3.py` | Binary KV3 **v5** 解析（magic/GUID → 计数头 → 类型流 → 对象树；含 flagged value） | ~300 行 |
+| `meshopt.py` | meshopt **vertex/index codec v1 解码**（纯 Py，bit-exact 对齐 WASM golden） | ~500 行 |
+| `model.py` | vmdl_c 容器 → 块表 → CTRL 元数据 → 解码 → **`MeshData`**（+ drawcall/材质/密度保留） | ~300 行 |
+
+**转换约定**：单位 `unit_scale`（Source unit=inch，默认 1:1 直通，demo 与对拍不换算）；
+`up='Z'|'Y'` 轴变换参数；法线初版**由几何重算**（`compute_tangents` 复用），
+CompressedTangentFrame 解码列为二期（需逆向编码，不阻塞主线）。
+**边界**：只读**用户本地**游戏文件（路径由用户提供）；仓库不含任何资产；
+工具不做「导出分发」功能（只进引擎内存）。
+
+### 18.6 设计 C · 「沙垒 / Sandward」样板 demo
+
+- **地图抽象**（程序化重建，致敬 dust 风格**结构**而非复制）：双半场 + 中路 + 两条连接道，
+  由 box brush 列表驱动（数据在 `world3d/logic/sandward.py`，纯数学）；
+- **UV 全规则生成**：每个 brush 面走 `texproj`（主轴自动 + 每区域 scale/旋转不同——
+  复刻实测的「多档密度 + 斜铺」特征）；
+- **渲染**：`presentation/sandward_scene.py`（KK/Lim 家族范式 + **texproj 消费** + 图集采样 shader）；
+  程序化纹理图集（proctex 扩展：沙岩墙/石膏墙/木箱/金属板/砂石地 5 格）。
+- **三显示模式（Tab 切换，演示即验收）**：① 真实材质（图集采样）；② **棋盘格**
+  （UV 密度/扭曲目检）；③ **UV 规则可视化**（按投影轴着色 + 密度档位色阶）。
+- **玩法**：第一人称漫游（rayhold 控制器先例）+ 5 检查点巡游（到点依次打卡 → 结算计时）；
+  HUD 显示当前面投影参数（轴/scale/密度）；
+- auto-pilot 沿检查点路线巡游（headless 可跑）→ `verify_demos` + record 条目。
+
+### 18.7 对拍方案（「规则复刻」的诚实性验证）
+
+`scripts/source2_survey.py`（**有本地参考才跑**，不进 CI 硬门禁）：
+1. **反解**：`fit_projection` 对真实面片解最优投影 → 报告「严格仿射面」占比与残差分布
+   （量化「CS2 的 UV 就是投影规则」这一命题）；
+2. **对照**：本引擎规则输出（沙垒地图 + 导入的真实几何）的
+   [密度档位分布 / 角度分布 / 正交性] vs 真实 dust_300d 同类统计（直方图并排 + 距离指标）；
+3. 产出报告 → `docs/`（作为 §18 执行结果附件）。
+
+### 18.8 落地架构（文件清单）
+
+```
+world3d/engine/texproj.py            # 设计 A（纯数学）
+world3d/importers/{__init__,source2/{vpk,lz4f,kv3,meshopt,model}.py}   # 设计 B
+world3d/logic/sandward.py            # 地图 brush 数据 + 巡游逻辑（纯数学）
+world3d/presentation/sandward_scene.py  # 渲染 + 图集 + 三显示模式
+examples/sandward.py                 # 装配（FPS 漫游 + 检查点 + auto）
+tests/test_texproj.py                # 投影/逆投影 roundtrip、密度、图集映射
+tests/test_source2.py                # VPK/LZ4F/KV3/meshopt（合成夹具 + golden 对拍）
+scripts/source2_survey.py            # 对拍 survey（本地参考可选）
+```
+
+### 18.9 验收标准
+
+1. `tests/test_texproj.py`：投影→UV→世界点 roundtrip（含旋转/各向异性）、fit 反解正确、
+   图集重映射、密度报告；
+2. `tests/test_source2.py`：纯 Py 解码 **bit-exact** 对齐研究期 golden（合成夹具常驻 CI；
+   真实样本对拍走可选路径）；
+3. demo：auto 巡游 5 检查点全过 + `verify_demos` 冒烟/截图 + 录制条目；
+4. 对拍报告产出（§18.7）；README 计数同步（demo/测试模块）。
+
+### 18.10 风险与不做清单
+
+- **纯 Py meshopt 解码器是最大工作量**（~500 行，bit-exact 难度高）→ 参考 meshoptimizer
+  C++ 源码（MIT）移植 + WASM golden 逐字节对拍；超预算则临时降级 WASM 后端过渡
+  （接口不变）；
+- LZ4 frame 解压细节（多 block/字典）→ CTRL 块只有单帧 16384，先覆盖实况，余留扩展位；
+- **记账**（§7 追加）：meshoptimizer（MIT，算法/格式参考）、keyvalues3（MIT，golden 参考）、
+  ValveResourceFormat（MIT，容器格式参考）、社区逆向格式知识；**不引入其代码入库**；
+- **不做**：vtex_c 纹理解码（BC 压缩——演示用程序化纹理即可）、CompressedTangentFrame
+  逆向（二期）、vmap/vwrld 场景图导入（只做 vmdl_c 网格级）、资产再分发；
+- 命名核验补单（§18.3）。
+
+### 18.11 提交计划（每步独立可验）
+
+1. `engine/texproj.py` + `tests/test_texproj.py`（纯数学先行，无 GL 无依赖）；
+2. `importers/source2/{vpk,kv3,lz4f}.py` + 单测（KV3/LZ4F 对 golden）；
+3. `importers/source2/meshopt.py` + bit-exact 对拍（最大风险步，独立提交）；
+4. `importers/source2/model.py` + 转换约定 + 单测（合成夹具）；
+5. proctex 图集扩展 + sandward 场景渲染（texproj 消费 + 三显示模式）；
+6. `examples/sandward.py` + auto 巡游 + record/verify 接线 + README 计数；
+7. `scripts/source2_survey.py` 对拍报告；§18 执行结果回填 + §7 记账。
