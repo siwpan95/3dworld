@@ -3,6 +3,64 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [未发布] — P3-a：帧图（Frame Graph）—— 把"这一帧跑哪些 pass"变成可编译的数据
+
+④ 轨道那四个效果**互相共用资源**（三个都用同一张距离图、阴影图又给雾查），
+于是"谁先谁后"不再是可以随手写的：顺序错了会**静默出错**（画面"有点不对"，但不报错、不崩）。
+本批把这些约束从注释搬进**数据结构 + 编译期校验**。
+
+### 新增
+
+- **`engine/framegraph.py`**（纯逻辑，不 import GL）：
+  * `FrameGraph` / `Pass` / `Resource` —— 声明式描述；
+  * `compile()` —— **校验**（读不到生产者 / 有环 / 计划为空）→ **死 pass 剔除**
+    （从输出反向遍历）→ **拓扑排序**（同层按声明顺序，保证确定性）→
+    **瞬时资源别名**（生命周期不重叠的可共用内存）；
+  * `disable()/enable()` —— **运行期开关**：把被关 pass 的输出**直通到它的第一个输入**，
+    于是中间纹理不再需要（被别名回收）。重定向链**解析到不动点**；
+  * `standard_3d_plan()` —— 标准 3D 帧：`depth → shadow → scene → fog → dof → motionblur →
+    tonemap → present`；顺序常量 `SEQUENCE_OF_DEPTH_EFFECTS`。
+- **`cli/frame_plan.py`** —— 帧图门禁（与 `cli/config_boot` 同风格）：
+  `python -m cli.frame_plan --all-toggles` 把**16 种效果组合**跑一遍，
+  断言每种组合的计划都合法且"雾 → 景深 → 运动模糊"顺序正确，最后打 `== FRAME_PLAN_OK ==`。
+  **顺序一旦被改错，验收脚本会红** —— 而不是等画面看起来"有点不对"。
+- **`tests/test_framegraph.py`（16 项）**：物理顺序、死 pass 剔除、present 的 side_effect
+  （含**反例**）、读不到生产者、外部资源免生产者、环检测、输出必填、四类声明错误、
+  直通需要输入、**三连关的不动点解析**（回归守卫）、开关的 pass 数阶梯、enable 恢复、
+  别名（含"共活不许别名"的边界）、确定性、plan API。
+- `scripts/run_all_tests.py` 注册第 13 个模块；README 补测试与门禁命令。
+
+### 修复 / 实踩
+
+| # | 症状 | 根因 |
+|---|------|------|
+| 29 | 三个效果**一起**关时报"资源 hdr_fog 没有生产者"；关单个却没事 | 直通重定向只映射了**一层**。链是 `hdr_mb → hdr_dof → hdr_fog → hdr` ⇒ 必须**解析到不动点**。这类"单点可用、组合才炸"的 bug 只有把组合也跑一遍才抓得到（门禁的 `--all-toggles` 正是为此） |
+| 30 | 门禁 `--off dof` 报"没有名为 dof_pass 的 pass" | 我把两种关法混用了（建成期不声明 + 又运行期 `disable`）。**纯生产者 pass 只能建图时决定**（它没有上游可直通，内核拒绝是对的），**消费者 pass 才走运行期 disable** |
+
+> 另有四处**测试判据自己写错**（本轮再次出现，值得记）：
+> ① 用 `endswith('_pass')` 筛 pass —— `depth_prepass` 结尾是 `_prepass`，直接漏掉；
+> ② 把"读 A 写 B"当成"A 与 B 生命周期不重叠"（那个 pass 里两者**共活**，前提不成立）；
+> ③ 断言"t3 不出现在任何别名组"，而 t3 **可以**和别的不重叠资源配对（只该否掉 t2↔t3）；
+> ④ 输出指向外部资源 ⇒ 计划合法地变空，而我在测试里当成了 bug。
+> ⇒ 内核因此补了一条**响亮的报错**："编译后的计划是空的：没有任何 pass 喂到你声明的输出"
+> （把"合法但无用"变成"编译期就喊出来"）。
+
+### 验收（实测）
+
+| 门禁 | 结果 |
+|------|------|
+| `python -m tests.test_framegraph` | **16/16** → `ALL_FRAMEGRAPH_TESTS_PASSED` |
+| `python -m cli.frame_plan --all-toggles` | **16 种组合**全部合法、顺序正确 → `== FRAME_PLAN_OK ==` |
+| `scripts/run_all_tests.py` | **13/13 模块 / 274 项** / `ALL_TESTS_PASSED`（上一批 258 项） |
+| 全开时的计划 | 8 pass；别名组 3 组（`distance⊕ldr` · `shadow⊕hdr_dof` · `hdr⊕hdr_mb`） |
+| 关效果阶梯 | 关 0/1/2/3 个 ⇒ pass 数 **8 / 7 / 6 / 5**，别名组 3 / 2 / 2 / 1 |
+| `python -m cli.config_boot all` | **10 个** OK 标记（零回归） |
+| `scripts/verify_demos.py` 全量 | `ALL_DEMOS_OK (36 demos)` |
+
+> **本批是 P3-a**（内核 + 门禁 + 测试）。**P3-b = 图驱动渲染的 demo**
+> （按 `plan.order` 逐 pass 派发、开关效果时现场重编译、把剔除与别名显示在 HUD 上）
+> 留下一步 —— 见 `docs/P3-a_帧图_design_note.md` §5。
+
 ## [未发布] — ④-4：运动模糊 —— 相机重投影（④ 轨道收口）
 
 屏幕空间的"整屏方向模糊"（拿一个全局向量去采样）看起来像蒙了层纱：**它让所有像素糊得

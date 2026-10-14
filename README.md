@@ -261,6 +261,8 @@ python -m tests.test_csm            级联阴影 CSM（20 项：分割/角点/�
 python -m tests.test_volumetrics    体积雾/光轴（12 项：闭式积分可加性/HG 归一/抖动同式/GLSL 组合）
 python -m tests.test_dof            景深 DoF（12 项：CoC/超焦距/景深端点恒等式/散景面积均匀）
 python -m tests.test_motionblur     运动模糊（9 项：静止零运动/1÷z 律/纯旋转与深度无关/三模块共存）
+python -m tests.test_framegraph     帧图（16 项：物理顺序/剔除/直通/别名/环与死链校验）
+python -m cli.frame_plan --all-toggles  帧图门禁：16 种效果组合的计划都必须合法且顺序正确
 python -m cli.config_boot all   9 个内核 + 13 共同核全部 headless 验收（10 棵树，逐项 OK 标记）
 python main.py --shot               主线演出渲染验证（4 张）
 python kkrieger_demo.py --shot      漫游渲染验证（9 张）
