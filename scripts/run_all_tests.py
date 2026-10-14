@@ -47,6 +47,7 @@ MODULES = [
     ('tests.test_liminall', 'ALL_LIMINALL_TESTS_PASSED', '阈廊内核（后室 × P.T. 循环走廊）'),
     ('tests.test_texproj', 'ALL_TEXPROJ_TESTS_PASSED', 'UV 投影与贴图规则（投影/反解/图集/密度）'),
     ('tests.test_source2', 'ALL_SOURCE2_TESTS_PASSED', 'Source 2 解析（VPK / KV3 v5 / LZ4 block）'),
+    ('tests.test_meshopt', 'ALL_MESHOPT_TESTS_PASSED', 'meshopt 解码（顶点/索引 codec）'),
 ]
 
 
