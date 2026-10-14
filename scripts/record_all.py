@@ -82,6 +82,38 @@ ENTRIES = [
     dict(name='director_20s',        mod='examples/director.py',      cls='DirectorApp', dur=20.0,
          size=DEMO_SIZE),                          # 可视化导演台：默认演出（闭环环绕 + 灯光）
          # 想看别的运镜就加 shot_json='shots/xxx.shot.json'（导演台 F2 导出的那份）
+
+    # ---- P5-c 攒批补录（成片缺口一次性补齐；时长优先取 demo 自己的 DURATION，
+    #      那几个是"绕场一周/扫焦一圈"的循环周期，录满一个周期才无缝）----
+    dict(name='csm_shadow_40s',      mod='examples/csm_shadow.py',    cls=None,          dur=40.0, size=DEMO_SIZE),
+         # DURATION=40：光照绕场一周
+    dict(name='volumetric_fog_60s',  mod='examples/volumetric_fog.py', cls=None,         dur=60.0, size=DEMO_SIZE),
+         # DURATION=60：光源绕场一周
+    dict(name='dof_focus_24s',       mod='examples/dof_focus.py',     cls=None,          dur=24.0, size=DEMO_SIZE,
+         flags='rack'),                            # DURATION=24；`rack` 是 demo 自带的"自动扫焦，
+         #                                           适合看成片"模式（对焦 3m ⇄ 90m）——
+         #                                           默认模式要手动拖对焦，录出来是静止的
+    dict(name='motion_blur_40s',     mod='examples/motion_blur.py',   cls=None,          dur=40.0, size=DEMO_SIZE),
+         # DURATION=None（相机运动由模式驱动，不按时钟循环）⇒ 用默认运动模式录 40s；
+         # 别加 `stop`，那是"静止相机"的对照模式，录出来什么都没动
+    dict(name='frame_graph_36s',     mod='examples/frame_graph.py',   cls=None,          dur=36.0, size=DEMO_SIZE),
+         # DURATION=36：默认全效果开启（关效果的对照留给 demo 里按 1~4）
+    dict(name='scene_walker_40s',    mod='examples/scene_walker.py',  cls=None,          dur=40.0, size=DEMO_SIZE,
+         flags='walk,interact'),                    # 交互型：自动漫步 + 自动互动
+    dict(name='pointcloud_edl_30s',  mod='examples/pointcloud_edl.py', cls='PointCloudEDLApp',
+         dur=30.0, size=DEMO_SIZE),                 # 下面这 6 条是 EngineApp 宿主，显式给类名
+    dict(name='wboit_demo_30s',      mod='examples/wboit_demo.py',    cls='WBOITDemo',
+         dur=30.0, size=DEMO_SIZE),
+    dict(name='skinned_creature_30s', mod='examples/skinned_creature.py', cls='SkinnedCreatureApp',
+         dur=30.0, size=DEMO_SIZE),
+    dict(name='gpu_cull_field_30s',  mod='examples/gpu_cull_field.py', cls='GpuCullFieldApp',
+         dur=30.0, size=DEMO_SIZE),
+    dict(name='voidward_60s',        mod='examples/voidward.py',      cls='VoidwardApp',
+         dur=60.0, size=DEMO_SIZE,
+         flags='auto'),                            # 贸易脚本自动跑（够跑到资产达标）
+    dict(name='pulsefall_45s',       mod='examples/pulsefall.py',     cls='PulsefallApp',
+         dur=45.0, size=DEMO_SIZE,
+         flags='auto'),                            # 自动演奏一首谱面（BPM 90 / 16 小节 ≈ 42.7s）
 ]
 
 FFMPEG_CANDIDATES = [
@@ -127,15 +159,29 @@ def import_module(rel_path, name):
 
 
 def find_app_class(mod, cls_name):
-    """取 App 类：显式指定优先，否则找 examples/_harness.DemoApp 的子类。"""
+    """取 App 类：显式指定优先，否则自动找 `DemoApp` **或** `EngineApp` 的子类。
+
+    ⚠ P5-c 实踩：这里原来自动识别**只认 `DemoApp`**（platform 那套），而 `build_app`
+    其实支持三类宿主（harness `DemoApp` / engine `EngineApp` / presentation 裸 App）。
+    于是 `pointcloud_edl` / `wboit_demo` / `skinned_creature` / `gpu_cull_field` /
+    `voidward` / `pulsefall`（全是 `EngineApp` 子类）一律以
+    `未找到 DemoApp 子类` **直接退出**，而且**整批录制会随之中断**（后面的条目一条不录）。
+    现在两类都认；真找不到时把"本模块里的候选类"列出来，省得再猜。
+    """
     import inspect
     if cls_name:
         return getattr(mod, cls_name)
     from world3d.platform.app import DemoApp
+    from world3d.engine.app import EngineApp
+    bases = (DemoApp, EngineApp)
+    cands = []
     for _, obj in vars(mod).items():
-        if inspect.isclass(obj) and issubclass(obj, DemoApp) and obj is not DemoApp:
-            return obj
-    raise SystemExit(f'{mod.__name__}: 未找到 DemoApp 子类')
+        if inspect.isclass(obj) and any(issubclass(obj, b) for b in bases) \
+                and obj not in bases:
+            cands.append(obj)
+    if cands:
+        return cands[0]
+    raise SystemExit(f'{mod.__name__}: 未找到 DemoApp / EngineApp 子类')
 
 
 def build_app(entry):
