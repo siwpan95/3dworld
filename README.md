@@ -239,7 +239,7 @@ python scripts\verify_demos.py               批量验收（冒烟 + 截图 + �
 | `nordic_saga.py` | **《诺德之境》60s 程序化动画**：上古卷轴风格雪原遗迹、巨龙与龙语古墙，含程序化配乐 |
 | `scene_walker.py` | **可漫步场景（交互化）**：S1 场景 JSON → 第一人称物理漫步（固定步长）+ 马尔可夫演出变体 + 拾取/E 互动 + SFX/自适应 BGM + 场景热重载 |
 | `blockworld.py` | **方块世界 · 可交互版**：第一人称漫步/跳跃 + DDA 准星拾取 + 左键挖/右键放 + hotbar + 区块化网格重建 |
-| `scene_viewer.py` | 场景查看器（**工具**，非定时演出）：加载 `--file` 的 JSON 并热重载，是「LLM 场景生成工作流」的"看"这一端 |
+| `scene_viewer.py` | 场景查看器（**工具**，非定时演出）：加载 `--file` 的 JSON 并热重载，是「LLM 场景生成工作流」的"看"这一端；`--flag orbit` 相机自转 |
 | `mountain.py` | **《山》**（致敬 David OReilly 的 Mountain，观察式）：复用 terrain_flyover 噪声管线生成**悬浮孤峰**（顶/底两面闭合）+ 片元级动态光照昼夜 + 云雨雪气象 + 坠落物体/生长植物 + 哲学独白叠层 + **人格测验嵌进生成参数** + 键盘钢琴（即时合成）+ 流星崩解重生 |
 | `godhand.py` | **《神之手》**（P1-①，致敬 Populous）：鼠标「抬山/挖海」实时改写地形高度场，淹没敌方聚落即胜（Cordis 内核插件） |
 | `tower_defense.py` | **《戍卫之路》**（P1-② 塔防内核，致敬 Warcraft/Dune II）：3 类塔 + 3 类敌人 + 5 波 + 经济循环（Cordis 内核插件） |
@@ -248,7 +248,7 @@ python scripts\verify_demos.py               批量验收（冒烟 + 截图 + �
 | `gpu_cull_field.py` | **GPU 驱动渲染**（P3-1）：4096 实例，剔除 + LOD + 命令生成全在 compute 里；CPU 每帧只做 1 次 dispatch + 3 次 indirect draw；F2 切 GPU/CPU、F3 切 LOD |
 | `wboit_demo.py` | **顺序无关透明**（P2-2）：Weighted Blended OIT —— 4 个相交半透明球，一趟写 accum/reveal 两张 MRT 再合成，无需排序；S 切 WBOIT/排序、O 反转顺序 |
 | `pointcloud_edl.py` | **点云 + EDL**（P2-4）：程序化点云（地形/双螺旋）+ `gl_PointSize` 圆盘点 + EDL 深度轮廓增强；E 开关 EDL |
-| `stillhall.py` | **《静馆》**（§14 节点式漫游解谜，致敬 Myst）：固定机位点击热点换景/取物/开机关 + 物品栏 + 谜题状态机；场景 JSON 与 scene_viewer 同 schema 且热重载 |
+| `stillhall.py` | **《静馆》**（§14 节点式漫游解谜，致敬 Myst）：固定机位点击热点换景/取物/开机关 + 物品栏 + 谜题状态机；场景 JSON 与 scene_viewer 同 schema 且热重载；`--flag auto` 循环重放（成片用） |
 | `voidward.py` | **《星阑》**（§15 Elite 式太空贸易）：1 星系 + 5 货确定性市场（事件冲击）+ 惯性飞行 + 海盗拦截 + 交易/升级；资产达标 10000 → won |
 | `pulsefall.py` | **《落音》**（§16 下落式音击）：4 轨道（DFJK）+ 3 谱面（BPM 90/120/150 种子复现）+ 判定 3 档 + 血量/连击/结算；音乐由 audio 核按谱面程序化合成 |
 | `swarmward.py` | **《弹潮》**（P1-⑤ 全向生存弹幕，致敬 Robotron 2084）：固定屏双摇杆 + 程序化编波（难度单调）+ **boss 波**（三阶段 + 血条 + 五图案弹幕生成器）+ 粒子/编队两核消费者 |

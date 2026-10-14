@@ -12,6 +12,7 @@
 
     python examples/scene_viewer.py --file docs/llm_scene_demo.json
     python examples/scene_viewer.py --file xxx.json --smoke 3
+    python examples/scene_viewer.py --flag orbit         # 相机自转（自演示 / 录成片用）
 """
 from __future__ import annotations
 
@@ -55,7 +56,7 @@ def _extract_file(argv):
 
 class SceneViewerApp(DemoApp):
     TITLE = 'scene viewer · scene JSON (hot reload)'
-    HELP = 'ESC quit   SPACE pause   R reload JSON   drag/wheel orbit'
+    HELP = 'ESC quit   SPACE pause   R reload JSON   drag/wheel orbit   --flag orbit 自转'
     HUD = True
     FOV = 55.0
     Z_FAR = 600.0
@@ -96,6 +97,10 @@ class SceneViewerApp(DemoApp):
         self.watcher = SceneWatcher(self._json_path,
                                     on_reload=lambda _scene: self._reload())
         self.reload_msg = 'loaded'
+        # ---- 自演示 / 成片：`--flag orbit` 让相机 8°/s 自转（45s 一圈，可无缝循环）----
+        # 这条 viewer 本身**没有任何自动动画**（相机只跟鼠标走），不开自转录出来是
+        # 一张静止的图 —— 成片要能看出"它是个什么东西"。
+        self.auto_orbit = 'orbit' in self.args.flags
         print(f'[viewer] loaded {self._json_path} '
               f'({len(self.scene.drawables())} drawables)')
 
@@ -137,6 +142,8 @@ class SceneViewerApp(DemoApp):
 
     # ------------------------------------------------------- 主循环钩子 --
     def update(self, dt):
+        if self.auto_orbit:
+            self.camera.advance(dt)          # 引擎相机自带的"默认编排：8°/s 环绕"
         self.watcher.poll()
         self.scene.update(dt)
 

@@ -59,7 +59,7 @@ python scripts\verify_demos.py --only boids,water  只验指定 demo
 | `scene_walker.py` | 交互 | **可漫步场景（交互化）**：S1 场景 JSON → 第一人称物理漫步（固定步长抗卡帧）+ 马尔可夫演出变体 + 拾取/E 互动 + **限时挑战（T 键）与跨幕转场结算卡**（音乐张力阶梯 COMBAT_LOW→HIGH）+ SFX/自适应 BGM + 场景热重载 | `scene_walker_01.png` |
 | `blockworld.py` | 交互 | **方块世界 · 可交互版**（voxel_terrain × minecraft_style 结合）：第一人称漫步/跳跃 + **DDA 准星拾取 + 左键挖/右键放 + hotbar(1-6)** + **区块化网格重建**（16 列/块，边界邻块同步；实测编辑 ≈11ms）+ 程序化像素图集与昼夜 | `blockworld_01.png` |
 | `kid_a_walker_3d.py` | 交互 | **KID-A WALKER 3D**（arcade 伪 3D 重制为真 3D）：41 个房间模版 → 区块无限走廊 + **能量/碎片/传送门/暗室** + 区域驱动调色与程序化配乐（ZoneSynth 风格）+ 发光踢脚线走廊美学 | `kid_a_3d_01..03.png` |
-| `scene_viewer.py` | 工具 | **场景查看器（非定时演出）**：加载 `--file` 指定的场景 JSON 并实时渲染，改文件即热重载（坏 JSON 会被拒绝、保留旧场景）——「LLM 场景生成工作流」的"看"这一端；**未声明 `SHOTS`，批量验收跳过截图阶段** | — |
+| `scene_viewer.py` | 工具 | **场景查看器（非定时演出）**：加载 `--file` 指定的场景 JSON 并实时渲染，改文件即热重载（坏 JSON 会被拒绝、保留旧场景）——「LLM 场景生成工作流」的"看"这一端；**未声明 `SHOTS`，批量验收跳过截图阶段**；`--flag orbit` 相机自转（8°/s）—— 自演示/录成片用 | — |
 | `mountain.py` | 观察式 | **《山》**（致敬 David OReilly 的 Mountain）：复用 terrain_flyover 噪声管线生成**悬浮孤峰**（顶/底两面在边界闭合）+ 片元级动态光照昼夜交替 + 云/雨/雪气象轮替 + 坠落物体与生长植物 + 哲学独白叠层 + **人格测验答案嵌进生成参数**（N 键）+ 键盘钢琴（A~K 即时合成五声音阶）+ 流星撞击崩解重生（C 键） | `mountain_day/dusk.png` |
 | `rayhold.py` | 交互 | **《迷堡枪影 / Rayhold》**（P1-③ 射线 FPS，机制致敬 Wolfenstein 3D / Doom）：**程序化随机迷宫**（递归回溯 + 12% 编织，种子可复现）+ **全屏片元着色器 SDF 光线步进**（墙 / 地板 / 敌人 / 光弹 / **拾取悬浮球 / 出口金色呼吸光**在同一场景，迷宫距离场与命中判定同源）+ hitscan 射线枪 + 2 种敌人状态机（近战游荡者 / 远程哨卫投光弹）+ 弹药与医疗拾取 + aim trainer 式手感（**hitmarker 命中/击杀标记、−/= 灵敏度与 cm/360 估算、结算命中率小结、失焦清键与回焦重锁**）；玩法全在 `games/fps/kernel.py`，由 `cordis.fps.yml` 配置树挂载（平衡参数集中在 yml） | `rayhold_a/b.png` |
 | `frame_graph.py` | 交互 | **帧图驱动渲染（P3-b）**：渲染循环**按编译出来的计划**逐 pass 派发（`for name in plan.order`），离屏目标**按资源声明创建**（`'screen'`/`(1024,1024)`/`r32f` 都真的用到），每个 pass 绑哪张纹理来自 **`plan.reads_of(名字)`** —— 于是关掉一个效果时下游**自动**改读直通后的资源。按 `1`~`4` 现场开关四个效果（阴影/雾/景深/运动模糊）会**重编译**：HUD 直接显示 pass 数、被剔除的 pass 与别名组数的变化（关 0/1/2/3 个 ⇒ 8/7/6/5 pass）。四个效果的 GLSL 拼在同一个片段里（21 个 uniform） | `framegraph_01/02.png` |
@@ -77,7 +77,7 @@ python scripts\verify_demos.py --only boids,water  只验指定 demo
 | `gpu_cull_field.py` | 引擎 | **GPU 驱动渲染（P3-1，A/B/C 全做）**：4096 实例阵列，**剔除 + LOD + 命令生成全在 compute 里**（按 LOD 固定分区写可见表、命令的 instanceCount 由 atomicAdd 累加）；CPU 每帧只做 1 次 dispatch + 3 次 `glDrawArraysIndirect`；F2 切 GPU/CPU 剔除、F3 切 LOD、HUD 实时计数；含运行时能力探测 + CPU 回退 | `gpu_cull_01..03.png` |
 | `wboit_demo.py` | 引擎 | **顺序无关透明（P2-2）**：Weighted Blended OIT（McGuire 2013）—— 4 个**互相相交**的半透明球，透明物一趟写 accum/reveal 两张 MRT 再合成，**无需排序**；S 切 WBOIT/排序、O 反转绘制顺序（可直观看出排序法会跳变） | `wboit_01..02.png` |
 | `pointcloud_edl.py` | 引擎 | **点云 + EDL（P2-4）**：**程序化**点云（值噪声地形 / 双螺旋，20000~40000 点），`gl_PointSize` + 片元圆盘（imposter）；**EDL 全屏 pass** 按深度邻域差给轮廓加深（点云从"散点"变"有体积"）；E 开关 EDL、1/2 换云、`[`/`]` 调点大小 | `pointcloud_01..02.png` |
-| `stillhall.py` | 交互 | **《静馆 / Stillhall》**（§14 **节点式漫游解谜**，致敬 Myst 1993）：固定机位 + **点击热点换景/取物/开机关**（非自由 WASD）+ 物品栏 + **谜题状态机**（顺序解锁链：取钥 → 点灯得齿轮 → 开终局门）；场景数据走 **JSON（与 scene_viewer / LLM 场景生成工作流同 schema）**且支持热重载（坏 JSON 拒收保旧）；`1` 键自动推进 | `stillhall_01..02.png` |
+| `stillhall.py` | 交互 | **《静馆 / Stillhall》**（§14 **节点式漫游解谜**，致敬 Myst 1993）：固定机位 + **点击热点换景/取物/开机关**（非自由 WASD）+ 物品栏 + **谜题状态机**（顺序解锁链：取钥 → 点灯得齿轮 → 开终局门）；场景数据走 **JSON（与 scene_viewer / LLM 场景生成工作流同 schema）**且支持热重载（坏 JSON 拒收保旧）；`1` 键自动推进；**`--flag auto[,pace=0.9]` 循环重放**（录成片用 —— 默认跑完 5 步就静止） | `stillhall_01..02.png` |
 | `voidward.py` | 交互 | **《星阑 / Voidward》**（§15 **Elite 式太空贸易**，四份 note 里范围最大）：1 星系（恒星 + 3 行星 + 1 空间站）+ 5 种货（价格 = 基准 × 供需正弦 + **种子驱动事件冲击**，确定性可复现）+ **惯性飞行**（松油门滑行）+ 海盗拦截战（击退有赏金）+ 舱位/炮 2 级升级；资产达标 10000 → won；WASD 推进、空格开火、B/V 买卖、N 升级、G 自动贸易 | `voidward_01..02.png` |
 | `pulsefall.py` | 交互 | **《落音 / Pulsefall》**（§16 **下落式音击**）：4 轨道（DFJK）+ 3 谱面（BPM 90/120/150，**种子复现**）+ 判定 3 档（PERFECT ±40ms / GOOD ±90ms / MISS）+ 血量与连击得分 + 结算（P/G/M + 准确率 + 最大连击）；音乐由 **audio 核按谱面程序化合成**（三层：低音/和弦/主旋律）；F4/F5 offset 校准、G 自动演奏 | `pulsefall_01..02.png` |
 | `director.py` | 工具 | **可视化导演台（③）**：把关键帧系统（`engine/shot.py` + `engine/timeline.py`）和 `TimelineUI` 串成"**编排 → 预览 → 导出 → 录制**"闭环。三个编辑目标用 `T` 循环：`$camera`（position/target/fov）、`$env`（sun_intensity/sun_dir/ibl_intensity，**真·灯光演出**，渲染器每帧 apply）、场景节点（TRS，键盘微调）。`K` 记帧 / `DEL` 删帧 / `[ ]` 选通道 / `I` 换插值 / `M` 加幕 / `F2` 导出演出 JSON / `O` 载入 / `R` 重载场景；右侧**关键帧检察器**显示每通道的插值与键刻度（可点行选中、点键 seek）；内置默认演出「绕祭坛闭环环绕 + 主体自转 + 太阳随相机扫过」，`--shot-json <path>` 可回放导出的运镜 | `director_a..d.png` |
@@ -91,6 +91,7 @@ python scripts\verify_demos.py --only boids,water  只验指定 demo
 ```bat
 python examples\scene_viewer.py --file docs\llm_scene_demo.json
 python examples\scene_viewer.py --file docs\llm_scene_demo.json --smoke 3
+python examples\scene_viewer.py --flag orbit        # 相机自转（自演示 / 录成片）
 ```
 
 ### 演示专属开关（`--flag`，逗号可并列）
@@ -111,6 +112,12 @@ python examples\scene_viewer.py --file docs\llm_scene_demo.json --smoke 3
 | `auto` / `seedN`（rayhold） | 自动驾驶（BFS 奔出口 + 遇敌自动射击，与 headless 验收同款）/ 开局换种子（如 `seed1234`） |
 | `auto` / `seedN` / `level=路径`（boxward） | 求解器回放连续闯关（与 headless 验收同款）/ 按种子加载生成关 / 加载 JSON 关卡 |
 | `auto` / `endless` / `seedN`（swarmward） | 闪避 AI 自动打满 10 波（与 headless 验收同款）/ 无尽模式（不清波判定）/ 按种子开局 |
+| `cascades=N`（csm_shadow） | 起始 N 级级联（按级别染色看级联边界） |
+| `thick`（volumetric_fog） | 起手就是浓雾（默认较淡） |
+| `rack`（dof_focus） | 起手自动扫焦（对焦 3m ⇄ 90m）——**录成片要用它**，默认模式要手动拖对焦 |
+| `stop`（motion_blur） | 静止相机（对照：验证"相机不动就没有模糊"）——**别用于录成片** |
+| `auto` / `pace=N`（stillhall） | 循环重放点击序列（自演示/录成片；默认跑完 5 步就静止）/ `pace=` 改每次点击间隔（默认 0.45s） |
+| `orbit`（scene_viewer） | 相机自转 8°/s（自演示/录成片；不开则相机只跟鼠标走 ⇒ 录出来是一张静止的图） |
 
 常用按键（各 demo 底部有完整帮助行）：`SPACE` 暂停、`ESC` 退出是统一的；
 **方块世界** `N`/`P` 切幕、`←`/`→` 快退快进 5s、`C` 切电影/自由相机、`R` 重播；

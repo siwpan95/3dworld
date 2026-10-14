@@ -3,6 +3,44 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [未发布] — P5-d：让 CI 真跑（GitHub 通路实测 + 手动触发入口）
+
+`regression` / `regression-linux` 两个 job 写好了，但有个前提一直没落实：
+**本仓 remote 只有 Gitee，而 workflow 只有 GitHub 会执行** —— 也就是说 CI 从来没跑过。
+本批把这件事查清了，并把"一旦通了就能立刻看结果"的入口留在里面。
+
+### 实测（不是推测）
+
+| 目标 | 结果 |
+|------|------|
+| `curl https://api.github.com` | **无响应**（`code=000`，1.4s 失败） |
+| `curl https://github.com` | **无响应**（`code=000`，0.9s 失败） |
+| `curl https://gitee.com` | 200（2.2s） |
+| 本机代理 | 常见端口 7890/7897/7891/10809/10808/1080/8080/2080/3128 **全部未监听**；无 proxy 环境变量 |
+| 本机 GitHub 凭据 | `~/.git-credentials` 里**只有 gitee**，没有 github |
+
+⇒ **本机既没有到 GitHub 的网络，也没有凭据**，`git remote add github ...` 在这里是死路。
+
+### 可行通路：**Gitee 的「仓库镜像管理」（Push 方向）**
+
+Gitee 官方帮助写了这条路：`管理 → 仓库镜像管理 → 添加镜像 → 方向选 Push → 选/填目标
+GitHub 仓库 → 填 GitHub 私人令牌（需 `repo` 权限）` ⇒ 之后**提交到 Gitee 时由 Gitee
+服务器自动推给 GitHub**（分支/标签/提交都同步，最短触发间隔 5 分钟）。
+它绕开的正是"本机连不上 GitHub"这一条。
+
+需要你做的（我这边做不了，都要 GitHub 账号）：
+① 在 GitHub 上建一个**空仓库**（建议同名 `3dworld`）；
+② 在 Gitee 仓库设置里绑定 GitHub 账号 + 填 PAT（勾 `repo`）。
+
+### 本批为"通了就能立刻看结果"做的准备
+
+- `.github/workflows/ci.yml` 新增 **`workflow_dispatch`**：镜像同步过去之后，可以先在
+  GitHub 上**手动点一次**把两个 job 跑起来 —— 尤其是那个**从没在真 Linux runner 上跑过**
+  的 `regression-linux`（它的无头 GL 探针目前是 `continue-on-error: true`，先拿一次真实输出，
+  确认 EGL+llvmpipe 能建出上下文后再升级为阻塞步骤）。
+- 门禁 `workflows-valid` 保证 workflow 本身可解析、结构完整、里面的命令可达
+  （否则镜像过去只会得到一个"永远不绿的 CI"，而本机看不到任何提示）。
+
 ## [未发布] — P5-c：攒批一次性重建发行版 → `v2026.10.14`
 
 按 `docs/分发指南.md` §3.0 的攒批铁律，把"待重建清单"**一次性清空**。
@@ -13,12 +51,12 @@
 | 项 | 结果 |
 |----|------|
 | 新发行版 | [`v2026.10.14`](https://gitee.com/siwpan/3dworld/releases/tag/v2026.10.14)（id 1204762，target `5c725f4`） |
-| 附件 | **40 个** = **37 条成片** + `3dworld-demo-pack-20261009.zip` + 2 个自动生成的源码包 |
-| 成片 | **25 → 37 条**（`recordings/` 354MB）；`boxward_60s.mp4` **替换**（正交等距视角重录），其余 13 条新增 |
+| 附件 | **42 个** = **39 条成片** + `3dworld-demo-pack-20261009.zip` + 2 个自动生成的源码包（后加的 2 条**追加**即可，不必重建 —— 见下） |
+| 成片 | **25 → 39 条**（`recordings/` 354MB）；`boxward_60s.mp4` **替换**（正交等距视角重录），其余 15 条新增 |
 | 旧发行版 | `v2026.10.09` 已删除（附件配额 / 单一真相；**tag 保留**，源码包链接不受影响） |
 | 匿名验收 | 发行版页 `releases/tag/v2026.10.14` → **200**；抽两条附件匿名下载并比 sha256 → **MATCH** |
 
-### 新增成片（13 条）
+### 新增成片（15 条）
 
 - **④ 渲染四件套**：`csm_shadow_40s`（级联阴影）/ `volumetric_fog_60s`（体积雾与光轴）/
   `dof_focus_24s`（景深，用 demo 自带 `flag rack` 自动扫焦）/ `motion_blur_40s`（运动模糊）
@@ -26,7 +64,24 @@
 - **引擎特性**：`pointcloud_edl_30s` / `wboit_demo_30s` / `skinned_creature_30s` / `gpu_cull_field_30s`
 - **玩法内核**：`voidward_60s` / `pulsefall_45s`（`flag auto`）、`scene_walker_40s`（`flag walk,interact`）、
   `brickward_60s`（BQM 致敬线）
-- `record_all.py` 因此新增 12 条录制条目（14 条含 2 条已录的复用），并修了一个**会中断整批录制**的缺陷（见下）
+- **交互型两条（补完，需先给 demo 加自演示入口）**：
+  `stillhall_40s`（`--flag auto,pace=0.9` 循环重放点击序列）、
+  `scene_viewer_45s`（`--flag orbit` 相机自转 8°/s ⇒ 45s 正好一圈）。
+  ⚠ 这两条**默认都不自动动**（stillhall 跑完 5 步就静止、scene_viewer 相机只跟鼠标走），
+  直接录会得到"一张静止的图"——所以给它们各加了一个显式的自演示入口
+  （`stillhall` 的 `auto` 还会**循环**：跑完一轮停 2s 再重置，否则 40s 里只有 2.3s 是动的）。
+- `record_all.py` 因此新增 14 条录制条目，并修了一个**会中断整批录制**的缺陷（见下）
+
+### 追加而不重建（按 §3.0 的口径）
+
+后加的这两条走 **`attach` 直接追加**（release 从 40 → 42 个附件），**没有**再删重建 ——
+按 `docs/分发指南.md` §3.0：「追加新附件则不必重建；但标题/描述里的计数要同步」。
+本次同步了 3 处：发行版**标题**的「37 → 39 条成片」、描述正文的「共 37 → 39 条」与
+「24 → 39」、以及各分组清单里新增的两行。改完 **回读断言**（name/body 逐字一致，
+3502 字 vs 3502 字）—— 别只看状态码。
+
+> `PATCH /releases/{id}` 的坑（skill 记过，本次复现）：**必须带 `tag_name`**，
+> 只传 `name` + `body` 会 400 `{"messages":["tag_name is missing"]}`。
 
 ### 修复
 

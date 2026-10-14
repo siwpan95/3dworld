@@ -114,6 +114,16 @@ ENTRIES = [
     dict(name='pulsefall_45s',       mod='examples/pulsefall.py',     cls='PulsefallApp',
          dur=45.0, size=DEMO_SIZE,
          flags='auto'),                            # 自动演奏一首谱面（BPM 90 / 16 小节 ≈ 42.7s）
+
+    # ---- 交互型两条（P5-c 补完）：它们**默认不自动动**，得走各自的"自演示"入口 ----
+    dict(name='stillhall_40s',       mod='examples/stillhall.py',     cls='StillhallApp',
+         dur=40.0, size=DEMO_SIZE,
+         flags='auto,pace=0.9'),                   # 节点式点击解谜：`auto` 循环重放
+         # pace=0.9：一轮 5 次点击 ≈ 4.5s + 停 2s ⇒ 6.5s 一轮，40s 录到 6 轮
+         # （默认 0.45s 是手玩节奏；不循环的话 2.3s 之后画面就静止了）
+    dict(name='scene_viewer_45s',    mod='examples/scene_viewer.py',  cls='SceneViewerApp',
+         dur=45.0, size=DEMO_SIZE,
+         flags='orbit'),                           # `orbit` = 相机自转 8°/s ⇒ 45s 正好一圈
 ]
 
 FFMPEG_CANDIDATES = [

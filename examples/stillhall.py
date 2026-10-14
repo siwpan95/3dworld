@@ -11,6 +11,7 @@
     python examples/stillhall.py
     python examples/stillhall.py --smoke
     python examples/stillhall.py --shot
+    python examples/stillhall.py --flag auto,pace=0.9    # 自演示/成片：循环重放（R 可停）
 
 合规：致敬 Myst(1993) 的"节点式漫游 + 点击热点 + 谜题状态机"，**不碰原 IP 名称与素材**；
 全部几何/文案/谜题为本项目原创。
@@ -77,6 +78,9 @@ class StillhallApp(EngineApp):
     HELP = HELP
     SHOTS = SHOTS
 
+    #: 一轮跑完后停留多久再重置（`--flag auto` 循环重放用）
+    AUTO_HOLD = 2.0
+
     def setup(self):
         self.prog = ShaderProgram(Shader(VS, 'vertex'), Shader(FS, 'fragment'))
         self.quad = self.prog.vertex_list(6, GL_TRIANGLES, position=('f', (
@@ -89,6 +93,19 @@ class StillhallApp(EngineApp):
         self.auto_t = 0.0
         self.msg = ''
         self.msg_t = 0.0
+        # ---- 自演示 / 成片：`--flag auto` 自动跑点击序列并**循环**（`pace=<秒>` 放慢）----
+        # 为什么必须循环：`AUTO_SEQ` 只有 5 个热点 ≈ 2.3s 就跑完，之后画面完全静止 ——
+        # 录成片会得到一段"开头动 2 秒、其余全是同一张图"的视频。
+        flags = self.args.flags
+        self.auto_loop = 'auto' in flags
+        self.auto_pace = 0.45                          # 每次点击的间隔
+        for f in flags:
+            if f.startswith('pace=') and f[5:].replace('.', '', 1).isdigit():
+                self.auto_pace = float(f[5:])
+        self._auto_on = self.auto_loop
+        if self.auto_loop:
+            print(f'[auto] 自动重放已开启（每次点击间隔 {self.auto_pace}s，'
+                  f'一轮 {len(AUTO_SEQ)} 步后停 {self.AUTO_HOLD}s 再重置）')
 
     def _boot_kernel(self):
         return asyncio.run(self._mount_kernel())
@@ -103,13 +120,23 @@ class StillhallApp(EngineApp):
         if getattr(self, '_auto_on', False):
             self.auto_t -= dt
             if self.auto_t <= 0.0:
-                self.auto_t = 0.45
                 if self.auto_i < len(AUTO_SEQ):
+                    self.auto_t = self.auto_pace
                     r = self.hall.click(AUTO_SEQ[self.auto_i])
                     self.msg, self.msg_t = r['detail'], 1.2
                     self.auto_i += 1
+                elif self.auto_loop:
+                    # 一轮跑完 -> 停一拍 -> 重置再来（录成片时画面不会静止）
+                    self._reset_hall()
+                    self.msg, self.msg_t = '（循环重放）', 1.2
                 else:
                     self._auto_on = False
+
+    def _reset_hall(self):
+        """重置谜题状态（R 键与 auto 循环共用，避免两处各写一份）。"""
+        self.hall.node_id = self.hall.scene['start']
+        self.hall.flags, self.hall.items = set(), []
+        self.auto_i, self.auto_t = 0, self.AUTO_HOLD
 
     def _draw_rect(self, x, y, w, h, tint, alpha=1.0):
         """画一个矩形。``x/y/w/h`` 是**归一化 0..1**（左下原点），内部转成 NDC。"""
@@ -171,9 +198,8 @@ class StillhallApp(EngineApp):
             self._auto_on = True
             self.auto_i, self.auto_t = 0, 0.0
         elif symbol == key.R:
-            self.hall.node_id = self.hall.scene['start']
-            self.hall.flags, self.hall.items = set(), []
-            self.auto_i, self._auto_on = 0, False
+            self._reset_hall()
+            self._auto_on = False          # 手动重置 = 退出自动模式（`--flag auto` 下想停就按 R）
             self.msg, self.msg_t = '已重置', 1.2
         elif symbol == key.ESCAPE:
             self.close()

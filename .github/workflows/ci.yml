@@ -16,6 +16,11 @@ on:
   push:
     branches: [master]
   pull_request:
+  # 手动触发：本地到 GitHub 的直连是断的（实测 curl api.github.com / github.com 都
+  # 拿不到响应），本仓靠 Gitee 的「仓库镜像管理」从**服务器侧**推到 GitHub ——
+  # 那条路最短间隔 5 分钟，且第一次会把"从没在真 Linux runner 上跑过的 Linux job"
+  # 一起带上去。留个手动入口，方便先单独把两个 job 跑一遍看结果。
+  workflow_dispatch:
 
 jobs:
   regression:
