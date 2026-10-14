@@ -28,6 +28,27 @@ import sys
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+
+def _force_utf8_stdout() -> None:
+    """把本进程 stdout 钉成 UTF-8（errors='replace'）。
+
+    不这么做会踩到一个**会吃掉结论**的坑（2026-10-14 实测）：Windows 控制台默认
+    GBK，子进程输出里只要出现 GBK 编不出的字符（如 ``\\u037c``），第 78 行的
+    ``print(out)`` 就抛 ``UnicodeEncodeError`` —— 进程带栈退出、**一条汇总都不打印**，
+    于是"有模块跑挂"这件事被表达成"runner 崩了"，真失败被埋掉
+    （当时 tests.test_compat 正因为仓根残留目录而 4/6 失败，全程无人看见）。
+
+    ``errors='replace'`` 是有意的：宁可让个别字符显示成 ``?``，也不能让整段
+    测试结论消失。判定只看退出码与模块专属 PASSED 标记，与显示编码无关。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, 'reconfigure', None)
+        if reconfigure is not None:
+            try:
+                reconfigure(encoding='utf-8', errors='replace')
+            except (ValueError, OSError):
+                pass
+
 # (模块, 成功标记, 说明)
 MODULES = [
     ('tests.run_tests', 'ALL_LOGIC_TESTS_PASSED', '逻辑/玩法内核'),
@@ -81,6 +102,7 @@ def run_one(mod: str, marker: str, quiet: bool):
 
 
 def main() -> int:
+    _force_utf8_stdout()
     ap = argparse.ArgumentParser(description='3dworld 一键回归入口')
     ap.add_argument('--quiet', action='store_true', help='只打印汇总，不打各模块明细')
     ap.add_argument('--list', action='store_true', help='只列出测试模块')

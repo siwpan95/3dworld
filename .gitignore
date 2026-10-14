@@ -1,5 +1,9 @@
 # Python
-__pycache__/
+# `**/` 前缀是必需的：P2-4 把源码收进 world3d/ 之后，仓根曾留下 core/ logic/ presentation/
+# 三个**只剩 __pycache__** 的残留目录。原先的 `__pycache__/` 只锚定仓根、覆盖不到它们，
+# 于是 Python 把这三个目录当成**命名空间包**导入，把 tests/test_compat 打红
+# （"顶层包仍然存在" + "别名与真身不是同一对象"）。2026-10-14 清理并加宽规则。
+**/__pycache__/
 *.py[cod]
 *.egg-info/
 

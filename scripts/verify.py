@@ -168,21 +168,30 @@ def g_demo_count(root, verbose):
     return f'{len(hits)} 处断言 == {n} 个 demo'
 
 
-@gate('readme-test-modules', 'README 的测试命令表 ↔ run_all_tests 的模块表（双向）')
+@gate('readme-test-modules', 'README 的测试命令表 ↔ run_all_tests 的模块表（双向 + 目录树模块数）')
 def g_test_modules(root, verbose):
     have = {m for m, _f in real_test_modules(root)}
     text = _read(root, 'README.md')
     listed = set(re.findall(r'python -m tests\.(\w+)', text))
     missing = sorted(have - listed)
     extra = sorted(listed - have)
-    if missing or extra:
-        msg = []
-        if missing:
-            msg.append(f'注册了但 README 没列：{missing}')
-        if extra:
-            msg.append(f'README 列了但没注册：{extra}')
+    msg = []
+    if missing:
+        msg.append(f'注册了但 README 没列：{missing}')
+    if extra:
+        msg.append(f'README 列了但没注册：{extra}')
+    # 目录树里那句「N 个测试模块的聚合 runner」也要跟 MODULES 一致。
+    # 补这条的由来（2026-10-14）：那句从 10 个模块的时代一直写「14 个」，模块涨到 21
+    # 也没人发现 —— 因为原门禁只核对**测试命令表**，不看目录树散文里的数字。
+    # 同一件事手改过 5~6 次的教训（见本文件开头）在这里又犯了一次，故机械钉住。
+    tree_counts = {int(n) for n in re.findall(r'(\d+)\s*个测试模块', text)}
+    wrong = sorted(n for n in tree_counts if n != len(have))
+    if wrong:
+        msg.append(f'目录树写 {"、".join(str(n) for n in wrong)} 个测试模块，'
+                   f'实际 {len(have)} 个（run_all_tests.MODULES）')
+    if msg:
         raise Fail('；'.join(msg))
-    return f'{len(have)} 个模块双向一致'
+    return f'{len(have)} 个模块双向一致（含目录树计数）'
 
 
 @gate('readme-test-counts', 'README 每行的「N 项」== 该模块声明用例数')
@@ -818,10 +827,35 @@ def _delete(rel):
     return fn
 
 
+def _subst_first(pattern, new, label='第一处'):
+    """按正则找到**盘上真实存在**的文案，把第一处替换成 ``new``。
+
+    为什么不用写死的字面量：``readme-demo-count`` 这条自检原先钉的是
+    ``'**37 个独立示例与工具**'``，而 README 早已改成 ``39 个`` —— 2026-10-14
+    selfcheck 实测：
+      * ``_subst`` 找不到目标抛 AssertionError ⇒ 自检报 FAIL —— 但**报错的理由**
+        是"注入没做成"，不是"门禁没拦住"，人看到会误判门禁坏了；
+      * 更糟的是**它再也不抓真漂移了**：注入根本没插进去，这条自检已形同装饰品。
+    改成从盘上取值后，示例数无论怎么变，注入永远命中"真实的那一处"。
+    """
+    def fn(root):
+        p = os.path.join(root, pattern[0])
+        text = open(p, encoding='utf-8').read()
+        m = re.search(pattern[1], text)
+        if not m:
+            raise AssertionError(f'注入目标在沙箱里找不到：{pattern[0]} :: /{pattern[1]}/')
+        open(p, 'w', encoding='utf-8', newline='\n').write(
+            text[:m.start()] + new + text[m.end():])
+    return fn
+
+
 #: 每条门禁一到两个**针对性破坏**（"我把它防的那件事做出来，它会不会红"）
 BREAKS = [
+    # 用**盘上真实的第一处示例数**做注入源（原来钉死 '37 个'，README 改 39 后就失效了）
     ('readme-demo-count', '把 README 里第一处示例数改成 99',
-     _subst('README.md', '**37 个独立示例与工具**', '**99 个独立示例与工具**')),
+     _subst_first(('README.md',
+                   r'\*\*\d+\s*个\s*独立示例与工具\*\*'),
+                  '**99 个独立示例与工具**')),
     ('readme-test-modules', '从 README 删掉一行测试命令',
      _subst('README.md', 'python -m tests.test_compat', 'python -m tests.test_removed_thing')),
     ('readme-test-counts', '把某个模块的用例数写错',
