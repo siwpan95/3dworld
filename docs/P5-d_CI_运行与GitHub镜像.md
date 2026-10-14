@@ -69,7 +69,7 @@ CI 定义已经就绪但**一次都没跑过**（本仓只有 Gitee remote，而
 镜像同步 **分支 / 标签 / 提交**。
 **不同步**：Gitee 的 **release 附件**（成片、pack zip）—— 那是 Gitee 平台资产，不是 git 对象。
 所以 GitHub 上会有：完整代码 + 标签（`v2026.10.14` 等）+ `.github/workflows/ci.yml`（CI 就此生效）；
-**不会**有 39 条成片。附件仍在 Gitee release 上（`docs/分发指南.md` 那套流程不变）。
+**不会**有成片附件。附件仍在 Gitee release 上（`docs/分发指南.md` 那套流程不变）。
 
 ### 3.4 通了之后（我这边的下一步）
 
