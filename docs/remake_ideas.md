@@ -1240,8 +1240,8 @@ scripts/source2_survey.py            # 对拍 survey（本地参考可选）
 | 3 | `5eda85f` | `importers/source2/meshopt.py`——标量路径逐位移植 + golden 夹具 5 项 |
 | 4 | `be43128` | `importers/source2/model.py`——vmdl_c → MeshData + 合成容器 5 项 |
 | 5 | `3f04d19` | `logic/sandward.py` + `presentation/sandward_scene.py` + demo + 截图（图集 + 三显示模式） |
-| 6 | 本条 | record 条目 + verify_demos + README/示例索引联动 |
-| 7 | 本条 | `scripts/source2_survey.py` + 对拍报告 + §7 记账 |
+| 6 | `3f30e6f` | record 条目 + 成片 + verify_demos + README/示例索引联动 |
+| 7 | `3f30e6f` | `scripts/source2_survey.py` + 对拍报告 + §7 记账 |
 
 **取证记录（都在真实数据上做，非合成）**：
 
