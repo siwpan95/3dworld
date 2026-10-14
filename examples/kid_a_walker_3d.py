@@ -52,8 +52,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from world3d.platform.app import DemoApp, run
-from engine.fixedstep import FixedStepper
-from logic import kid_a as K
+from world3d.engine.fixedstep import FixedStepper
+from world3d.logic import kid_a as K
 
 # ---------------------------------------------------------------- 着色器 --
 VS = '''#version 330 core
@@ -438,7 +438,7 @@ class KidAApp(DemoApp):
         self.world.ensure_neighbors(*K.WorldMap.world_to_chunk(self.px, self.pz))
         self._sync_chunks()
 
-        from engine.camera import FlyCamera
+        from world3d.engine.camera import FlyCamera
         self.eye = FlyCamera(position=(self.px, 1.55, self.pz), fov=self.FOV,
                              far=self.Z_FAR)
         self.stepper = FixedStepper(lambda dt: self._step(dt),
@@ -449,7 +449,7 @@ class KidAApp(DemoApp):
         self.on_mouse_drag = self._on_drag
         self.window.push_handlers(on_key_release=self._on_key_release)
         try:
-            from engine.audio import SfxPlayer
+            from world3d.engine.audio import SfxPlayer
             self.sfx = SfxPlayer()
         except Exception:
             self.sfx = None

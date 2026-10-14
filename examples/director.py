@@ -79,10 +79,10 @@ from pyglet import shapes, text  # noqa: E402
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from world3d.platform.app import DemoApp, PROJECT_ROOT, run  # noqa: E402
-from engine.mathkit import quat_mul, quat_normalize  # noqa: E402
-from engine.shot import CAMERA_NODE, ENV_NODE, Shot, ShotPlayer  # noqa: E402
-from engine.timeline import INTERPOLATIONS, quat_from_axis_angle  # noqa: E402
-from presentation.timeline_ui import PANEL_HEIGHT, PANEL_MARGIN, TimelineUI  # noqa: E402
+from world3d.engine.mathkit import quat_mul, quat_normalize  # noqa: E402
+from world3d.engine.shot import CAMERA_NODE, ENV_NODE, Shot, ShotPlayer  # noqa: E402
+from world3d.engine.timeline import INTERPOLATIONS, quat_from_axis_angle  # noqa: E402
+from world3d.presentation.timeline_ui import PANEL_HEIGHT, PANEL_MARGIN, TimelineUI  # noqa: E402
 
 DEFAULT_SCENE = os.path.join(PROJECT_ROOT, 'docs', 'llm_scene_demo.json')
 SHOT_DIR = os.path.join(PROJECT_ROOT, 'shots')
@@ -244,7 +244,7 @@ class KeyframePanel:
             self.x0, self.y0, self.WIDTH, self.y1 - self.y0, 2,
             color=COL_PANEL, border_color=COL_PANEL_BORDER, batch=self.batch)
         self._font = {}
-        from engine.fonts import resolve_cjk_font
+        from world3d.engine.fonts import resolve_cjk_font
         cjk = resolve_cjk_font()
         if cjk:
             self._font['font_name'] = cjk
@@ -388,11 +388,11 @@ class DirectorApp(DemoApp):
 
     # ------------------------------------------------------------- setup --
     def setup(self):
-        from engine.camera import Camera, PITCH_MAX, PITCH_MIN
-        from engine.env import LightEnvironment
-        from engine.renderer import Renderer
-        from engine.scene_build import build_scene, load_json
-        from engine.shaders import get
+        from world3d.engine.camera import Camera, PITCH_MAX, PITCH_MIN
+        from world3d.engine.env import LightEnvironment
+        from world3d.engine.renderer import Renderer
+        from world3d.engine.scene_build import build_scene, load_json
+        from world3d.engine.shaders import get
 
         self._cam_pitch_lim = (PITCH_MIN, PITCH_MAX)
         self.msg = 'ready'
@@ -803,8 +803,8 @@ class DirectorApp(DemoApp):
 
     # ------------------------------------------------------- 场景重载 --
     def _reload_scene(self):
-        from engine.scene_build import build_scene, load_json, validate
-        from engine.shaders import get
+        from world3d.engine.scene_build import build_scene, load_json, validate
+        from world3d.engine.shaders import get
         try:
             data = load_json(self._scene_path)
         except Exception as e:

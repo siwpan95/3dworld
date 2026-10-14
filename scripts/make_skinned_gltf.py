@@ -12,7 +12,7 @@
 * 绑定姿态下 ``jointWorld == bindWorld`` ⇒ ``jointMatrix = jointWorld @ inverseBind = I``，
   顶点不动——这是验证蒙皮管线"绑定姿态不形变"的天然黄金判据；
 * 权重归一化（和为 1），关节索引不越界；
-* 生成后可用 ``engine.gltf.GLTF.load`` **自解析回读**做闭环校验（见
+* 生成后可用 ``world3d.engine.gltf.GLTF.load`` **自解析回读**做闭环校验（见
   ``tests/test_skin.py``）。
 
 运行::
@@ -30,7 +30,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from engine.mathkit import mat4_inverse, mat4_from_trs   # noqa: E402
+from world3d.engine.mathkit import mat4_inverse, mat4_from_trs   # noqa: E402
 
 # ---- 参数 ----
 NJ = 8                 # 关节数

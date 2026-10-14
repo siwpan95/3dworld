@@ -49,8 +49,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from world3d.platform.app import DemoApp, run
-from logic import blocks as B
-from logic.camera import look_at_matrix
+from world3d.logic import blocks as B
+from world3d.logic.camera import look_at_matrix
 
 # ---------------------------------------------------------------- 着色器 --
 WORLD_VS = '''#version 330 core

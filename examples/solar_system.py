@@ -68,8 +68,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from world3d.platform.app import DemoApp, orbit_camera_input, run
-from logic.animation import quat_from_axis_angle, quat_to_mat4
-from logic.skeleton import Skeleton
+from world3d.logic.animation import quat_from_axis_angle, quat_to_mat4
+from world3d.logic.skeleton import Skeleton
 
 # 统一时间缩放：真实 1 年（365.25 天）压缩成 19.05 秒。
 # 于是水星(0.2408y)→4.59s 一圈（60s 内 13 圈）、地球→19.05s（3.1 圈）、
@@ -441,7 +441,7 @@ class SolarSystemDemo(DemoApp):
         self.belt = self._build_belt(420)
 
         # --- 相机 ---
-        from logic.camera import OrbitCamera
+        from world3d.logic.camera import OrbitCamera
         self.camera = OrbitCamera(target=Vec3(0, 0, 0), yaw=42.0,
                                   pitch=OVERVIEW_PITCH, dist=60.0,
                                   pitch_range=CAM_PITCH_RANGE,

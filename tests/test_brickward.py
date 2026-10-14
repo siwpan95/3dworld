@@ -26,7 +26,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from games.brickward.kernel import (  # noqa: E402
+from world3d.games.brickward.kernel import (  # noqa: E402
     BrickwardKernel, DEMO_SEEDS, ELEMENTS, LEVELS, LEVEL_ART, WALL, FLOOR,
     CRATE, SPIKE, PLAYER, EXIT, BOMB, FIREBALL, FUSE, ROCK, SLIME,
     SLIME_PERIOD, BUTTON, DOOR, GOLD_DOOR, KEY,

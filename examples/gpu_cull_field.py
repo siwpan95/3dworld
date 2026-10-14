@@ -44,12 +44,12 @@ from pyglet.math import Mat4, Vec3                              # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from engine.app import EngineApp, run                           # noqa: E402
-from engine.camera import OrbitCamera                            # noqa: E402
-from engine.frustum import Frustum                               # noqa: E402
-from engine.geometry import sphere                               # noqa: E402
-from engine.gpu_cull import GpuCullSupport, GpuDrivenField       # noqa: E402
-from engine.shaders import get, get_compute                      # noqa: E402
+from world3d.engine.app import EngineApp, run                           # noqa: E402
+from world3d.engine.camera import OrbitCamera                            # noqa: E402
+from world3d.engine.frustum import Frustum                               # noqa: E402
+from world3d.engine.geometry import sphere                               # noqa: E402
+from world3d.engine.gpu_cull import GpuCullSupport, GpuDrivenField       # noqa: E402
+from world3d.engine.shaders import get, get_compute                      # noqa: E402
 
 TITLE = '3dworld GPU-Driven · 剔除+LOD+命令生成（P3-1）'
 HELP = ('ESC quit  F2 GPU/CPU cull  F3 LOD  SPACE pause  '

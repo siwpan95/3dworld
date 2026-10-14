@@ -40,7 +40,7 @@
 | 件 | 关系 |
 |----|------|
 | `engine/csm.py` / `volumetrics.py` / `dof.py` / `motionblur.py` | 帧图把它们的 pass 排在一条线上；三者的 GLSL **已由测试验证能拼进同一片段**（21 个 uniform） |
-| `cli/config_boot.py` | 同风格的门禁 CLI：`python -m cli.config_boot all` 验配置树，`python -m cli.frame_plan --all-toggles` 验帧图**16 种组合** |
+| `cli/config_boot.py` | 同风格的门禁 CLI：`python -m world3d.cli.config_boot all` 验配置树，`python -m world3d.cli.frame_plan --all-toggles` 验帧图**16 种组合** |
 | `host/tree.py` | 配置树管"有哪些服务"，帧图管"这一帧跑哪些 pass" —— 一个管装配、一个管每帧的调度 |
 
 ## 5. 已知不足 / 下一步（P3-b）

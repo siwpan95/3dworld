@@ -20,9 +20,9 @@ sys.path.insert(0, ROOT)
 import pyglet                                                   # noqa: E402
 pyglet.options['debug_gl'] = False
 
-from engine.camera import OrbitCamera                           # noqa: E402
-from engine.frustum import Frustum                              # noqa: E402
-from engine.gpu_cull import (GpuCullSupport, GpuDrivenField,    # noqa: E402
+from world3d.engine.camera import OrbitCamera                           # noqa: E402
+from world3d.engine.frustum import Frustum                              # noqa: E402
+from world3d.engine.gpu_cull import (GpuCullSupport, GpuDrivenField,    # noqa: E402
                              MAX_LOD, cpu_lod, cpu_reference)
 
 _WIN = None
@@ -78,7 +78,7 @@ def test_support_detect():
 
 def test_shaders_compile():
     _win()
-    from engine.shaders import get, get_compute
+    from world3d.engine.shaders import get, get_compute
     c = get_compute('gpu_cull')
     d = get('gpu_driven')
     assert c.id and d.id, (c.id, d.id)
@@ -88,7 +88,7 @@ def test_shaders_compile():
 def test_gpu_cull_matches_cpu():
     """**黄金判据**：GPU 判定的可见集合 == CPU 判定的可见集合（逐实例）。"""
     _win()
-    from engine.shaders import get_compute
+    from world3d.engine.shaders import get_compute
     mats, centers, radii, frustum, eye, _cam = _scene()
     field = GpuDrivenField(mats, centers, radii, LODS, get_compute('gpu_cull'))
     field.update(frustum, eye, LOD_DISTS)
@@ -110,7 +110,7 @@ def test_gpu_cull_matches_cpu():
 def test_lod_selection_and_grouping():
     """LOD 分组一致：GPU 各 LOD 可见数 == CPU 按同阈值分组计数。"""
     _win()
-    from engine.shaders import get_compute
+    from world3d.engine.shaders import get_compute
     mats, centers, radii, frustum, eye, _cam = _scene()
     field = GpuDrivenField(mats, centers, radii, LODS, get_compute('gpu_cull'))
     field.update(frustum, eye, LOD_DISTS)
@@ -137,7 +137,7 @@ def lv_all_of(eye, center):
 def test_command_layout():
     """命令生成正确：每条命令的 count/first 来自对应 LOD 段，instanceCount = 该 LOD 可见数。"""
     _win()
-    from engine.shaders import get_compute
+    from world3d.engine.shaders import get_compute
     mats, centers, radii, frustum, eye, _cam = _scene()
     field = GpuDrivenField(mats, centers, radii, LODS, get_compute('gpu_cull'))
     field.update(frustum, eye, LOD_DISTS)
@@ -156,8 +156,8 @@ def test_command_layout():
 def test_edge_cases():
     """边界：相机极近（全可见）与极远/背向（全剔除）。"""
     _win()
-    from engine.shaders import get_compute
-    from engine.gpu_cull import MAX_LOD as ML
+    from world3d.engine.shaders import get_compute
+    from world3d.engine.gpu_cull import MAX_LOD as ML
     # 把相机放到场内、fov 很大 -> 几乎全可见
     mats, centers, radii, frustum, eye, _cam = _scene(cam_dist=3.0)
     field = GpuDrivenField(mats, centers, radii, LODS, get_compute('gpu_cull'))

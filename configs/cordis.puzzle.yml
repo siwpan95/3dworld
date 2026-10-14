@@ -13,7 +13,7 @@
 # 本文件同时是 examples/boxward.py 的实际挂载声明（host.tree.mount_tree 加载本文件）——
 # 「demo 怎么挂的 = headless 验证怎么挂的」，接线只有这一份。
 #
-# 运行（headless 验证）：python -m cli.config_boot puzzle
+# 运行（headless 验证）：python -m world3d.cli.config_boot puzzle
 - name: render
   id: render
 - name: entity

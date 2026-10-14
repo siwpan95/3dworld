@@ -35,7 +35,7 @@
 
 | 步 | 内容 | 验收 |
 |----|------|------|
-| 1 | `contracts.py` 加 3 个 Protocol + `CORES` 注册（`WRAPPABLE`） | `python -c "import core.contracts as c; c.verify()"` 无 err |
+| 1 | `contracts.py` 加 3 个 Protocol + `CORES` 注册（`WRAPPABLE`） | `python -c "import world3d.core.contracts as c; c.verify()"` 无 err |
 | 2 | 三个 `core/xxx_core.py`（Service 实现） | 单测 |
 | 3 | `pathing_core.py` 加 `find_path`(A*) + `smooth` | 单测（含**无解**与**绕障**用例） |
 | 4 | `services/*.py` 包装 + `cordis.cores.yml` + `tree_boot.WANT_CORES` | `config_boot cores` 15 核全绿 |

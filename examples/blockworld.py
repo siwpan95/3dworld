@@ -51,8 +51,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from world3d.platform.app import DemoApp, run
-from engine.fixedstep import FixedStepper
-from logic import blocks as B
+from world3d.engine.fixedstep import FixedStepper
+from world3d.logic import blocks as B
 
 # ---------------------------------------------------------------- 着色器 --
 WORLD_VS = '''#version 330 core
@@ -262,7 +262,7 @@ class BlockWorldApp(DemoApp):
         self._find_spawn()
 
         # --- 相机（自由飞用的朝向容器；第一人称直接用它）---
-        from engine.camera import FlyCamera
+        from world3d.engine.camera import FlyCamera
         self.eye = FlyCamera(position=(self.px, self.py + self.EYE, self.pz),
                              fov=self.FOV, far=self.Z_FAR)
 

@@ -22,7 +22,7 @@ import sys
 
 import pyglet
 
-from presentation.kkrieger_app import KKApp
+from world3d.presentation.kkrieger_app import KKApp
 
 SHOTS = (
     (8.8,   os.path.join('docs', 'kkrieger_corridor.png')),

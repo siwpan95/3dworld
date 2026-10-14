@@ -50,9 +50,9 @@ from pyglet.window import mouse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from world3d.platform.app import DemoApp, run
-from logic.camera import OrbitCamera
-from engine.picking import ray_from_screen
-from engine.audio import Track, render_wav, SfxPlayer
+from world3d.logic.camera import OrbitCamera
+from world3d.engine.picking import ray_from_screen
+from world3d.engine.audio import Track, render_wav, SfxPlayer
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -60,8 +60,8 @@ if ROOT not in sys.path:
 
 # 试点三：挂载由 cordis.godhand.yml 配置树声明（host.tree 共享引导）；
 # 绘制所需几何常量从内核「包路径」取（单一模块身份，不再走顶层名双副本）
-from host.tree import WANT_GODHAND, config_path, mount_tree  # noqa: E402
-from games.godhand.kernel import HALF_T, SEA  # noqa: E402
+from world3d.host.tree import WANT_GODHAND, config_path, mount_tree  # noqa: E402
+from world3d.games.godhand.kernel import HALF_T, SEA  # noqa: E402
 
 SKY = (0.60, 0.72, 0.86)
 
@@ -178,7 +178,7 @@ class GodHandDemo(DemoApp):
         self._init_audio()
 
         # 胜负叠层
-        from engine.fonts import resolve_cjk_font
+        from world3d.engine.fonts import resolve_cjk_font
         fk = resolve_cjk_font()
         kw = {'font_name': fk} if fk else {}
         self.overlay = pyglet.text.Label('', font_size=54, color=(255, 230, 120, 255),

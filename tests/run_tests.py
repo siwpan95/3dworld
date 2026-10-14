@@ -13,11 +13,11 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pyglet.math import Vec3, Quaternion
-from logic.animation import (Sampler, Channel, Timeline, quat_from_axis_angle,
+from world3d.logic.animation import (Sampler, Channel, Timeline, quat_from_axis_angle,
                              quat_to_mat4, slerp)
-from logic.camera import OrbitCamera, look_at_matrix, PITCH_MIN, PITCH_MAX, DIST_MIN, DIST_MAX
-from logic.events import EventBus
-from logic.playback import PlaybackController
+from world3d.logic.camera import OrbitCamera, look_at_matrix, PITCH_MIN, PITCH_MAX, DIST_MIN, DIST_MAX
+from world3d.logic.events import EventBus
+from world3d.logic.playback import PlaybackController
 
 
 def test_camera_initial_pose():
@@ -49,7 +49,7 @@ def test_camera_custom_ranges():
 
     默认值必须原样不变——其余 demo 都依赖它（相机不入地、不贴脸）。
     """
-    from logic.camera import OrbitCamera
+    from world3d.logic.camera import OrbitCamera
     # 默认：与模块常量一致
     cam = OrbitCamera()
     assert cam.pitch_range == (PITCH_MIN, PITCH_MAX)
@@ -177,7 +177,7 @@ def test_timeline_wrap_and_sample():
 
 def test_demo_timeline_choreography():
     """M6：48s 五幕编排——通道齐全、时长正确、t=0 与 t=48 同帧（无缝循环）。"""
-    from logic.choreography import DURATION, build_world_timeline
+    from world3d.logic.choreography import DURATION, build_world_timeline
     meta = [(f'ring_{i}', Vec3(5, 0.5, 0)) for i in range(10)]
     meta.append(('center', Vec3(0, 1.0, 0)))
     meta += [(f'orb_{i}', Vec3(3.4, 2.2, 0)) for i in range(4)]
@@ -205,7 +205,7 @@ def test_demo_timeline_choreography():
 
 def test_choreography_pose_continuity():
     """五幕姿态函数：端点连续 + 幕边界不跳变（逐函数直测，快照式断言）。"""
-    from logic.choreography import (DURATION, center_pose, gem_pose, orb_pose,
+    from world3d.logic.choreography import (DURATION, center_pose, gem_pose, orb_pose,
                                     ring_pose, camera_pose, carry_weight)
 
     def quat_close(q0, q1):
@@ -235,9 +235,9 @@ def test_choreography_pose_continuity():
 
 def test_choreography_arm_ik():
     """第三幕角度由逆运动学解出：夹爪必须真的落在宝石/台座上（±0.3）。"""
-    from logic.choreography import (ARM_BASE, GEM_PLACED, GEM_REST, L1, L2,
+    from world3d.logic.choreography import (ARM_BASE, GEM_PLACED, GEM_REST, L1, L2,
                                     SHOULDER_H, arm_pose)
-    from logic.skeleton import Skeleton, build_arm, grip_world
+    from world3d.logic.skeleton import Skeleton, build_arm, grip_world
 
     def grip_at(t):
         skel = Skeleton()
@@ -262,7 +262,7 @@ def test_choreography_arm_ik():
 
 def test_animation_material_channels():
     """M6：Channel 支持 tint/glow（材质通道），TRS 之外不误放行未知属性。"""
-    from logic.animation import Channel, Sampler, Timeline
+    from world3d.logic.animation import Channel, Sampler, Timeline
     ch_tint = Channel('n', 'tint', Sampler([0.0, 1.0], [Vec3(1, 1, 1), Vec3(2, 1, 0.5)]))
     ch_glow = Channel('n', 'glow', Sampler([0.0, 1.0], [0.0, 1.0]))
     tl = Timeline(1.0, [ch_tint, ch_glow])
@@ -335,7 +335,7 @@ def test_playback_speed_and_seek():
 
 def test_ui_hit_testing():
     """UI 命中测试（staticmethod，无需 GL 实例）——回归 M3 的漏参缺陷。"""
-    from presentation.timeline_ui import TimelineUI
+    from world3d.presentation.timeline_ui import TimelineUI
     f = TimelineUI._in_rect
     assert f(50, 30, 12, 12, 100, 46, pad=0)       # 面板内部
     assert not f(5, 300, 12, 12, 100, 46, pad=0)   # 面板外
@@ -351,7 +351,7 @@ def test_blocks_atlas_and_world():
     贴图是"生成规则"而不是图片文件 ⇒ 「同代码两次跑出同一张图」得靠测试锁住：
     一旦有人用了 `hash()`（带进程随机盐），截图与单测都会失去意义。
     """
-    from logic import blocks as B
+    from world3d.logic import blocks as B
 
     w1, h1, px1, idx1 = B.atlas_pixels()
     w2, h2, px2, idx2 = B.atlas_pixels()
@@ -405,7 +405,7 @@ def test_blocks_atlas_and_world():
 
 def test_blocks_sky_and_acts():
     """昼夜曲线与五幕：日出→正午→日落→入夜，且 t=0 与 t=48 同帧（循环无缝）。"""
-    from logic import blocks as B
+    from world3d.logic import blocks as B
 
     dawn = B.sky_state(B.day_phase(0.0))
     noon = B.sky_state(B.day_phase(20.0))
@@ -438,7 +438,7 @@ def test_blocks_camera_and_mobs():
     净空检查在本轮抓过三类真缺陷：镜头钻进树冠、注视点被屋顶挡、土路穿过房子。
     这类问题只有出了截图才看得见 ⇒ 必须机械化。
     """
-    from logic import blocks as B
+    from world3d.logic import blocks as B
 
     bl, hh, tr, hs = B.generate_world()
     bad = B.camera_clearance(bl)
@@ -468,7 +468,7 @@ def test_blocks_camera_and_mobs():
 def test_model_timeline_channels():
     """M4/M6：外部模型（宝石）应有 translation/rotation 通道，且被夹持时段
     的位置由 carry_weight 交给夹爪——这里验证"静置点"与"落座点"两个关键帧。"""
-    from logic.choreography import (DURATION, GEM_PLACED, GEM_REST,
+    from world3d.logic.choreography import (DURATION, GEM_PLACED, GEM_REST,
                                     build_world_timeline, carry_weight)
     tl = build_world_timeline([('ring_0', Vec3(5, 0.5, 0))],
                               [('model_0', GEM_REST)])
@@ -501,7 +501,7 @@ def test_skeleton_hierarchy():
 
     机械臂现在是四级：转台(Y) → 大臂(Z) → 小臂(Z) → 夹爪。
     """
-    from logic.skeleton import Skeleton, build_arm, grip_world
+    from world3d.logic.skeleton import Skeleton, build_arm, grip_world
     skel = Skeleton()
     build_arm(skel, base=Vec3(-6, 0, -3))
     assert skel.nodes['seg1'].parent is skel.nodes['turret']
@@ -529,7 +529,7 @@ def test_skeleton_hierarchy():
 
 def test_arm_channels():
     """M6：机械臂通道来自 choreography（转台绕 Y、两段绕 Z），且首尾同姿态。"""
-    from logic.choreography import DURATION, arm_pose, build_world_timeline
+    from world3d.logic.choreography import DURATION, arm_pose, build_world_timeline
     chs = build_world_timeline([], [])
     arm = [c for c in chs.channels if c.node in ('turret', 'seg1', 'seg2')]
     assert {c.node for c in arm} == {'turret', 'seg1', 'seg2'}
@@ -544,7 +544,7 @@ def test_arm_channels():
 
 def test_kkrieger_timeline():
     """M6+扩展：kkrieger 150s 六幕——相机键帧、场景对象循环连续、材质通道。"""
-    from logic.kkrieger import (ACTS, CAM, CAM_TGT, DURATION, KNOT,
+    from world3d.logic.kkrieger import (ACTS, CAM, CAM_TGT, DURATION, KNOT,
                                 build_kkrieger_timeline)
     meta = ([('monument_ring_%d' % i, Vec3(0, 4.4, -66)) for i in range(5)]
             + [('monument_core', Vec3(0, 4.4, -66)), ('beam', Vec3(0, 4.4, -66)),
@@ -590,7 +590,7 @@ def test_kkrieger_timeline():
         if g0 is not None:
             assert abs(g0 - g1) < 1e-6, (name, 'glow')
     # 门：开场关、第一幕全开、撤离后重新关上
-    from logic.kkrieger import DOOR_CLOSE_T, DOOR_OPEN_T
+    from world3d.logic.kkrieger import DOOR_CLOSE_T, DOOR_OPEN_T
     for i in range(3):
         tl.seek(0.0)
         assert tl.sample()[f'door{i}_a']['translation'].x == 0.0
@@ -599,7 +599,7 @@ def test_kkrieger_timeline():
         tl.seek(DOOR_CLOSE_T[i] + 2.5)
         assert abs(tl.sample()[f'door{i}_a']['translation'].x) < 0.01
         # 第五幕重启突入：舱门速开速闭（开/闭都晚于镜头过门时刻）
-        from logic.kkrieger import V_DOOR_CLOSE_T, V_DOOR_OPEN_T
+        from world3d.logic.kkrieger import V_DOOR_CLOSE_T, V_DOOR_OPEN_T
         tl.seek(V_DOOR_OPEN_T[i] + 1.5)
         assert abs(tl.sample()[f'door{i}_a']['translation'].x) > 1.5
         tl.seek(V_DOOR_CLOSE_T[i] + 1.5)
@@ -650,8 +650,8 @@ def test_kkrieger_timeline():
 
 def test_nordic_saga_timeline():
     """诺德之境 60s 五幕：相机/龙轨迹/符文/周期件全链路（无窗口）。"""
-    from logic import nordic_saga as ns
-    from logic.nordic_scene import DRAGON_HOVER
+    from world3d.logic import nordic_saga as ns
+    from world3d.logic.nordic_scene import DRAGON_HOVER
     assert ns.DURATION == 60.0
     assert len(ns.ACTS) == 5 and ns.ACTS[0][0] == 0.0 and ns.ACTS[4][0] == 50.0
     # 相机循环闭合：t=0 与 t=60 完全一致
@@ -706,8 +706,8 @@ def test_nordic_saga_timeline():
 
 def test_nordic_camera_path_clearance():
     """诺德之境镜头净空：不穿地、不撞龙语墙/石柱/拱门，且不贴脸巨龙。"""
-    from logic import nordic_saga as ns
-    from logic.nordic_scene import COL_ROWS, COL_X
+    from world3d.logic import nordic_saga as ns
+    from world3d.logic.nordic_scene import COL_ROWS, COL_X
     t = 0.0
     while t <= ns.DURATION:
         eye, _ = ns.camera_pose(t)
@@ -734,7 +734,7 @@ def test_nordic_camera_path_clearance():
 
 def test_nordic_scene_geometry():
     """诺德之境静态几何：无窗口构建、UV 完整、规模合理（回归 merge 丢 UV）。"""
-    from logic import nordic_scene as nsc
+    from world3d.logic import nordic_scene as nsc
     acc = {}
     nsc._add_ground(acc)
     nsc._add_mountains(acc)
@@ -744,7 +744,7 @@ def test_nordic_scene_geometry():
     nsc._add_ruins(acc)
     nsc._add_campfire(acc)
     nsc._add_details(acc)
-    from engine.geometry import merge_meshes
+    from world3d.engine.geometry import merge_meshes
     total = 0
     tris = 0
     for key, mds in acc.items():
@@ -770,8 +770,8 @@ def test_kkrieger_camera_path_clearance():
 
     这一条是给"看着还行"的运镜兜底的——早期机身位就卡在大厅立柱里。
     """
-    from logic.kkrieger import camera_pose, DURATION
-    from presentation.kkrieger_scene import (ATRIUM_H, CORRIDOR_H, CORRIDOR_W, DOOR_Z,
+    from world3d.logic.kkrieger import camera_pose, DURATION
+    from world3d.presentation.kkrieger_scene import (ATRIUM_H, CORRIDOR_H, CORRIDOR_W, DOOR_Z,
                                      MONUMENT, ATRIUM_Z0)
     columns = [(-5.5, -60), (5.5, -60), (-5.5, -72), (5.5, -72), (-7.0, -66), (7.0, -66)]
     # 两次"白闪传送"是全屏爆亮遮蔽下的刻意剪辑（117.9→118.2 进圣殿、
@@ -808,7 +808,7 @@ def test_kkrieger_camera_path_clearance():
 
 
 def test_box_data_pivot():
-    from core.geometry import box_data
+    from world3d.core.geometry import box_data
     v, c = box_data(0.4, 2.4, 0.4, 0, 1.2, 0, (1, 1, 1))
     assert len(v) == 108 and len(c) == 144        # position vec3 / colors vec4
     ys = v[1::3]                                  # y 分量
@@ -819,7 +819,7 @@ def test_box_data_pivot():
 def test_boids_flock():
     """examples/boids 的逻辑层：可复现、有界、限速、捕食者会把鸟群推开。"""
     import time
-    from logic.boids import Flock
+    from world3d.logic.boids import Flock
 
     def run(seed, steps=40):
         f = Flock(count=60, bounds=30.0, seed=seed)
@@ -861,7 +861,7 @@ def test_boids_flock():
 def test_waves_math():
     """examples/water_waves 的逻辑层：Gerstner 波的高度/梯度/法线自洽，且 CPU 侧
     与着色器共用同一套公式（这里锁死解析性质）。"""
-    from logic.waves import (default_waves, gerstner_gradient, gerstner_height,
+    from world3d.logic.waves import (default_waves, gerstner_gradient, gerstner_height,
                              gerstner_normal, sample_surface, scaled_preset,
                              wave_presets, Wave)
 
@@ -1024,7 +1024,7 @@ def test_kid_a_templates_valid():
     玩家从西侧进入会撞墙。此测试即防这类"分类错误"回归。
     """
     import random
-    from logic import kid_a as K
+    from world3d.logic import kid_a as K
     rng = random.Random(12345)
     exits_pos = {'N': ((0, 9), (0, 10), (0, 11)),
                  'S': ((20, 9), (20, 10), (20, 11)),
@@ -1044,7 +1044,7 @@ def test_kid_a_templates_valid():
 
 def test_kid_a_worldmap_exits_connected():
     """相邻区块出口必须互连（我声明 N，北邻必须声明 S）——否则走出即撞墙。"""
-    from logic import kid_a as K
+    from world3d.logic import kid_a as K
     wm = K.WorldMap(seed=99)
     wm.ensure_neighbors(0, 0)
     for (cx, cy), ex in wm.exits.items():
@@ -1061,7 +1061,7 @@ def test_kid_a_worldmap_exits_connected():
 
 def test_kid_a_energy_and_fragments():
     """能量：保护期不扣、之后移动 1/s、红区 +3/s；碎片：同键不可重复收集。"""
-    from logic import kid_a as K
+    from world3d.logic import kid_a as K
     e = K.EnergySystem()
     for _ in range(60):                                    # 1s（保护期内）
         e.update(1 / 60, K.AIR, True, False)
@@ -1090,7 +1090,7 @@ def test_kid_a_doors_connected():
     """
     import collections
     import random
-    from logic import kid_a as K
+    from world3d.logic import kid_a as K
     inner = {'N': (1, 10), 'S': (19, 10), 'W': (10, 1), 'E': (10, 19)}
 
     def reach(grid, start):
@@ -1153,14 +1153,14 @@ def test_kid_a_doors_connected():
 # ============================================================ P1-④ 归仓 / Boxward ==
 def _bare_grid(seed=1, n=13, boxes=4):
     """绕开 cordis Service 构造（不需 ctx）的 GridService（solve/generate 均 ctx-free）。"""
-    from games.puzzle import kernel as pk
+    from world3d.games.puzzle import kernel as pk
     g = object.__new__(pk.GridService)
     g.seed, g.n, g.box_total = seed, n, boxes
     return g
 
 
 def test_greedy_merge_rects():
-    from engine import greedy_mesh as gm
+    from world3d.engine import greedy_mesh as gm
     mask = [[True, True], [True, True]]
     assert gm.merge_rects(mask, 2, 2) == [(0, 0, 2, 2)]
     mask = [[True, True, False], [True, False, False]]
@@ -1171,7 +1171,7 @@ def test_greedy_merge_rects():
 
 
 def test_greedy_mesh_layer_counts():
-    from engine import greedy_mesh as gm
+    from world3d.engine import greedy_mesh as gm
     walls = {(i, j) for i in range(1, 4) for j in range(1, 4)}   # 7x7 场地中央 3x3 墙块
     pos, shade = gm.layer_mesh(walls, 7, 7)
     assert len(pos) % 18 == 0, '三角汤必须是整 quad（18 float）'
@@ -1225,7 +1225,7 @@ def test_solver_unsolvable():
 
 def test_generate_solvable_by_construction():
     g = _bare_grid(seed=20261010)
-    from games.puzzle.kernel import MIN_PUSHES
+    from world3d.games.puzzle.kernel import MIN_PUSHES
     for seed in (20261010, 11, 22):
         data = g.generate(seed)
         sol = g.solve(data)
@@ -1237,7 +1237,7 @@ def test_generate_solvable_by_construction():
 
 
 def test_cam_move_dirs_mapping():
-    from games.puzzle.kernel import cam_move_dirs
+    from world3d.games.puzzle.kernel import cam_move_dirs
     d0 = cam_move_dirs(0)                      # 相机在 +x 看 -x
     assert d0['W'] == (0, -1) and d0['S'] == (0, 1)
     assert d0['D'] == (-1, 0) and d0['A'] == (1, 0)
@@ -1253,7 +1253,7 @@ def test_cam_move_dirs_mapping():
 # ============================================== P1-⑤ 弹潮 / Swarmward ==
 def test_pulse_chart_constraints():
     """§16 谱面：时长精确、同轨最小间隔 ≥ 1/8 拍、密度上限、种子复现。"""
-    from games.pulse.kernel import BARS, BPM_LIST, N_TRACKS, chart
+    from world3d.games.pulse.kernel import BARS, BPM_LIST, N_TRACKS, chart
     for bpm in BPM_LIST:
         notes, synth, meta = chart(20261012, bpm, BARS)
         assert abs(meta['duration'] - BARS * 4 * 60.0 / bpm) < 1e-6, '时长不准'
@@ -1274,7 +1274,7 @@ def test_pulse_chart_constraints():
 
 def test_pulse_judge_windows():
     """§16 判定窗与准确率口径。"""
-    from games.pulse.kernel import (GOOD_MS, PERFECT_MS, accuracy, judge)
+    from world3d.games.pulse.kernel import (GOOD_MS, PERFECT_MS, accuracy, judge)
     assert judge(0.0) == 'PERFECT' and judge(-PERFECT_MS) == 'PERFECT'
     assert judge(PERFECT_MS + 0.1) == 'GOOD' and judge(-GOOD_MS) == 'GOOD'
     assert judge(GOOD_MS + 0.1) == 'MISS' and judge(-999.0) == 'MISS'
@@ -1286,7 +1286,7 @@ def test_pulse_judge_windows():
 
 def test_void_market_deterministic():
     """§15 市场：价格确定性（同参一致、换种子变化、站间有价差）。"""
-    from games.void.kernel import STATIONS, station_price
+    from world3d.games.void.kernel import STATIONS, station_price
     st = STATIONS[1]
     a = station_price('chips', st, 88.0, 20261012, {})
     assert a == station_price('chips', st, 88.0, 20261012, {}), '同参价格不一致'
@@ -1302,7 +1302,7 @@ def test_void_market_deterministic():
 
 def test_void_shock_and_reversion():
     """§15 事件冲击方向 + 均值回归（长期围绕基准波动）。"""
-    from games.void.kernel import (GOODS, STATIONS, mean_reversion_gap,
+    from world3d.games.void.kernel import (GOODS, STATIONS, mean_reversion_gap,
                                                 shock_at, shock_table, station_price)
     p0 = station_price('meds', STATIONS[3], 40.0, 7, {})
     p1 = station_price('meds', STATIONS[3], 40.0, 7, {('lumen', 'meds'): 0.30})
@@ -1319,7 +1319,7 @@ def test_void_shock_and_reversion():
 
 def test_void_station_geometry():
     """§15 星系几何：4 站点、最近站点查询、停靠半径。"""
-    from games.void.kernel import DOCK_R, STATIONS, nearest_station
+    from world3d.games.void.kernel import DOCK_R, STATIONS, nearest_station
     assert len(STATIONS) == 4, len(STATIONS)
     kinds = {s['kind'] for s in STATIONS}
     assert kinds == {'station', 'planet'}, kinds
@@ -1333,7 +1333,7 @@ def test_void_station_geometry():
 
 def test_hall_hit_test():
     """§14 热点命中：矩形内/外/边界。"""
-    from games.hall.kernel import hit_test
+    from world3d.games.hall.kernel import hit_test
     a = [0.2, 0.3, 0.4, 0.2]                     # x∈[0.2,0.6] y∈[0.3,0.5]
     assert hit_test(a, 0.2, 0.3) and hit_test(a, 0.6, 0.5), '边界应算命中'
     assert hit_test(a, 0.4, 0.4), '中心应命中'
@@ -1343,7 +1343,7 @@ def test_hall_hit_test():
 
 def test_hall_graph_connectivity():
     """§14 节点图：邻接查询 + BFS 可达（3 景连通，断边后收缩）。"""
-    from games.hall.kernel import (DEFAULT_SCENE, graph_neighbors,
+    from world3d.games.hall.kernel import (DEFAULT_SCENE, graph_neighbors,
                                                 graph_reachable)
     edges = DEFAULT_SCENE['edges']
     assert set(graph_neighbors(edges, 'hall')) == {'atrium', 'vault'}
@@ -1355,7 +1355,7 @@ def test_hall_graph_connectivity():
 
 def test_hall_puzzle_state_machine():
     """§14 谜题状态机：顺序解锁（flag 逐个点亮，全亮返回 None；乱序不跳步）。"""
-    from games.hall.kernel import DEFAULT_SCENE, next_step
+    from world3d.games.hall.kernel import DEFAULT_SCENE, next_step
     steps = DEFAULT_SCENE['puzzle']['steps']
     flags, order = set(), []
     for _ in range(len(steps) + 1):
@@ -1372,7 +1372,7 @@ def test_hall_puzzle_state_machine():
 
 def test_hall_scene_validate():
     """§14 场景校验：6 类坏结构必须被拒（热重载要能挡住坏 JSON）。"""
-    from games.hall.kernel import DEFAULT_SCENE, validate_scene
+    from world3d.games.hall.kernel import DEFAULT_SCENE, validate_scene
     ok, err = validate_scene(DEFAULT_SCENE)
     assert ok, err
     for bad in (
@@ -1389,7 +1389,7 @@ def test_hall_scene_validate():
 
 def test_storm_emit_plan():
     """§13 弹幕图案生成器：确定性 + 五图案非空 + 密度可预期 + 环爆角度覆盖。"""
-    from games.storm.kernel import emit_plan
+    from world3d.games.storm.kernel import emit_plan
     # 确定性（同参数同计划）——headless 与实机看到的弹幕必须一致
     for p in ('spiral', 'flower', 'fan', 'ring_burst', 'sweep'):
         a = emit_plan(p, 1.234, phase=0.5, count=12, aim=0.3)
@@ -1409,7 +1409,7 @@ def test_storm_emit_plan():
 
 def test_storm_boss_phase():
     """§13 boss 三阶段：阈值 66%/50% 切换，单调不回头；血量随波号递增。"""
-    from games.storm.kernel import (boss_hp_for_wave, boss_phase,
+    from world3d.games.storm.kernel import (boss_hp_for_wave, boss_phase,
                                                  is_boss_wave)
     # 阈值是严格大于：66% 落 P2，50% 落 P3
     assert [boss_phase(h, 100) for h in (100, 80, 67, 66, 51, 50, 34)] == [1, 1, 1, 2, 2, 3, 3]
@@ -1423,7 +1423,7 @@ def test_storm_boss_phase():
 
 def test_storm_boss_wave_plan():
     """§13 boss 波：wave_plan 标出 is_boss 且小兵减量（boss 是主角）。"""
-    from games.storm.kernel import wave_plan
+    from world3d.games.storm.kernel import wave_plan
     w5 = wave_plan(20261011, 4)      # 0 基 4 -> 1 基 5
     w9 = wave_plan(20261011, 8)      # 1 基 9（非 boss）
     w10 = wave_plan(20261011, 9)     # 1 基 10
@@ -1435,7 +1435,7 @@ def test_storm_boss_wave_plan():
 
 
 def test_wave_plan_monotonic():
-    from games.storm.kernel import wave_plan
+    from world3d.games.storm.kernel import wave_plan
     plans = [wave_plan(20261011, i) for i in range(10)]
     # v1.1：boss 波（1 基 5/10）的小兵数**故意减量**（boss 是主角）——
     # 敌数单调性只在非 boss 波之间成立。
@@ -1450,8 +1450,8 @@ def test_wave_plan_monotonic():
 
 
 def test_formation_layout():
-    from core.pathing_core import PathingService
-    from games.storm.kernel import _layout_points
+    from world3d.core.pathing_core import PathingService
+    from world3d.games.storm.kernel import _layout_points
     # line：5 点共线等距
     pts = _layout_points('line', (0.0, 0.0), 5, 1.3)
     assert len(pts) == 5
@@ -1476,7 +1476,7 @@ def test_formation_layout():
 
 
 def test_circle_hit():
-    from games.storm.kernel import _circle_hit
+    from world3d.games.storm.kernel import _circle_hit
     assert _circle_hit(0, 0, 0.5, 0.8, 0, 0.5) is True        # 距离 0.8 < r+r=1.0
     assert _circle_hit(0, 0, 0.5, 2.0, 0, 0.5) is False       # 距离 2.0 > 1.0
     assert _circle_hit(0, 0, 0.5, 1.0, 0, 0.5) is True        # 相切算命中
@@ -1484,7 +1484,7 @@ def test_circle_hit():
 
 
 def test_combo_window():
-    from games.storm.kernel import StormKernel, COMBO_WINDOW
+    from world3d.games.storm.kernel import StormKernel, COMBO_WINDOW
     bump = StormKernel._bump_combo                             # 裸方法调用
     assert bump(None, 2, 1.0, 2.0) == 3                        # 窗口内累积（now-combo_t=1）
     assert bump(None, 5, 0.0, 10.0) == 1                       # 超窗重计（now-combo_t=10）
@@ -1493,7 +1493,7 @@ def test_combo_window():
 
 
 def pk_level(art, name):
-    from games.puzzle.kernel import parse_level
+    from world3d.games.puzzle.kernel import parse_level
     return parse_level(art, name)
 
 

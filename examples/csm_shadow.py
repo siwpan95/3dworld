@@ -47,11 +47,11 @@ from pyglet.window import key
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from world3d.platform.app import DemoApp, orbit_camera_input, run  # noqa: E402
-from core.geometry import box_data  # noqa: E402
-from engine.csm import (MAX_CASCADES, csm_glsl, csm_matrices,  # noqa: E402
+from world3d.core.geometry import box_data  # noqa: E402
+from world3d.engine.csm import (MAX_CASCADES, csm_glsl, csm_matrices,  # noqa: E402
                         csm_uniforms, mat4_as_Mat4)
-from engine.mathkit import mat4_from_Mat4  # noqa: E402
-from logic.camera import OrbitCamera  # noqa: E402
+from world3d.engine.mathkit import mat4_from_Mat4  # noqa: E402
+from world3d.logic.camera import OrbitCamera  # noqa: E402
 
 # ---------------------------------------------------------------- 着色器 --
 DEPTH_VS = '''#version 330 core
@@ -120,7 +120,7 @@ void main() {
         base *= (0.66 + 0.34 * c);
     }
 
-    // csm_shadow 返回 **1 = 在阴影里**（与 `engine.csm` 的约定一致）
+    // csm_shadow 返回 **1 = 在阴影里**（与 `world3d.engine.csm` 的约定一致）
     float sh = (u_shadow_on > 0.5) ? csm_shadow(v_world, z_view, ndl) : 0.0;
 
     float amb = 0.34 + 0.12 * max(n.y, 0.0);          // 天光：朝上的面更亮
@@ -202,8 +202,8 @@ class CsmShadowApp(DemoApp):
         self.cam = OrbitCamera(target=Vec3(0, 0, -80), yaw=228.0, pitch=42.0,
                                dist=195.0, pitch_range=(10.0, 62.0),
                                dist_range=(60.0, 300.0))
-        # `logic.camera.OrbitCamera` 是兼容层，只透传 orbit 的参数；fov/near/far 直接改属性
-        # （`engine.camera.Camera` 就是普通属性）。far 要给足：场景纵深 200 + 相机高度 130。
+        # `world3d.logic.camera.OrbitCamera` 是兼容层，只透传 orbit 的参数；fov/near/far 直接改属性
+        # （`world3d.engine.camera.Camera` 就是普通属性）。far 要给足：场景纵深 200 + 相机高度 130。
         self.cam.fov = 50.0
         self.cam.near = 0.5
         self.cam.far = 900.0

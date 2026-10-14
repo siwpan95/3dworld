@@ -22,7 +22,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from engine.framegraph import (SEQUENCE_OF_DEPTH_EFFECTS, FrameGraph,  # noqa: E402
+from world3d.engine.framegraph import (SEQUENCE_OF_DEPTH_EFFECTS, FrameGraph,  # noqa: E402
                                FrameGraphError, standard_3d_plan)
 
 

@@ -7,10 +7,10 @@
 
 分层（与既有内核 demo 一致「逻辑在 Cordis、表现由宿主」）：
 
-- setup()   经 asyncio 引导 `cordis.brickward.yml` 配置树（`host.tree.mount_tree`），
+- setup()   经 asyncio 引导 `cordis.brickward.yml` 配置树（`world3d.host.tree.mount_tree`），
             内核装载关卡；`render` 服务随同一棵配置树挂载（与 headless 验证同一个入口）；
 - update()  键盘走子 / `--flag auto` 的**求解器回放**交给内核，事件转音效；
-- render()  只读内核 `snapshot()`：**墙 = 贪心合并网格**（`engine.greedy_mesh`，一次建网），
+- render()  只读内核 `snapshot()`：**墙 = 贪心合并网格**（`world3d.engine.greedy_mesh`，一次建网），
             其余元素 = 共享小网格逐个 batch（`u_model` 平移/缩放/旋转），
             **正交等距视角**（偏航 +45°，Q/E 切 90° 档；俯角 P 键循环）。
 
@@ -49,17 +49,17 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from host.tree import WANT_BRICKWARD, config_path, mount_tree  # noqa: E402
-from games.brickward.kernel import (  # noqa: E402
+from world3d.host.tree import WANT_BRICKWARD, config_path, mount_tree  # noqa: E402
+from world3d.games.brickward.kernel import (  # noqa: E402
     BOMB, BUTTON, CRATE, DOOR, EXIT, FIREBALL, FLOOR, GOLD_DOOR, KEY, LEVER,
     LEVELS, PLAYER, ROCK, SLIME, SPIKE, WALL,
     generate, level_add_link, level_blank, level_clear_links, level_from_json,
     level_set_cell, level_to_json, solve_level, validate_level,
 )
-from engine.baked_mesh import unit_cube, unit_sphere  # noqa: E402
-from engine.greedy_mesh import layer_mesh  # noqa: E402
-from engine.picking import ray_from_screen  # noqa: E402
-from logic.camera import OrbitCamera  # noqa: E402
+from world3d.engine.baked_mesh import unit_cube, unit_sphere  # noqa: E402
+from world3d.engine.greedy_mesh import layer_mesh  # noqa: E402
+from world3d.engine.picking import ray_from_screen  # noqa: E402
+from world3d.logic.camera import OrbitCamera  # noqa: E402
 
 VERTEX_SRC = '''#version 330 core
 in vec3 position;
@@ -258,7 +258,7 @@ class BrickwardDemo(DemoApp):
                                   on_mouse_scroll=self._on_scroll)
         self._init_audio()
 
-        from engine.fonts import resolve_cjk_font
+        from world3d.engine.fonts import resolve_cjk_font
         fk = resolve_cjk_font()
         kw = {'font_name': fk} if fk else {}
         self.overlay = pyglet.text.Label('', font_size=44, color=(255, 235, 130, 255),
@@ -789,7 +789,7 @@ class BrickwardDemo(DemoApp):
             self._make_sfx('blocked', 130, 95, 'square', 0.07)
             self._make_sfx('die', 320, 90, 'triangle', 0.36)
             self._make_sfx('win', 523, 784, 'triangle', 0.50)
-            from engine.audio import SfxPlayer
+            from world3d.engine.audio import SfxPlayer
             self.sfx = SfxPlayer(d, names=('move', 'push', 'ignite', 'roll', 'unlock',
                                            'boom', 'blocked', 'die', 'win'), gain=0.45)
         except Exception as e:
@@ -797,7 +797,7 @@ class BrickwardDemo(DemoApp):
             self.sfx = None
 
     def _make_sfx(self, name, f0, f1, wave, dur):
-        from engine.audio import Track, render_wav
+        from world3d.engine.audio import Track, render_wav
         tr = Track(dur, rate=32000)
         tr.tone(0.0, dur, f0, f1, wave=wave, amp=0.3,
                 attack=0.005, release=dur * 0.45)

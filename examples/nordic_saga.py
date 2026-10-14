@@ -37,16 +37,16 @@ from pyglet.math import Vec3                                      # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from logic.nordic_scene import (CAMPFIRE, build_nordic_scene,      # noqa: E402
+from world3d.logic.nordic_scene import (CAMPFIRE, build_nordic_scene,      # noqa: E402
                                snow_height)
-from engine.app import EngineApp, run                             # noqa: E402
-from engine.camera import Camera                                  # noqa: E402
-from engine.env import LightEnvironment                           # noqa: E402
-from engine.renderer import Renderer                              # noqa: E402
-from engine.scene import Scene                                    # noqa: E402
-from engine.shaders import get                                    # noqa: E402
-from logic.nordic_audio import ensure_ost                         # noqa: E402
-from logic import nordic_saga as NS                               # noqa: E402
+from world3d.engine.app import EngineApp, run                             # noqa: E402
+from world3d.engine.camera import Camera                                  # noqa: E402
+from world3d.engine.env import LightEnvironment                           # noqa: E402
+from world3d.engine.renderer import Renderer                              # noqa: E402
+from world3d.engine.scene import Scene                                    # noqa: E402
+from world3d.engine.shaders import get                                    # noqa: E402
+from world3d.logic.nordic_audio import ensure_ost                         # noqa: E402
+from world3d.logic import nordic_saga as NS                               # noqa: E402
 
 TITLE = '3dworld · 诺德之境 — 上古卷轴风格雪原（程序化几何/纹理/配乐）'
 HELP = ('ESC quit  SPACE pause  F2 perf  B bloom  O ssao  '
@@ -107,7 +107,7 @@ class NordicSagaApp(EngineApp):
         self.audio = None
         try:
             wav = ensure_ost(duration=DURATION)
-            from engine.audio import TimelineAudio
+            from world3d.engine.audio import TimelineAudio
             self.audio = TimelineAudio(wav, loop=True, volume=0.8)
             if self.audio.ok:
                 self.audio.play()
@@ -250,7 +250,7 @@ class NordicSagaApp(EngineApp):
 
 
 def _axis_quat(axis, deg):
-    from engine.mathkit import quat_from_axis_angle
+    from world3d.engine.mathkit import quat_from_axis_angle
     return quat_from_axis_angle(axis, deg)
 
 

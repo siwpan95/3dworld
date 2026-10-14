@@ -70,7 +70,7 @@ def _read_shots(path, name):
 
     注意要同时把项目根与 examples/ 塞进 sys.path：本脚本以 ``python scripts/…``
     启动时 ``sys.path[0]`` 是 scripts/，直接 exec_module 会 ImportError
-    （demo 里的 ``from logic.x import y`` 找不到包）。
+    （demo 里的 ``from world3d.logic.x import y`` 找不到包）。
     """
     saved = list(sys.path)
     sys.path.insert(0, EXAMPLES_DIR)

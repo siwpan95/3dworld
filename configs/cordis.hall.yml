@@ -10,7 +10,7 @@
 #   scene —— 外部场景 JSON 路径（留空 = 用内核内置样例：3 景 3 谜）
 #            与 scene_viewer / 「LLM 场景生成工作流」同 schema（nodes/edges/puzzle）
 #
-# 运行（headless 验证）：python -m cli.config_boot hall
+# 运行（headless 验证）：python -m world3d.cli.config_boot hall
 - name: render
   id: render
 - name: rules

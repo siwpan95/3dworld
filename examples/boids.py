@@ -2,7 +2,7 @@
 """Boids 3D 鸟群 —— **原生实例化渲染**（pyglet 2.1.16 ``vertex_list_instanced``）。
 
 结构照抄 ``examples/demoscene_tunnel.py`` 的骨架（``platform.app.DemoApp``），
-逻辑层用 ``logic.boids.Flock``（纯数学、无 GL），本文件只负责"把状态画出来"。
+逻辑层用 ``world3d.logic.boids.Flock``（纯数学、无 GL），本文件只负责"把状态画出来"。
 
 ## 为什么要用实例化
 
@@ -71,8 +71,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from world3d.platform.app import DemoApp, orbit_camera_input, run
-from logic.boids import DOMAIN, Flock, PRESET_LABELS
-from logic.camera import OrbitCamera
+from world3d.logic.boids import DOMAIN, Flock, PRESET_LABELS
+from world3d.logic.camera import OrbitCamera
 
 N_BOIDS = 340                 # 300~500 区间；340 时 step 约 9.5 ms，留出渲染余量
 CAM_TARGET = Vec3(0.0, 0.0, 0.0)

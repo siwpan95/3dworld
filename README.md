@@ -29,45 +29,52 @@
 ## 项目结构
 
 ```
-core/                核心层：窗口/渲染/几何/资源（允许 pyglet.gl）
-  geometry.py          立方体/盒体/地面/静态合并盒体构建（ShaderProgram.vertex_list）
-  renderer.py          世界渲染器：地面+静态装饰 / 动画立方体(含 tint,glow) / 外部模型 / 机械臂
-  resources.py         外部模型加载（当前 .obj；pyglet 升级后 .glb 即插即用）
-  kkrieger_scene.py    kkrieger 场景：程序化走廊+大厅、舱门/灯带/全息框/能量束、雾效着色器
-logic/               逻辑层：场景与动画（禁止 pyglet.gl，可无窗口单测）
-  animation.py         时间轴/关键帧/插值（glTF TRS 对齐 + tint/glow 材质通道）
-  choreography.py      main.py 的 48s 五幕编排（含两连杆逆运动学）
-  kkrieger.py          kkrieger 的 150s 六幕编排（相机脚本 + 场景动画）
-  kkrieger_audio.py    kkrieger 程序化配乐（离线合成 150s 电子乐，音画同源对齐）
-  camera.py            轨道相机状态机 + 手写 look-at 矩阵
-  playback.py          播放控制器：播放/暂停/循环/倍速/seek
-  skeleton.py          节点级层级动画（转台→大臂→小臂→夹爪）
-  events.py            事件总线（pyglet EventDispatcher）
-  boids.py  waves.py   demos 的纯数学模块（群集 / Gerstner 波）
-presentation/        表现层：装配窗口事件 → 逻辑层 → 渲染
-  app.py               WorldApp：48s 演出装配（双相机模式 + 夹持混合）
-  kkrieger_app.py      KKApp：150s 漫游装配 + 跳帧截图 + 音频同步
-  hud.py               幕字幕（淡入/停留/淡出）+ 状态行
-  timeline_ui.py       底部时间轴面板（播放/循环/拖动/幕标记）
-  shot.py              离屏抓帧（glReadPixels，DPI 无关）
-examples/               37 个单文件示例与工具 + 公共骨架 _harness.py（详见 examples/README.md）
-games/               玩法内核层（P0-3 起）：games/<名>/kernel.py，9 个 Cordis 内核 + 各自的子包说明
-host/                宿主层：tree.py（配置树挂载/就绪等待/entry 白名单）· registry.py（服务短名表 24 条）
-                      pipeline.py（场景校验流水线，Cordis 化：checker→loader→reporter）
-cli/                 引擎 CLI：config_boot.py（每棵配置树的 headless 验收，与 demo 共用 host.tree）
-configs/             10 棵配置树（cordis.*.yml）：声明"本次挂哪些服务、各带什么 config"
-world3d/             库入口（发行名 3dworld / 导入名 world3d）：薄门面 + py.typed
-  platform/app.py     **平台层骨架**（P2-1）：窗口/DPI/命令行/HUD/截图/主循环 + 7 个工具
-                     32 个 demo 与脚本统一 `from world3d.platform.app import ...`
-                     （旧路径 examples/_harness.py 是薄兼容层）
-engine/              引擎层（P3-2：引擎级件陆续下沉到这里，见 docs/引擎设计.md）
-  fsm.py              确定性有限状态机（时间窗 + 事件转移，P0-5 自研）
-  orchestration.py    事件总线 + 声明式 when→then 级联（P0-5 自研）
-  baked_mesh.py       烘焙明暗的单位立方体/球（P0-3 从内核上提）
-  greedy_mesh.py      单层体素贪心合批（P0-1 从内核上提）
+world3d/              **唯一的顶层包**（P2-4 收口；发行名 3dworld / 导入名 world3d）
+  __init__.py         库入口：把引擎公共面转发出来（公共面由 engine.__all__ 收口）
+  compat.py           旧路径兼容层（P2-4 过渡版）：opt-in 的元路径别名，
+                      install 之后 `import engine.csm` 与 `import world3d.engine.csm`
+                      拿到**同一个模块对象**；本模块是过渡件，外界迁完即删
+  _cordis_locate.py   cordis 定位：先试已安装的，再退回 vendored `vendor/cordis/src`
+  platform/           **平台层骨架**（P2-1）：窗口 / DPI / 命令行 / HUD / 截图 / 主循环
+    app.py            DemoApp · run · orbit_camera_input …（37 个 demo 的统一入口）
+  core/               核心层：窗口 / 渲染 / 几何 / 资源（**允许** pyglet.gl）
+    geometry.py        立方体/盒体/地面/静态合并盒体构建（ShaderProgram.vertex_list）
+    resources.py       外部模型加载（当前 .obj）
+    contracts.py       契约注册表 + 全仓可达性检查（P0-5）
+  logic/              逻辑层：场景与动画（**禁止** pyglet.gl，可无窗口单测）
+    animation.py       时间轴/关键帧/插值（glTF TRS 对齐 + tint/glow 材质通道）
+    choreography.py    main.py 的 48s 五幕编排（含两连杆逆运动学）
+    kkrieger.py        kkrieger 的 150s 六幕编排（相机脚本 + 场景动画）
+    camera.py          轨道相机状态机 + 手写 look-at 矩阵
+    playback.py        播放控制器：播放/暂停/循环/倍速/seek
+    skeleton.py        节点级层级动画（转台→大臂→小臂→夹爪）
+  engine/              引擎层（P3-2 起引擎级件陆续下沉；见 docs/引擎设计.md）
+    fsm.py             确定性有限状态机（时间窗 + 事件转移，P0-5 自研）
+    orchestration.py   事件总线 + 声明式 when→then 级联（P0-5 自研）
+    baked_mesh.py      烘焙明暗的单位立方体/球（P0-3 从内核上提）
+    greedy_mesh.py     单层体素贪心合批（P0-1 从内核上提）
+    csm.py / volumetrics.py / dof.py / motionblur.py   ← ④ 轨道的四个渲染模块
+    framegraph.py      帧图：声明 → 编译期校验 → 剔除 → 拓扑排序 → 别名（P3）
+  presentation/        表现层：装配窗口事件 → 逻辑层 → 渲染
+    app.py             WorldApp：48s 演出装配（双相机模式 + 夹持混合）
+    kkrieger_app.py    KKApp：150s 漫游装配 + 跳帧截图 + 音频同步
+    hud.py             幕字幕（淡入/停留/淡出）+ 状态行
+    timeline_ui.py     底部时间轴面板（播放/循环/拖动/幕标记）
+  games/               玩法内核层：games/<名>/kernel.py，9 个 Cordis 内核
+  host/                宿主层：tree.py（配置树挂载/就绪等待）· registry.py（服务短名表）
+                       pipeline.py（场景校验流水线：checker→loader→reporter）
+  cli/                 引擎 CLI（`python -m world3d.cli.<名>`）
+    config_boot.py     每棵配置树的 headless 验收（与 demo 共用 host.tree）
+    frame_plan.py      帧图门禁：16 种效果组合的计划必须合法且顺序正确
+examples/              37 个单文件示例与工具（详见 examples/README.md）
+configs/               10 棵配置树（cordis.*.yml）：
+                       声明本次挂哪些服务、各带什么 config
 scripts/
-  make_gem_obj.py      程序化生成 assets/gem.obj
+  check_imports.py     全仓可达性门禁：world3d/ 下每个模块都 import 一遍
   verify_demos.py      demos 批量验收（冒烟 + 截图 + 退出码）
+  run_all_tests.py     14 个测试模块的聚合 runner
+  record_all.py        成片批量录制（ffmpeg）
+  migrate_p2_4.py      P2-4 的一次性迁移工具（保留以便复查改了什么）
 tests/               逻辑层无窗口单测：python -m tests.run_tests
 main.py / kkrieger_demo.py / pyglet_3d_demo.py(兼容 shim)   入口
 docs/                设计文档 + 渲染验证截图
@@ -262,8 +269,11 @@ python -m tests.test_volumetrics    体积雾/光轴（12 项：闭式积分可�
 python -m tests.test_dof            景深 DoF（12 项：CoC/超焦距/景深端点恒等式/散景面积均匀）
 python -m tests.test_motionblur     运动模糊（9 项：静止零运动/1÷z 律/纯旋转与深度无关/三模块共存）
 python -m tests.test_framegraph     帧图（17 项：物理顺序/剔除/直通/别名/环与死链校验）
-python -m cli.frame_plan --all-toggles  帧图门禁：16 种效果组合的计划都必须合法且顺序正确
-python -m cli.config_boot all   9 个内核 + 13 共同核全部 headless 验收（10 棵树，逐项 OK 标记）
+python -m tests.test_compat         旧路径兼容层（6 项：install 前后不可用/同一性/不被劫持）
+python -m world3d.cli.frame_plan --all-toggles  帧图门禁：16 种效果组合的计划都必须合法且顺序正确
+python -m world3d.cli.config_boot all   9 个内核 + 13 共同核全部 headless 验收（10 棵树，逐项 OK 标记）
+python scripts\check_imports.py          全仓可达性门禁：world3d/ 下 117 个模块逐个 import
+                                        （单测只覆盖被引用的模块，这个是「改漏」的唯一防线）
 python main.py --shot               主线演出渲染验证（4 张）
 python kkrieger_demo.py --shot      漫游渲染验证（9 张）
 python scripts\verify_demos.py      37 个 demo 逐个冒烟 + 截图

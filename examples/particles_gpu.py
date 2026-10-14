@@ -65,7 +65,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from world3d.platform.app import DemoApp, orbit_camera_input, run
-from logic.camera import OrbitCamera
+from world3d.logic.camera import OrbitCamera
 
 # ---------------------------------------------------------------- 着色器 --
 VERTEX_SRC = '''#version 330 core

@@ -40,10 +40,10 @@ from pyglet.math import Mat4, Vec3                               # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from engine.app import EngineApp, run                            # noqa: E402
-from games.pulse.kernel import (BPM_LIST, GOOD_MS,  # noqa: E402
+from world3d.engine.app import EngineApp, run                            # noqa: E402
+from world3d.games.pulse.kernel import (BPM_LIST, GOOD_MS,  # noqa: E402
                                              N_TRACKS)
-from host.tree import (WANT_PULSE, config_path,  # noqa: E402
+from world3d.host.tree import (WANT_PULSE, config_path,  # noqa: E402
                                           mount_tree)
 
 TITLE = '3dworld 落音 · Pulsefall（§16 下落式音击）'

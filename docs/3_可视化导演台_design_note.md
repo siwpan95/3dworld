@@ -56,7 +56,7 @@
   ibl_intensity / sky_intensity）、其余按名字对应场景图节点（translation / rotation / scale /
   tint / glow）；
 * 关键帧只存**裸值**（float / (x,y,z) / (w,x,y,z)）；`CUBICSPLINE` 的 in/out 切线由
-  `engine.timeline.make_sampler` **自动生成**（Catmull-Rom 有限差分）——手写演出 JSON
+  `world3d.engine.timeline.make_sampler` **自动生成**（Catmull-Rom 有限差分）——手写演出 JSON
   不需要算切线；**两关键帧时自动退化为精确线性**（不会过冲）；
 * `Sampler` / `Channel` / `Timeline` **零转换**复用（单一事实来源）——只为公开的
   `PROPS` 白名单补上了相机/灯光类属性，并新增 `make_sampler` / `auto_tangents` 两个纯函数。
@@ -130,7 +130,7 @@
 4. **构图要量**：主体是"低矮平台"（台阶半径 6.6、含拱顶高 7），放 17~18 单位外缩成
    地平线一条扁带；抬太高、俯角太大又会因为**平台顶面与地面亮度几乎相同**（隐藏地面
    全局均值只变 2.0）而糊成一片。最终定为半径 12.5、眼高 3.8↔5.2 的**近水平**环绕。
-5. **`Curve`/插值名**：`engine.timeline.INTERPOLATIONS` 里是 `CUBICSPLINE`，**不是 `CUBIC`**。
+5. **`Curve`/插值名**：`world3d.engine.timeline.INTERPOLATIONS` 里是 `CUBICSPLINE`，**不是 `CUBIC`**。
 6. **本项之外挖到的 P0**：`Mesh.draw` 的模型矩阵 uniform 去重键放错（按网格而非按
    program），多网格静态场景**第 2 帧起图形全部塌到最后一个绘制物的变换上**。详见
    `docs/引擎设计.md` §三.11 —— 这条比导演台本身更值钱。

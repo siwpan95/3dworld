@@ -66,16 +66,21 @@ world3d-pipeline = "host.pipeline:main"
 #     `import cordis` 找不到（运行时的 `_cordis_locate.ensure()` 优先已安装的 cordis）。
 #   * examples/tests/scripts 不打包：它们是示例与仓库工具，不是库的一部分。
 # ---------------------------------------------------------------------------
-# 顶层**模块**（不是包）必须单独声明 —— packages.find 只找包，漏了它会出现
+# P2-4 之后不再需要 `py-modules`：原先唯一的顶层模块 `_cordis_locate.py` 也搬进了
+# `world3d/`，成了普通子模块（`world3d._cordis_locate`）。
+# 那一行曾经是个真陷阱 —— packages.find 只找包，漏掉顶层模块就会出现
 # "装上后 host.tree 报 ModuleNotFoundError: No module named '_cordis_locate'"
 # （P1 验收在干净 venv 里实测到；editable 安装因为源码就在 sys.path 上而看不出）。
+# 把它收进 `world3d/` 从根上消掉了这类"顶层模块要单独声明"的负担。
 [tool.setuptools]
-py-modules = ["_cordis_locate"]
 
 [tool.setuptools.packages.find]
 where = [".", "vendor/cordis/src"]
-include = ["world3d*", "engine*", "core*", "logic*", "presentation*", "host*",
-           "cli*", "games*", "cordis*"]
+# P2-4 之后**只有一个顶层包** `world3d`（core/logic/engine/presentation/games/host/cli
+# 都收进了它里面）—— 这份 include 因此从 9 个模式缩到 1 个。
+# ⚠ 别留 `engine*` / `core*` 这类旧模式：它们现在匹配不到任何东西，
+# 却会让读的人以为"顶层还有这些包"。
+include = ["world3d*", "cordis*"]
 exclude = ["examples*", "tests*", "scripts*", "docs*", "assets*", "recordings*", "levels*",
            "shots*", "configs*"]
 

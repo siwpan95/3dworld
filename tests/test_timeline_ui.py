@@ -18,7 +18,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from presentation.timeline_ui import (  # noqa: E402
+from world3d.presentation.timeline_ui import (  # noqa: E402
     BTN, PANEL_HEIGHT, PANEL_MARGIN, TimelineUI,
 )
 

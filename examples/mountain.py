@@ -51,10 +51,10 @@ from pyglet.window import key as K
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from world3d.platform.app import DemoApp, orbit_camera_input, run
-from logic.camera import OrbitCamera
+from world3d.logic.camera import OrbitCamera
 
 try:
-    from engine.audio import Track, render_wav
+    from world3d.engine.audio import Track, render_wav
 except Exception:  # 音频引擎缺失时钢琴退化为静默 no-op
     Track = None
     render_wav = None
@@ -305,7 +305,7 @@ class MountainApp(DemoApp):
         self._build_piano()
 
         # 居中想法 / 测验文字叠层
-        from engine.fonts import resolve_cjk_font
+        from world3d.engine.fonts import resolve_cjk_font
         cjk = resolve_cjk_font()
         kw = {'font_name': cjk} if cjk else {}
         self._overlay = pyglet.text.Label(

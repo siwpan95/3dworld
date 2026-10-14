@@ -7,7 +7,7 @@
 ## 一、为什么是这个架构
 
 - 项目哲学「零外部素材 + 一切程序化」的延伸：场景 JSON 里**不存顶点**，
-  只存「生成器名 + 参数 + 材质 + 变换」——几何在构建时由 `engine.geometry` 现算。
+  只存「生成器名 + 参数 + 材质 + 变换」——几何在构建时由 `world3d.engine.geometry` 现算。
 - 双端分离：
   - **生成端（LLM / 人）**：只需要懂生成器清单与 JSON 格式（见第三节 + 第四节 Prompt 模板）
   - **执行端（引擎）**：`engine/scene_build.py` 校验 + 重建；`examples/scene_viewer.py` 渲染 + 热重载

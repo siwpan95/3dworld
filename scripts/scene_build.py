@@ -14,7 +14,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from engine.scene_build import build_meshdata, load_json, summarize  # noqa: E402
+from world3d.engine.scene_build import build_meshdata, load_json, summarize  # noqa: E402
 
 
 def main(argv=None):

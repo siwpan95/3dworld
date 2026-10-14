@@ -42,10 +42,10 @@ from pyglet.window import key
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from world3d.platform.app import DemoApp, orbit_camera_input, run  # noqa: E402
-from core.geometry import box_data  # noqa: E402
-from engine.dof import circle_of_confusion, dof_glsl  # noqa: E402
-from engine.targets import RenderTarget, bind_texture  # noqa: E402
-from logic.camera import OrbitCamera  # noqa: E402
+from world3d.core.geometry import box_data  # noqa: E402
+from world3d.engine.dof import circle_of_confusion, dof_glsl  # noqa: E402
+from world3d.engine.targets import RenderTarget, bind_texture  # noqa: E402
+from world3d.logic.camera import OrbitCamera  # noqa: E402
 
 WINDOW_BLOCK = '''uniform WindowBlock {
     mat4 projection;
@@ -250,7 +250,7 @@ class DofFocusApp(DemoApp):
         return self.FOCAL / self.f_number
 
     def coc_pixels_at(self, z):
-        """把 `engine.dof` 的 CoC 折成像素（与着色器里的 `u_dof_coc_scale` 同一套换算）。"""
+        """把 `world3d.engine.dof` 的 CoC 折成像素（与着色器里的 `u_dof_coc_scale` 同一套换算）。"""
         mm = circle_of_confusion(max(z, 1e-4), self.focus, self.aperture_world(),
                                  self.FOCAL)
         return mm / self.SENSOR_HEIGHT * self.FOCAL_PIXELS_SCALE

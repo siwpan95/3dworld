@@ -15,7 +15,7 @@ import sys
 
 import pyglet
 
-from presentation.app import WorldApp
+from world3d.presentation.app import WorldApp
 
 # (播头时刻, 输出路径, 该帧应该看到什么)
 SHOTS = (

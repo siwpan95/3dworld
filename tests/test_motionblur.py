@@ -26,9 +26,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from engine.camera import Camera  # noqa: E402
-from engine.mathkit import mat4_inverse, mat4_mul  # noqa: E402
-from engine.motionblur import (MB_GLSL_UNIFORMS, mb_glsl,  # noqa: E402
+from world3d.engine.camera import Camera  # noqa: E402
+from world3d.engine.mathkit import mat4_inverse, mat4_mul  # noqa: E402
+from world3d.engine.motionblur import (MB_GLSL_UNIFORMS, mb_glsl,  # noqa: E402
                                motion_vector, reconstruct_world, reproject,
                                shutter_weights)
 
@@ -234,8 +234,8 @@ def test_mb_glsl_compiles_alone_and_with_csm_and_dof():
         print(f'  SKIP: 拿不到 GL 上下文（{type(e).__name__}: {e}）')
         return
     try:
-        from engine.csm import csm_glsl
-        from engine.dof import DOF_GLSL_UNIFORMS, dof_glsl
+        from world3d.engine.csm import csm_glsl
+        from world3d.engine.dof import DOF_GLSL_UNIFORMS, dof_glsl
         vs = '''#version 330 core
 in vec3 position;
 uniform WindowBlock { mat4 projection; mat4 view; } window;

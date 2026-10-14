@@ -39,6 +39,7 @@ MODULES = [
     ('tests.test_dof', 'ALL_DOF_TESTS_PASSED', '景深 DoF'),
     ('tests.test_motionblur', 'ALL_MOTIONBLUR_TESTS_PASSED', '运动模糊'),
     ('tests.test_framegraph', 'ALL_FRAMEGRAPH_TESTS_PASSED', '帧图（编译期校验）'),
+    ('tests.test_compat', 'ALL_COMPAT_TESTS_PASSED', '旧路径兼容层（P2-4）'),
     ('tests.test_gpu_cull', 'ALL_GPU_CULL_TESTS_PASSED', 'GPU 剔除'),
     ('tests.test_p2_render', 'ALL_P2_TESTS_PASSED', 'P2 渲染能力'),
     ('tests.test_skin', 'ALL_SKIN_TESTS_PASSED', '蒙皮骨骼'),

@@ -67,12 +67,12 @@ class SceneViewerApp(DemoApp):
 
     # ------------------------------------------------------------- setup --
     def setup(self):
-        from engine.camera import OrbitCamera
-        from engine.env import LightEnvironment
-        from engine.renderer import Renderer
-        from engine.scene_build import build_scene, load_json
-        from engine.serialize import SceneWatcher
-        from engine.shaders import get
+        from world3d.engine.camera import OrbitCamera
+        from world3d.engine.env import LightEnvironment
+        from world3d.engine.renderer import Renderer
+        from world3d.engine.scene_build import build_scene, load_json
+        from world3d.engine.serialize import SceneWatcher
+        from world3d.engine.shaders import get
 
         try:
             self._data = load_json(self._json_path)
@@ -102,8 +102,8 @@ class SceneViewerApp(DemoApp):
     # ------------------------------------------------------------ reload --
     def _reload(self):
         """热重载：校验通过才换场景（错误的 JSON 保留旧画面）。"""
-        from engine.scene_build import build_scene, load_json, validate
-        from engine.shaders import get
+        from world3d.engine.scene_build import build_scene, load_json, validate
+        from world3d.engine.shaders import get
 
         try:
             data = load_json(self._json_path)

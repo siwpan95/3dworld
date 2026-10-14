@@ -43,8 +43,8 @@ from pyglet.math import Mat4, Vec3                                    # noqa: E4
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from engine.app import EngineApp, run                            # noqa: E402
-from host.tree import (WANT_HALL, config_path,  # noqa: E402
+from world3d.engine.app import EngineApp, run                            # noqa: E402
+from world3d.host.tree import (WANT_HALL, config_path,  # noqa: E402
                                           mount_tree)
 
 TITLE = '3dworld 静馆 · Stillhall（§14 节点式漫游解谜）'

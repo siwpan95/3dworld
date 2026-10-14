@@ -26,7 +26,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from engine.dof import (DOF_GLSL_UNIFORMS, bokeh_disk, circle_of_confusion,  # noqa: E402
+from world3d.engine.dof import (DOF_GLSL_UNIFORMS, bokeh_disk, circle_of_confusion,  # noqa: E402
                         coc_pixels, dof_glsl, dof_limits, hyperfocal)
 
 # 一组"摄影上说得通"的参数（单位统一用 mm）。50mm 镜头 / f2.8 / 焦深容限 0.03mm
@@ -280,7 +280,7 @@ uniform WindowBlock { mat4 projection; mat4 view; } window;
 void main() { gl_Position = window.projection * window.view * vec4(position, 1.0); }'''
         head = '#version 330 core\nout vec4 o;\nuniform vec2 u_uv;\n'
         plans = [('单独', '', '    float s = 0.0;\n')]
-        from engine.csm import csm_glsl
+        from world3d.engine.csm import csm_glsl
         plans.append(('与 CSM 拼', csm_glsl(2) + '\n',
                       '    float s = csm_shadow(vec3(0.0), -5.0, 1.0);\n'))
         for tag, extra, call in plans:

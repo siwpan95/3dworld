@@ -53,10 +53,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from world3d.platform.app import DemoApp, orbit_camera_input, run
-from core.geometry import box_data
-from engine.soft_shadow import pcss_glsl
-from logic.animation import quat_from_axis_angle, quat_to_mat4
-from logic.camera import OrbitCamera, look_at_matrix
+from world3d.core.geometry import box_data
+from world3d.engine.soft_shadow import pcss_glsl
+from world3d.logic.animation import quat_from_axis_angle, quat_to_mat4
+from world3d.logic.camera import OrbitCamera, look_at_matrix
 
 # ---------------------------------------------------------------- 着色器 --
 DEPTH_VS = '''#version 330 core

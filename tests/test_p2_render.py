@@ -17,10 +17,10 @@ sys.path.insert(0, ROOT)
 import pyglet                                                   # noqa: E402
 pyglet.options['debug_gl'] = False
 
-from engine.pointcloud import (EDL_NEIGHBORS, cpu_edl,           # noqa: E402
+from world3d.engine.pointcloud import (EDL_NEIGHBORS, cpu_edl,           # noqa: E402
                                edl_glsl, generate_helix_cloud,
                                generate_terrain_cloud)
-from engine.soft_shadow import (DEFAULT_SAMPLES, cpu_pcss,      # noqa: E402
+from world3d.engine.soft_shadow import (DEFAULT_SAMPLES, cpu_pcss,      # noqa: E402
                                 pcss_glsl, poisson_disk)
 
 _WIN = None
@@ -70,8 +70,8 @@ def test_pcss_cpu_reference():
 def test_pcss_and_wboit_glsl_compile():
     _win()
     from pyglet.graphics.shader import Shader, ShaderProgram
-    from engine.shaders import get
-    from engine.shaders import FULLSCREEN_VERT
+    from world3d.engine.shaders import get
+    from world3d.engine.shaders import FULLSCREEN_VERT
     # PCSS 片段本身是"片段注入"，用一个最小宿主编译它
     host = ('#version 330 core\n'
             'uniform sampler2D u_shadow;\n'
@@ -89,7 +89,7 @@ void main() { c = vec4(vec3(pcss_factor(vec2(0.5), 0.5, 0.001)), 1.0); }''')
 def test_wboit_support_and_chain():
     """WBOIT：glBlendFunci 可用 + MRT 双附件可建。"""
     _win()
-    from engine.oit import WBOIT, supported
+    from world3d.engine.oit import WBOIT, supported
     assert supported(), 'glBlendFunci 不可用（WBOIT 无法运行）'
     oit = WBOIT(64, 48)
     assert len(oit.rt.color) == 2, 'WBOIT 需要 2 张 MRT 附件'
@@ -137,7 +137,7 @@ def test_edl_cpu_reference():
 def test_edl_glsl_compile():
     _win()
     from pyglet.graphics.shader import Shader, ShaderProgram
-    from engine.shaders import FULLSCREEN_VERT
+    from world3d.engine.shaders import FULLSCREEN_VERT
     p = ShaderProgram(Shader(FULLSCREEN_VERT, 'vertex'), Shader(edl_glsl(), 'fragment'))
     assert p.id
     print(f'  ok: EDL 片段编译通过（id={p.id}）')

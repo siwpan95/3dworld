@@ -105,7 +105,7 @@
 
 | 阶段 | 内容 | 验收 | 状态 |
 |------|------|------|------|
-| **B1** 机关内核 | 元素表 + 一格一步确定性模拟 + 「连接」绑定（复用 `engine.orchestration.Bus`）+ BFS 求解器 + 3 个手工关 + 种子生成器 | `cli.config_boot brickward` → `BRICKWARD_OK`；`tests.test_brickward` **30 项** | ✅ 已交付 |
+| **B1** 机关内核 | 元素表 + 一格一步确定性模拟 + 「连接」绑定（复用 `world3d.engine.orchestration.Bus`）+ BFS 求解器 + 3 个手工关 + 种子生成器 | `cli.config_boot brickward` → `BRICKWARD_OK`；`tests.test_brickward` **30 项** | ✅ 已交付 |
 | **B2a** 炸弹与火球 | 炸弹（引信 2 步 / 十字 1 格 / 连锁）+ 火球（推动即点燃、每步滚一格、撞硬障碍熄灭）+「炸药开路」「火球烧箱」 | 同上 → `BRICKWARD_OK`（**11/11**）；`tests.test_brickward` **42 项** | ✅ **已交付** |
 | **B2b** 滚石与史莱姆 | 滚石（推动即滚到底，沿途压史莱姆/压灭火球/压失效尖刺）+ 史莱姆（每 `SLIME_PERIOD` 步贪心追人）+「滚石垫路」「引怪入瓮」 | 同上 → `BRICKWARD_OK`（**13/13**）；`tests.test_brickward` **56 项** | ✅ **已交付** |
 | **B3** 编辑器 + 可玩 demo | 关卡 IO（`level_to_json`/`level_from_json`）+ 编辑器纯函数（`level_set_cell`/`level_add_link`/`level_blank`）+ `examples/brickward.py`（等距渲染 / auto 回放 / 15 格道具栏 / 连接编辑 / 导出导入 / 程序化 SFX） | 同 demo 里**编辑→试解→导出→读回→再解**闭环保通；`tests.test_brickward` **65 项**；`verify_demos` 32/32 | ✅ **已交付** |

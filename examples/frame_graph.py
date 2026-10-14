@@ -44,15 +44,15 @@ from pyglet.window import key
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from world3d.platform.app import DemoApp, orbit_camera_input, run  # noqa: E402
-from core.geometry import box_data  # noqa: E402
-from engine.csm import csm_glsl, csm_matrices, mat4_as_Mat4  # noqa: E402
-from engine.dof import dof_glsl  # noqa: E402
-from engine.framegraph import standard_3d_plan  # noqa: E402
-from engine.mathkit import mat4_from_Mat4, mat4_inverse, mat4_mul  # noqa: E402
-from engine.motionblur import mb_glsl  # noqa: E402
-from engine.targets import bind_texture, create_texture  # noqa: E402
-from engine.volumetrics import volumetric_glsl  # noqa: E402
-from logic.camera import OrbitCamera  # noqa: E402
+from world3d.core.geometry import box_data  # noqa: E402
+from world3d.engine.csm import csm_glsl, csm_matrices, mat4_as_Mat4  # noqa: E402
+from world3d.engine.dof import dof_glsl  # noqa: E402
+from world3d.engine.framegraph import standard_3d_plan  # noqa: E402
+from world3d.engine.mathkit import mat4_from_Mat4, mat4_inverse, mat4_mul  # noqa: E402
+from world3d.engine.motionblur import mb_glsl  # noqa: E402
+from world3d.engine.targets import bind_texture, create_texture  # noqa: E402
+from world3d.engine.volumetrics import volumetric_glsl  # noqa: E402
+from world3d.logic.camera import OrbitCamera  # noqa: E402
 
 WINDOW_BLOCK = '''uniform WindowBlock {
     mat4 projection;
@@ -332,7 +332,7 @@ class FrameGraphApp(DemoApp):
             tw, th = max(1, w // 2), max(1, h // 2)
         else:
             tw, th = max(1, w), max(1, h)
-        # `engine.targets.create_texture` 会按内部格式挑数据类型（浮点必须 HALF_FLOAT /
+        # `world3d.engine.targets.create_texture` 会按内部格式挑数据类型（浮点必须 HALF_FLOAT /
         # UNSIGNED_BYTE 用在 16F 上在部分驱动会**静默失败**）
         fmt = res.fmt
         if fmt == 'r32f':

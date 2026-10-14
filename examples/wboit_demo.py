@@ -42,13 +42,13 @@ from pyglet.math import Mat4, Vec3                              # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from engine.app import EngineApp, run                            # noqa: E402
-from engine.camera import OrbitCamera                            # noqa: E402
-from engine.geometry import ground_grid, sphere                  # noqa: E402
-from engine.oit import WBOIT, supported as wboit_supported       # noqa: E402
-from engine.postfx import FullscreenQuad                         # noqa: E402
-from engine.shaders import get                                   # noqa: E402
-from engine.targets import RenderTarget, bind_texture            # noqa: E402
+from world3d.engine.app import EngineApp, run                            # noqa: E402
+from world3d.engine.camera import OrbitCamera                            # noqa: E402
+from world3d.engine.geometry import ground_grid, sphere                  # noqa: E402
+from world3d.engine.oit import WBOIT, supported as wboit_supported       # noqa: E402
+from world3d.engine.postfx import FullscreenQuad                         # noqa: E402
+from world3d.engine.shaders import get                                   # noqa: E402
+from world3d.engine.targets import RenderTarget, bind_texture            # noqa: E402
 
 TITLE = '3dworld WBOIT · 顺序无关透明（P2-2）'
 HELP = 'S WBOIT/排序  O 反转顺序  SPACE 暂停  drag orbit  wheel zoom  ESC quit'
@@ -180,7 +180,7 @@ class WBOITDemo(EngineApp):
             bind_texture(0, self.scene_rt.color[0])
             self.blit['uScene'] = 0
             # accum 槽位：用 0 权重（黑 + 0 alpha），使 composite 退化为"直接输出背景"
-            from engine.targets import make_solid_texture
+            from world3d.engine.targets import make_solid_texture
             if not hasattr(self, '_black_tex'):
                 self._black_tex = make_solid_texture(0, 0, 0, 0)
                 self._white_tex = make_solid_texture(255, 255, 255, 255)

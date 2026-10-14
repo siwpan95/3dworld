@@ -77,7 +77,7 @@ yml 里直接写短名，例如::
 
 外加 `cores`（纯共同核自检，`require_gl=False`）。
 
-**实测**：`python -m cli.config_boot all` → **9 个 OK 标记**
+**实测**：`python -m world3d.cli.config_boot all` → **9 个 OK 标记**
 （TDKERNEL / GODHAND / FPSKERNEL / BOXWARD / STORMKERNEL / HALLKERNEL / VOIDKERNEL /
 PULSEKERNEL / CORES）。
 

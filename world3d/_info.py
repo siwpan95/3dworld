@@ -53,11 +53,11 @@ def collect() -> dict:
         w.close()
         return {'version': ver, 'renderer': rend}
     info['gl'] = _try(_gl)
-    info['shaders'] = _try(lambda: len(__import__('engine.shaders', fromlist=['SOURCES']).SOURCES))
-    info['services'] = _try(lambda: len(__import__('host.registry', fromlist=['SERVICES']).SERVICES))
+    info['shaders'] = _try(lambda: len(__import__('world3d.engine.shaders', fromlist=['SOURCES']).SOURCES))
+    info['services'] = _try(lambda: len(__import__('world3d.host.registry', fromlist=['SERVICES']).SERVICES))
     # ---- 配置树位置（P1：仓库资产，不随 wheel 分发）----
     def _configs():
-        from host.tree import CONFIG_DIR
+        from world3d.host.tree import CONFIG_DIR
         return {'dir': CONFIG_DIR,
                 'exists': os.path.isdir(CONFIG_DIR),
                 'count': len([f for f in os.listdir(CONFIG_DIR) if f.endswith('.yml')])

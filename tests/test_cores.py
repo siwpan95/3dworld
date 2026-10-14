@@ -17,25 +17,25 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core._cordis import Context                       # noqa: E402  （含 cordis 定位）
-from core.contracts import (                           # noqa: E402
+from world3d.core._cordis import Context                       # noqa: E402  （含 cordis 定位）
+from world3d.core.contracts import (                           # noqa: E402
     CORES, FROM_SCRATCH_CORES, AudioCore, EconomyCore, EntityCore, HudCore,
     InputCore, ParticlesCore, PathingCore, RenderCore, RulesCore, SdfVoxelCore,
     TerrainCore, TimelineCore,
 )
-from core.audio_core import AudioService               # noqa: E402
-from core.economy_core import EconomyService           # noqa: E402
-from core.entity_core import EntityService             # noqa: E402
-from core.inventory_core import InventoryService       # noqa: E402  （P1-⑤）
-from core.loot_core import LootService                 # noqa: E402  （P1-⑤）
-from core.pathing_core import PathingService           # noqa: E402
-from core.skills_core import SkillsService             # noqa: E402  （P1-⑤）
-from core.particles_core import ParticlesService       # noqa: E402
-from core.render_core import RenderService             # noqa: E402
-from core.rules_core import RulesService               # noqa: E402
-from core.sdf_core import SdfVoxelService              # noqa: E402
-from core.terrain_core import TerrainService           # noqa: E402
-from core.timeline_core import TimelineService         # noqa: E402
+from world3d.core.audio_core import AudioService               # noqa: E402
+from world3d.core.economy_core import EconomyService           # noqa: E402
+from world3d.core.entity_core import EntityService             # noqa: E402
+from world3d.core.inventory_core import InventoryService       # noqa: E402  （P1-⑤）
+from world3d.core.loot_core import LootService                 # noqa: E402  （P1-⑤）
+from world3d.core.pathing_core import PathingService           # noqa: E402
+from world3d.core.skills_core import SkillsService             # noqa: E402  （P1-⑤）
+from world3d.core.particles_core import ParticlesService       # noqa: E402
+from world3d.core.render_core import RenderService             # noqa: E402
+from world3d.core.rules_core import RulesService               # noqa: E402
+from world3d.core.sdf_core import SdfVoxelService              # noqa: E402
+from world3d.core.terrain_core import TerrainService           # noqa: E402
+from world3d.core.timeline_core import TimelineService         # noqa: E402
 
 
 def _ctx():
@@ -235,7 +235,7 @@ def test_sdf_voxel_and_mesh():
 
 # ------------------------------------------------------------- timeline ----
 def test_timeline_factories():
-    from engine.timeline import Channel, PlaybackController, Sampler, Timeline
+    from world3d.engine.timeline import Channel, PlaybackController, Sampler, Timeline
 
     tl = TimelineService(_ctx(), None)
     smp = tl.make_sampler([0.0, 1.0], [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]], 'LINEAR')
@@ -334,7 +334,7 @@ def test_loot_deterministic_pity_affix():
 
 def test_pathing_smooth_and_queue():
     """P1-⑤ 寻路强化：拉绳平滑 + 多单位队列（去重/分帧）。"""
-    from core.pathing_core import PathingService as PS
+    from world3d.core.pathing_core import PathingService as PS
     # 共线 -> 拉直
     assert PS.smooth([(0, 0), (1, 0), (2, 0), (3, 0)], passable=lambda i, j: True) == [(0, 0), (3, 0)]
     # 无 passable -> 保守（只合并同行/同列）
@@ -357,7 +357,7 @@ def test_pathing_smooth_and_queue():
 
 def test_contracts_verify_no_err():
     """契约自检：任何核都不得出现 err:（cordis 缺失记为 pending，不算失败）。"""
-    from core import contracts as c
+    from world3d.core import contracts as c
     res = c.verify(verbose=False)
     bad = {k: v for k, v in res.items() if str(v).startswith('err:')}
     assert not bad, f'契约自检出现错误: {bad}'

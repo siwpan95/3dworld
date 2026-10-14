@@ -64,8 +64,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from world3d.platform.app import DemoApp, orbit_camera_input, run
-from logic.camera import OrbitCamera
-from logic.waves import sample_surface, scaled_preset, wave_presets
+from world3d.logic.camera import OrbitCamera
+from world3d.logic.waves import sample_surface, scaled_preset, wave_presets
 
 DURATION = 40.0
 GRID_N = 200              # 网格段数（200 → 40401 顶点 / 80000 三角形）

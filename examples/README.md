@@ -68,7 +68,7 @@ python scripts\verify_demos.py --only boids,water  只验指定 demo
 | `volumetric_fog.py` | 交互 | **体积雾与光轴（god rays）**（④-2）：**高度雾的闭式积分**（按 `A` 在「闭式 / 逐步矩形」之间切换 —— 后者既出层状条纹、又会「改步数就让整幅雾变浓变淡」，两者并排可见）+ **Henyey-Greenstein 相函数**（`G` 调各向异性；前向散射才是光柱的成因）+ **单次散射**（每步查 CSM 的阴影图 ⇒ 柱缝里裂出光柱，实测画面中央走廊亮度 **88.3 vs 只雾 78.5 vs 无雾 77.1**）；四趟渲染（深度 → 阴影 → 场景 → 合成）；数学全在 `engine/volumetrics.py`（纯函数、可 headless 断言） | `fog_01/02.png` |
 | `csm_shadow.py` | 交互 | **级联阴影（CSM）**（④-1）：把一张阴影图按视距切成 N 级（1~4，C 键切换），近处纹素细、远处也还在。数学全在 `engine/csm.py`（纯函数、可 headless 断言：PSSM 混合分割 / 视锥角点 / 紧贴光盒拟合 / **纹素吸附**消抖动 / 级选择）；地面是**程序化棋盘**（影子锯齿在棋盘上最刺眼），**V 键按级染色**一眼看出级联边界；左上是某级的深度图小窗（render-to-texture 自证） | `csm_01/02.png` |
 | `boxward.py` | 交互 | **《归仓 / Boxward》**（P1-④ 方块解谜，机制致敬 Sokoban 1982）：**光栅贪心合批**（静态墙由 `greedy_mesh` 合并建网，补齐 `SdfVoxelCore.world_mesh` 留白）+ **正交等距视角**（偏航 45° + 俯角 45°，每个方块同时露出两个侧面 + 顶面 —— 原先轴对齐时只看到一个面、读起来像 2D；`Q/E` 切 90° 档、`P` 循环俯角 30/38/45/52°，WASD 随相机映射、屏幕上呈四个斜向）+ **BFS 求解器 auto-play**（headless 验收 / 录制 / 生成器验证同源）+ **程序化关卡**（反向拉箱打乱，可解性由构造保证）+ **关卡编辑器**（M 键摆格 / X 试解 / E 导出 JSON，三端同 schema）+ undo 与推数 par；玩法全在 `games/puzzle/kernel.py`，由 `cordis.puzzle.yml` 配置树挂载 | `boxward_a/b.png` |
-| `brickward.py` | 交互 | **《砖境 / Brickward》**（BQM 机制致敬 B1~B3，机制致敬 BlockQuest Maker 2018 —— **不是移植、不是复刻**，只吸收玩法机制）：**机关解谜**（推箱 / 按钮 / 拉杆 / 门 / 金门+钥匙 / 尖刺 / 炸弹 / 火球 / 滚石 / 史莱姆，11 类元素，一格一步确定性模拟）+ **「连接」绑定**（开关→门，三种模式 open/toggle/close，落在 P0-5 自研的 `engine.orchestration.Bus` 上）+ **BFS 求解器 auto-play**（headless 验收 / 录制 / 生成器验证同源）+ 程序化种子关（由求解器把关可解）+ **谜题编辑器**（M 键：左键摆格 / `[` `]` 换道具 / **C 连接开关→门** / V 试解 / E 导出 JSON / I 载入 / B 新空白关，编辑器导出的 = 内核吃的 = `--flag level=` 读回的，三端同 schema）；等距视角与 boxward 同一套看的；玩法全在 `games/brickward/kernel.py`，由 `cordis.brickward.yml` 配置树挂载 | `brickward_a/b.png` |
+| `brickward.py` | 交互 | **《砖境 / Brickward》**（BQM 机制致敬 B1~B3，机制致敬 BlockQuest Maker 2018 —— **不是移植、不是复刻**，只吸收玩法机制）：**机关解谜**（推箱 / 按钮 / 拉杆 / 门 / 金门+钥匙 / 尖刺 / 炸弹 / 火球 / 滚石 / 史莱姆，11 类元素，一格一步确定性模拟）+ **「连接」绑定**（开关→门，三种模式 open/toggle/close，落在 P0-5 自研的 `world3d.engine.orchestration.Bus` 上）+ **BFS 求解器 auto-play**（headless 验收 / 录制 / 生成器验证同源）+ 程序化种子关（由求解器把关可解）+ **谜题编辑器**（M 键：左键摆格 / `[` `]` 换道具 / **C 连接开关→门** / V 试解 / E 导出 JSON / I 载入 / B 新空白关，编辑器导出的 = 内核吃的 = `--flag level=` 读回的，三端同 schema）；等距视角与 boxward 同一套看的；玩法全在 `games/brickward/kernel.py`，由 `cordis.brickward.yml` 配置树挂载 | `brickward_a/b.png` |
 | `swarmward.py` | 交互 | **《弹潮 / Swarmward》**（P1-⑤ 弹幕固定屏射击，机制致敬 Robotron 2084 1982）：**全向生存**（固定屏 24×15 正交）+ **双摇杆**（WASD 移动 + 方向键/鼠标射击）+ **程序化编波**（`wave_plan(seed, wave)` 难度单调 + `pathing.formation` 编队进场——pathing 核首个内核消费者）+ **particles 核首个内核消费者**（击杀碎屑/命中火花/受击冲击，`snapshot()` 渲染层淡出）+ 3 敌型状态机（直冲/游走射击/编队蜂群）+ 连击计分 + Aimlabs 手感件（受击白闪/量化结算）+ 10 波通关制与无尽 flag；玩法全在 `games/storm/kernel.py`，由 `cordis.storm.yml` 配置树挂载 | `swarmward_a/b.png` |
 
 | `godhand.py` | 交互 | **《神之手 / GodHand》**（P1-①，机制致敬 Populous / From Dust）：鼠标「抬山 / 挖海」实时改写地形高度场，淹没或掩埋敌方聚落即胜；玩法在 `games/godhand/kernel.py`，由 `cordis.godhand.yml` 配置树挂载 | — |
@@ -193,7 +193,7 @@ python examples\voxel_terrain.py   --bench 5 --flag reseed        :: 渐进
 - **DPI**：`pyglet.options['dpi_scaling'] = 'real'` 必须在建窗口前设置，
   `platform/app.py` 已经统一处理；截图走 `glReadPixels` 按实际 buffer 尺寸读，
   不用 `get_color_buffer()`（后者会按被 DPI 放大的 VIEWPORT 读，出黑边）。
-- **旋转**：用 `logic.animation.quat_to_mat4`，pyglet 自带
+- **旋转**：用 `world3d.logic.animation.quat_to_mat4`，pyglet 自带
   `Quaternion.to_mat4()` 实测是转置的。
 - **顶点色要 4 元组**：着色器属性是 `vec4`，返回 3 元组会让顶点缓冲少 1/4 的
   float，报 `Invalid data size for 'colors'`（地形渐进重建时踩过）。

@@ -44,12 +44,12 @@ from pyglet.window import key
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from world3d.platform.app import DemoApp, orbit_camera_input, run  # noqa: E402
-from core.geometry import box_data  # noqa: E402
-from engine.csm import csm_glsl, csm_matrices, csm_uniforms, mat4_as_Mat4  # noqa: E402
-from engine.mathkit import mat4_from_Mat4, mat4_mul, mat4_to_Mat4  # noqa: E402
-from engine.targets import RenderTarget, bind_texture  # noqa: E402
-from engine.volumetrics import dither_offset, volumetric_glsl  # noqa: E402
-from logic.camera import OrbitCamera  # noqa: E402
+from world3d.core.geometry import box_data  # noqa: E402
+from world3d.engine.csm import csm_glsl, csm_matrices, csm_uniforms, mat4_as_Mat4  # noqa: E402
+from world3d.engine.mathkit import mat4_from_Mat4, mat4_mul, mat4_to_Mat4  # noqa: E402
+from world3d.engine.targets import RenderTarget, bind_texture  # noqa: E402
+from world3d.engine.volumetrics import dither_offset, volumetric_glsl  # noqa: E402
+from world3d.logic.camera import OrbitCamera  # noqa: E402
 
 WINDOW_BLOCK = '''uniform WindowBlock {
     mat4 projection;
@@ -407,7 +407,7 @@ class VolumetricFogApp(DemoApp):
         prog['u_csm_pcf'] = 1.0
         # 屏幕 → 世界的逆矩阵：给体积雾反推射线方向用
         vp = mat4_mul(tuple(self.cam.projection(aspect)), view_tuple)
-        from engine.mathkit import mat4_inverse
+        from world3d.engine.mathkit import mat4_inverse
         prog['u_inv_vp'] = list(mat4_inverse(vp))
         prog['u_fog_cam'] = (self.cam.eye.x, self.cam.eye.y, self.cam.eye.z)
         prog['u_fog_light_dir'] = light

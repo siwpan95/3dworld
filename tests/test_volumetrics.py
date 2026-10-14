@@ -20,7 +20,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from engine.volumetrics import (FOG_GLSL_UNIFORMS, IGN_A, IGN_B, IGN_C,  # noqa: E402
+from world3d.engine.volumetrics import (FOG_GLSL_UNIFORMS, IGN_A, IGN_B, IGN_C,  # noqa: E402
                                 dither_offset,
                                 height_fog_column, height_fog_segment,
                                 henyey_greenstein, step_weights,
@@ -267,8 +267,8 @@ def test_volumetric_glsl_composes_with_csm_and_compiles():
         print(f'  SKIP: 拿不到 GL 上下文（{type(e).__name__}: {e}）')
         return
     try:
-        from engine.csm import csm_glsl
-        from engine.mathkit import look_at_matrix
+        from world3d.engine.csm import csm_glsl
+        from world3d.engine.mathkit import look_at_matrix
         vs = '''#version 330 core
 in vec3 position;
 uniform WindowBlock { mat4 projection; mat4 view; } window;

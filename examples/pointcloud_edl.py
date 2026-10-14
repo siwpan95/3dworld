@@ -45,13 +45,13 @@ from pyglet.math import Mat4, Vec3                              # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from engine.app import EngineApp, run                            # noqa: E402
-from engine.camera import OrbitCamera                            # noqa: E402
-from engine.pointcloud import (edl_glsl, generate_helix_cloud,   # noqa: E402
+from world3d.engine.app import EngineApp, run                            # noqa: E402
+from world3d.engine.camera import OrbitCamera                            # noqa: E402
+from world3d.engine.pointcloud import (edl_glsl, generate_helix_cloud,   # noqa: E402
                                generate_terrain_cloud)
-from engine.postfx import FullscreenQuad                         # noqa: E402
-from engine.shaders import FULLSCREEN_VERT                       # noqa: E402
-from engine.targets import RenderTarget, bind_texture            # noqa: E402
+from world3d.engine.postfx import FullscreenQuad                         # noqa: E402
+from world3d.engine.shaders import FULLSCREEN_VERT                       # noqa: E402
+from world3d.engine.targets import RenderTarget, bind_texture            # noqa: E402
 
 TITLE = '3dworld 点云 + EDL（P2-4）'
 HELP = 'E EDL开关  1 地形  2 双螺旋  SPACE 暂停  [ ] 点大小  drag orbit  wheel zoom'

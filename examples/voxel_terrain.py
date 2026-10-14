@@ -16,7 +16,7 @@ F 线框就能直接看到"内部面本来也在被画"这件事。
 其它要点
 --------
 - 世界 = 40x40 列、1~14 层的确定性高度图；块色 = 高度分层 + 哈希抖动，再乘
-  一个逐面亮度（法线调亮度，思路同 ``core.geometry.box_data``）。
+  一个逐面亮度（法线调亮度，思路同 ``world3d.core.geometry.box_data``）。
 - 顶点数据全部在 setup 里用 ``array('f')`` 拼一次（全部面网格约 40 万顶点，
   用 Python list 会多占几十 MB 且更慢），运行时一个顶点都不重建。
 - ``1/2`` 两种机位共用一个 ``OrbitCamera``：自动值每帧写死，用户的鼠标增量由
@@ -58,7 +58,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from world3d.platform.app import DemoApp, orbit_camera_input, run
-from logic.camera import (DIST_MAX, DIST_MIN, PITCH_MAX, PITCH_MIN,
+from world3d.logic.camera import (DIST_MAX, DIST_MIN, PITCH_MAX, PITCH_MIN,
                           OrbitCamera)
 
 # ================================================================ 世界参数 ==

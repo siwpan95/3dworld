@@ -48,8 +48,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from world3d.platform.app import (DemoApp, PROJECT_ROOT, orbit_camera_input,    # noqa: E402
                       run)
-from engine.adaptive_music import AdaptiveBgm                       # noqa: E402
-from engine.audio import SfxPlayer                                  # noqa: E402
+from world3d.engine.adaptive_music import AdaptiveBgm                       # noqa: E402
+from world3d.engine.audio import SfxPlayer                                  # noqa: E402
 
 DEFAULT_JSON = os.path.join(PROJECT_ROOT, 'docs', 'llm_scene_demo.json')
 SFX_DIR = os.path.join(PROJECT_ROOT, 'assets', 'sfx')
@@ -120,15 +120,15 @@ class WalkerApp(DemoApp):
     def setup(self):
         import tempfile
 
-        from engine.camera import FlyCamera, OrbitCamera
-        from engine.env import LightEnvironment
-        from engine.fixedstep import FixedStepper
-        from engine.physics import Body, PhysicsWorld
-        from engine.picking import Picker
-        from engine.renderer import Renderer
-        from engine.scene_build import build_scene, load_json
-        from engine.serialize import SceneWatcher
-        from engine.shaders import get
+        from world3d.engine.camera import FlyCamera, OrbitCamera
+        from world3d.engine.env import LightEnvironment
+        from world3d.engine.fixedstep import FixedStepper
+        from world3d.engine.physics import Body, PhysicsWorld
+        from world3d.engine.picking import Picker
+        from world3d.engine.renderer import Renderer
+        from world3d.engine.scene_build import build_scene, load_json
+        from world3d.engine.serialize import SceneWatcher
+        from world3d.engine.shaders import get
 
         # --flag hotreload 自检：用临时副本，避免动到仓库里的场景文件
         if 'hotreload' in self.args.flags:
@@ -195,7 +195,7 @@ class WalkerApp(DemoApp):
             if os.path.isdir(z):
                 if z not in sys.path:
                     sys.path.insert(0, z)
-                from core.markov_chain import MarkovChain
+                from world3d.core.markov_chain import MarkovChain
                 self._mc = MarkovChain(
                     ['dim', 'glow', 'spark', 'flare'],
                     {'dim': {'dim': 0.55, 'glow': 0.40, 'spark': 0.05, 'flare': 0.0},
@@ -431,7 +431,7 @@ class WalkerApp(DemoApp):
         if self._end_objs is None:
             font = None
             try:
-                from engine.fonts import resolve_cjk_font
+                from world3d.engine.fonts import resolve_cjk_font
                 font = resolve_cjk_font()
             except Exception:
                 pass

@@ -35,7 +35,7 @@ jobs:
           python -c "import _cordis_locate; _cordis_locate.ensure(); import cordis; print('cordis ->', cordis.__file__)"
 
       - name: 契约自检
-        run: python -c "import core.contracts as c; print(c.status_table())"
+        run: python -c "import world3d.core.contracts as c; print(c.status_table())"
 
       - name: 一键回归
         run: python scripts/run_all_tests.py --quiet

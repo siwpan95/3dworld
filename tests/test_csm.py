@@ -20,12 +20,12 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from engine.camera import Camera  # noqa: E402
-from engine.csm import (IDENTITY, MAX_CASCADES, cascade_corners, csm_glsl,  # noqa: E402
+from world3d.engine.camera import Camera  # noqa: E402
+from world3d.engine.csm import (IDENTITY, MAX_CASCADES, cascade_corners, csm_glsl,  # noqa: E402
                         csm_matrices, csm_uniforms, light_ortho_box,
                         mat4_as_Mat4, mat4_transform_point, select_cascade,
                         split_scheme, texel_snap)
-from engine.mathkit import look_at_matrix, mat4_mul  # noqa: E402
+from world3d.engine.mathkit import look_at_matrix, mat4_mul  # noqa: E402
 
 ASPECT = 16 / 9
 FOV = 50.0

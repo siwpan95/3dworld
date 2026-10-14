@@ -34,16 +34,16 @@ from pyglet.math import Mat4, Vec3                                   # noqa: E40
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from engine.app import EngineApp, run                                # noqa: E402
-from engine.camera import FlyCamera, OrbitCamera                     # noqa: E402
-from engine.env import LightEnvironment                              # noqa: E402
-from engine.geometry import box, cylinder, lathe, plane, torus_knot, tube  # noqa: E402
-from engine.material import PRESETS                                  # noqa: E402
-from engine.mesh import Mesh                                         # noqa: E402
-from engine.proctex import material_from                             # noqa: E402
-from engine.renderer import Renderer                                 # noqa: E402
-from engine.scene import Scene                                       # noqa: E402
-from engine.shaders import get                                       # noqa: E402
+from world3d.engine.app import EngineApp, run                                # noqa: E402
+from world3d.engine.camera import FlyCamera, OrbitCamera                     # noqa: E402
+from world3d.engine.env import LightEnvironment                              # noqa: E402
+from world3d.engine.geometry import box, cylinder, lathe, plane, torus_knot, tube  # noqa: E402
+from world3d.engine.material import PRESETS                                  # noqa: E402
+from world3d.engine.mesh import Mesh                                         # noqa: E402
+from world3d.engine.proctex import material_from                             # noqa: E402
+from world3d.engine.renderer import Renderer                                 # noqa: E402
+from world3d.engine.scene import Scene                                       # noqa: E402
+from world3d.engine.shaders import get                                       # noqa: E402
 
 TITLE = '3dworld · 材质实验室 — lathe / torus_knot / tube × 程序化 PBR 纹理'
 HELP = ('ESC quit  SPACE pause  F2 perf  B bloom  O ssao  V camera  '
@@ -172,7 +172,7 @@ class MaterialLabApp(EngineApp):
 
         # 主角结：慢旋 + 呼吸起伏（倾斜基座姿态 × 绕 Y 自旋 = 立体翻滚）
         spin = _yaw_quat(math.degrees(t * 14.0))
-        from engine.mathkit import quat_mul
+        from world3d.engine.mathkit import quat_mul
         self.knot_node.set_rotation(quat_mul(spin, self._knot_tilt))
         self.knot_node.set_translation(
             (0.0, 3.4 + math.sin(t * 0.8) * 0.22, 0.0))
@@ -262,12 +262,12 @@ class MaterialLabApp(EngineApp):
 
 # ------------------------------------------------------------------ 工具 --
 def _yaw_quat(deg):
-    from engine.mathkit import quat_from_axis_angle
+    from world3d.engine.mathkit import quat_from_axis_angle
     return quat_from_axis_angle((0.0, 1.0, 0.0), deg)
 
 
 def _axis_quat(axis, deg):
-    from engine.mathkit import quat_from_axis_angle
+    from world3d.engine.mathkit import quat_from_axis_angle
     return quat_from_axis_angle(axis, deg)
 
 

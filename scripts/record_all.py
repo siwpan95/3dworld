@@ -74,7 +74,7 @@ ENTRIES = [
     dict(name='material_lab_30s',    mod='examples/material_lab.py',  cls='MaterialLabApp', dur=30.0, size=DEMO_SIZE),
     dict(name='nordic_saga_60s',     mod='examples/nordic_saga.py',  cls='NordicSagaApp', dur=60.0, size=DEMO_SIZE,
          audio='assets/nordic_saga_ost_60s.wav',
-         ost_fn='logic.nordic_audio:ensure_ost'),  # 北欧配乐（通用 ost 钩子）
+         ost_fn='world3d.logic.nordic_audio:ensure_ost'),  # 北欧配乐（通用 ost 钩子）
     dict(name='blockworld_30s',      mod='examples/blockworld.py',   cls='BlockWorldApp', dur=30.0,
          size=DEMO_SIZE, flags='cine'),            # 可交互方块世界（脚本化运镜）
     dict(name='kid_a_walker_3d_40s', mod='examples/kid_a_walker_3d.py', cls='KidAApp', dur=40.0,
@@ -141,7 +141,7 @@ def find_app_class(mod, cls_name):
 def build_app(entry):
     """按入口构造 App 实例（三类宿主：harness DemoApp / engine EngineApp / presentation 裸 App）。"""
     from world3d.platform.app import DemoApp, parse_args as harness_args
-    from engine.app import EngineApp, parse_args as engine_args
+    from world3d.engine.app import EngineApp, parse_args as engine_args
 
     mod = import_module(entry['mod'], entry['name'])
     cls = find_app_class(mod, entry['cls'])
@@ -237,9 +237,9 @@ def record(entry, out_dir, fps, crf, dur_override):
         if proc.returncode != 0:
             raise RuntimeError(f'ffmpeg 退出码 {proc.returncode}')
         # 可选：把程序化配乐混进视频（OST 与时间轴同长，-shortest 对齐）。
-        # ost_fn 形如 'logic.xxx_audio:ensure_ost'；缺省沿用 kkrieger 的。
+        # ost_fn 形如 'world3d.logic.xxx_audio:ensure_ost'；缺省沿用 kkrieger 的。
         if entry.get('audio'):
-            spec = entry.get('ost_fn', 'logic.kkrieger_audio:ensure_ost')
+            spec = entry.get('ost_fn', 'world3d.logic.kkrieger_audio:ensure_ost')
             mod_name, fn_name = spec.split(':')
             ensure = getattr(importlib.import_module(mod_name), fn_name)
             wav = ensure()
@@ -267,7 +267,7 @@ def fusion(out_dir, fps, crf):
     它同时驱动这里 ffmpeg 的 xfade 时间轴和配乐生成——音视频因此同源对齐。
     缺失的段落会先自动录制补齐。
     """
-    from logic.fusion_audio import (FUSION_SEGMENTS, XFADE, build_fusion_ost,
+    from world3d.logic.fusion_audio import (FUSION_SEGMENTS, XFADE, build_fusion_ost,
                                     segment_offsets)
     # 1) 段落文件齐全？缺失的先录
     segs = []

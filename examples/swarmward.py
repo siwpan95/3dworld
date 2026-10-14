@@ -7,7 +7,7 @@
 
 分层（与既有内核 demo 一致「逻辑在 Cordis、表现由宿主」）：
 
-- setup()   经 asyncio 引导 `cordis.storm.yml` 配置树（`host.tree.mount_tree`），
+- setup()   经 asyncio 引导 `cordis.storm.yml` 配置树（`world3d.host.tree.mount_tree`），
             内核取得 GL 句柄记账；
 - update()  双摇杆输入（或 `--flag auto` 闪避 AI）交给内核，事件转音效；
 - render()  只读内核状态：正交固定屏（竞技场完整可见），实体小方块 + 弹点 +
@@ -44,9 +44,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from host.tree import WANT_STORM, config_path, mount_tree  # noqa: E402
-from engine.camera import look_at_matrix  # noqa: E402
-from games.storm.kernel import (  # noqa: E402
+from world3d.host.tree import WANT_STORM, config_path, mount_tree  # noqa: E402
+from world3d.engine.camera import look_at_matrix  # noqa: E402
+from world3d.games.storm.kernel import (  # noqa: E402
     ARENA_H, ARENA_W, BOSS_R, PLAYER_R,
 )
 
@@ -189,7 +189,7 @@ class SwarmwardDemo(DemoApp):
         self._init_audio()
 
         # ---- 结算叠层 ----
-        from engine.fonts import resolve_cjk_font
+        from world3d.engine.fonts import resolve_cjk_font
         fk = resolve_cjk_font()
         kw = {'font_name': fk} if fk else {}
         self.overlay = pyglet.text.Label('', font_size=48, color=(255, 230, 120, 255),
@@ -461,7 +461,7 @@ class SwarmwardDemo(DemoApp):
             self._make_sfx('hurt', 200, 80, 'triangle', 0.28)
             self._make_sfx('wave', 440, 660, 'sine', 0.16)
             self._make_sfx('end', 320, 90, 'saw', 0.55)
-            from engine.audio import SfxPlayer
+            from world3d.engine.audio import SfxPlayer
             self.sfx = SfxPlayer(d, names=('shoot', 'hit', 'kill', 'hurt',
                                            'wave', 'end'), gain=0.45)
         except Exception as e:
@@ -469,7 +469,7 @@ class SwarmwardDemo(DemoApp):
             self.sfx = None
 
     def _make_sfx(self, name, f0, f1, wave, dur):
-        from engine.audio import Track, render_wav
+        from world3d.engine.audio import Track, render_wav
         tr = Track(dur, rate=32000)
         tr.tone(0.0, dur, f0, f1, wave=wave, amp=0.3,
                 attack=0.005, release=dur * 0.4)

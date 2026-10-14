@@ -54,7 +54,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from world3d.platform.app import DemoApp, orbit_camera_input, run
-from logic.camera import (DIST_MAX, DIST_MIN, PITCH_MAX, PITCH_MIN,
+from world3d.logic.camera import (DIST_MAX, DIST_MIN, PITCH_MAX, PITCH_MIN,
                           OrbitCamera)
 
 TAU = 6.28318531

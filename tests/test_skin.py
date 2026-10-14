@@ -15,11 +15,11 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from engine.geometry import MeshData                       # noqa: E402
-from engine.gltf import GLTF, _normalize_weights           # noqa: E402
-from engine.scene import Node                              # noqa: E402
-from engine.shaders import SKIN_MAX_JOINTS                 # noqa: E402
-from engine.skin import MAX_JOINTS, Skin, make_skin_from_gltf  # noqa: E402
+from world3d.engine.geometry import MeshData                       # noqa: E402
+from world3d.engine.gltf import GLTF, _normalize_weights           # noqa: E402
+from world3d.engine.scene import Node                              # noqa: E402
+from world3d.engine.shaders import SKIN_MAX_JOINTS                 # noqa: E402
+from world3d.engine.skin import MAX_JOINTS, Skin, make_skin_from_gltf  # noqa: E402
 
 GLTF_PATH = os.path.join(ROOT, 'assets', 'skinned_snake.gltf')
 IDENT = (1.0, 0.0, 0.0, 0.0,

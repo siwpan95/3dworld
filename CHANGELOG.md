@@ -3,6 +3,75 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [未发布] — P2-4：命名空间收口（`world3d.*`）—— P2 收尾
+
+引擎化的最后一块地基：**7 个顶层包收进 `world3d`**。
+改完之后，"这个仓库是一个引擎项目"在**导入路径层面**才成立 —— 之前它只是"一堆并列的包"。
+
+```text
+改前                                 改后
+core/ logic/ engine/ presentation/   world3d/
+games/ host/ cli/ _cordis_locate.py    ├── core/ logic/ engine/ presentation/
+examples/ tests/ scripts/ configs/     ├── games/ host/ cli/ platform/
+                                       ├── _cordis_locate.py
+                                       └── compat.py   ← 旧路径过渡层
+```
+
+### 新增
+
+- **`scripts/migrate_p2_4.py`** —— 迁移工具（保留以便复查"到底改了什么"）。它覆盖**三类载体**：
+  * **import 语句**的三种形态（`from core.x import Y` / **`from core import x as y`** / `import core.x`）；
+  * **字符串里的模块路径**（`'games.foo.kernel:Bar'`）—— 正则改 import **永远碰不到这类**，
+    而 `host/registry.py` 的 `SERVICES` 表、`core/contracts.py` 的契约清单、
+    `world3d/_info.py` 的公共面清单全靠它，漏一处就是"配置树挂不起来"；
+  * 包内**仓库根推导**补一层 `dirname`（包深了一层）—— 规划点名的迁移坑，P0-3 / P2-1 各踩过一次。
+- **`scripts/check_imports.py`** —— **全仓可达性门禁**：把 `world3d/` 下**每个** `.py` 都 import 一遍。
+  这是本批唯一能抓"改漏"的东西：**单测只覆盖被它引用到的模块**，
+  没被任何测试 import 的模块改坏了单测不会红。实测 **117 个模块 0 失败**。
+- **`world3d/compat.py` + `tests/test_compat.py`（6 项）** —— 旧路径过渡层，
+  用**元路径别名**而不是桩文件：`install_legacy_aliases()` 之后
+  `import engine.csm` 与 `import world3d.engine.csm` 拿到**同一个模块对象**
+  （`is` 成立 ⇒ 模块级单例/缓存/`isinstance` 全部一致，桩文件做不到）。
+- **`pyproject.toml` 简化**：`packages.find.include` 从 9 个模式缩到 `["world3d*", "cordis*"]`；
+  **`py-modules = ["_cordis_locate"]` 整行删掉** —— 那个顶层模块也搬进了 `world3d/`，
+  于是 P1 阶段那个"顶层模块必须单独声明"的打包陷阱**从根上消失**。
+- README 的目录树按新结构整段重写；`configs/*.yml` 注释、`.github/workflows/ci.yml`、
+  各 `cli/*.py` 的用法 docstring 一并同步。
+
+### 两处**有据的偏离**（规划原文 vs 实际做法，理由见 `docs/P2-4_命名空间收口_design_note.md` §2）
+
+| # | 规划原文 | 实际做法 | 理由 |
+|---|---------|---------|------|
+| 1 | "一次性切 `src/` 并…" | **只收进 `world3d/`，不切 `src/`** | 本项目全部验收命令都是"从仓库根直接跑"：`python -m world3d.cli.config_boot all`、`python examples/xxx.py`、`python -m tests.xxx`。切 `src/` 之后这三条在**干净 clone 下必须先 `pip install`**（或设 PYTHONPATH）才成立 —— 那会断掉"新拉下来就能验"这条前提，而 `src/` 的好处（防误 import 工作树）在这里几乎为零。**收益 < 代价。** |
+| 2 | "旧路径留兼容再导出层一版" | **`world3d.compat` 元路径别名** | 桩文件方案要给每个子模块各写一个 `xxx.py`（`from world3d.core.xxx import *`）—— 那是**第二份公共面真相源**，新增/删除模块都要同步，`import core.x.y` 深路径还要逐层铺。别名 finder 40 行、零维护，且**同一性**成立。过渡件，外界迁完整体删除。 |
+
+### 修复（本批三个）
+
+| # | 症状 | 根因 |
+|---|------|------|
+| 33 | **顶层包别名成功、子模块却是两个模块对象** | 别名 finder 挂在 `sys.meta_path` **末尾** ⇒ `PathFinder` 顺着父包 `__path__` 把 `world3d/host/tree.py` **又加载了一遍**（`host.tree is world3d.host.tree` 为 False；模块级单例/缓存各存一份）。⇒ 改挂**最前**。**只测顶层包的话这个 bug 完全看不出来**，所以判据必须覆盖 3 层深子模块 |
+| 34 | 迁移后 `configs/*.yml`、CI、`cli/*.py` 的 docstring 仍写旧命令 | 迁移脚本只覆盖 `.py` 的 import 与 `.md` 的散文，**`.yml` / CI / docstring 用法行是三类独立载体** ⇒ 最后加一道"全仓陈旧引用扫描"，结果为 **0** 才算完 |
+| 35 | heredoc 又吃反斜杠（本会话第 4 次） | `<<'PY'` 里写 `'\\'` 会被吞掉 ⇒ `SyntaxError`。⇒ **含反斜杠/嵌套引号的脚本一律落文件再跑**（本批的迁移脚本与门禁脚本都是这么来的） |
+
+> 第 33 条的教训值得单列：**"别名"这种机制的判据必须是"同一性"，不是"能导入"。**
+> 能导入只要求名字能解析；同一性才保证"两份状态不会分叉"。
+
+### 验收（实测）
+
+| 门禁 | 结果 |
+|------|------|
+| `python scripts/check_imports.py` | **117 个模块 0 失败**（全仓可达） |
+| `python -m tests.test_compat` | **6/6** |
+| `scripts/run_all_tests.py` | **14/14 模块 / 281 项** / `ALL_TESTS_PASSED` |
+| `python -m world3d.cli.config_boot all` | **10/10** 棵配置树（这条专门走 `registry` 的**字符串模块路径**） |
+| `python -m world3d.cli.frame_plan --all-toggles` | **16/16** 组合 |
+| `scripts/verify_demos.py` 全量 | `ALL_DEMOS_OK (37 demos)` |
+| `main.py` / `kkrieger_demo.py` / `pyglet_3d_demo.py --smoke` | 三个顶层入口 `EXIT_OK` |
+| 全仓陈旧引用扫描 | **0 处**（排除解释性文本） |
+
+> **P2 到此全部收口**（P2-1 platform 抽出 · P2-2 core 越界清出 · P2-3 demos→examples ·
+> P2-4 命名空间收口）⇒ 下一步是 **P4**（文档站 / 门禁 / 脚手架）。
+
 ## [未发布] — P3-b：帧图驱动渲染（帧图拿到了自己的 consumer）
 
 P3-a 做出了帧图内核（声明 → 编译期校验 → 剔除 → 排序 → 别名），但它当时**没有 consumer** ——
@@ -37,12 +106,12 @@ P3-a 做出了帧图内核（声明 → 编译期校验 → 剔除 → 排序 �
 | 门禁 | 结果 |
 |------|------|
 | `python -m tests.test_framegraph` | **17/17** → `ALL_FRAMEGRAPH_TESTS_PASSED` |
-| `python -m cli.frame_plan --all-toggles` | **16 种组合**全部合法 → `== FRAME_PLAN_OK ==` |
+| `python -m world3d.cli.frame_plan --all-toggles` | **16 种组合**全部合法 → `== FRAME_PLAN_OK ==` |
 | `scripts/run_all_tests.py` | **13/13 模块 / 275 项** / `ALL_TESTS_PASSED` |
 | `python examples/frame_graph.py --smoke 5` | `EXIT_OK`（`[framegraph] 重编译 → 8 pass，别名组 3`） |
 | `... --flag off=fog,dof,motionblur` | 逐次重编译 **8 → 7 → 6 → 5** pass，剔除列表与别名组数同步变化 |
 | `... --shot` | `[shot] OK 2 files`（HUD 上直接读到 `帧图 8 pass [depth→shadow→scene→fog→dof→motionblur→tonemap→present] 别名组 3`） |
-| `python -m cli.config_boot all` | **10 个** OK 标记（零回归） |
+| `python -m world3d.cli.config_boot all` | **10 个** OK 标记（零回归） |
 | `scripts/verify_demos.py` 全量 | `ALL_DEMOS_OK (37 demos)` |
 
 > **P3 到此收口**（P3-a 内核 + 门禁，P3-b 图驱动渲染）。
@@ -68,7 +137,7 @@ P3-a 做出了帧图内核（声明 → 编译期校验 → 剔除 → 排序 �
   * `standard_3d_plan()` —— 标准 3D 帧：`depth → shadow → scene → fog → dof → motionblur →
     tonemap → present`；顺序常量 `SEQUENCE_OF_DEPTH_EFFECTS`。
 - **`cli/frame_plan.py`** —— 帧图门禁（与 `cli/config_boot` 同风格）：
-  `python -m cli.frame_plan --all-toggles` 把**16 种效果组合**跑一遍，
+  `python -m world3d.cli.frame_plan --all-toggles` 把**16 种效果组合**跑一遍，
   断言每种组合的计划都合法且"雾 → 景深 → 运动模糊"顺序正确，最后打 `== FRAME_PLAN_OK ==`。
   **顺序一旦被改错，验收脚本会红** —— 而不是等画面看起来"有点不对"。
 - **`tests/test_framegraph.py`（16 项）**：物理顺序、死 pass 剔除、present 的 side_effect
@@ -97,11 +166,11 @@ P3-a 做出了帧图内核（声明 → 编译期校验 → 剔除 → 排序 �
 | 门禁 | 结果 |
 |------|------|
 | `python -m tests.test_framegraph` | **16/16** → `ALL_FRAMEGRAPH_TESTS_PASSED` |
-| `python -m cli.frame_plan --all-toggles` | **16 种组合**全部合法、顺序正确 → `== FRAME_PLAN_OK ==` |
+| `python -m world3d.cli.frame_plan --all-toggles` | **16 种组合**全部合法、顺序正确 → `== FRAME_PLAN_OK ==` |
 | `scripts/run_all_tests.py` | **13/13 模块 / 274 项** / `ALL_TESTS_PASSED`（上一批 258 项） |
 | 全开时的计划 | 8 pass；别名组 3 组（`distance⊕ldr` · `shadow⊕hdr_dof` · `hdr⊕hdr_mb`） |
 | 关效果阶梯 | 关 0/1/2/3 个 ⇒ pass 数 **8 / 7 / 6 / 5**，别名组 3 / 2 / 2 / 1 |
-| `python -m cli.config_boot all` | **10 个** OK 标记（零回归） |
+| `python -m world3d.cli.config_boot all` | **10 个** OK 标记（零回归） |
 | `scripts/verify_demos.py` 全量 | `ALL_DEMOS_OK (36 demos)` |
 
 > **本批是 P3-a**（内核 + 门禁 + 测试）。**P3-b = 图驱动渲染的 demo**
@@ -161,7 +230,7 @@ P3-a 做出了帧图内核（声明 → 编译期校验 → 剔除 → 排序 �
 | `python examples/motion_blur.py --shot` | `[shot] OK 2 files`（两张 md5 不同） |
 | 模糊的客观证据（画面水平梯度均值） | 平移中 **0.409** vs 静止 **0.473**（拖影确实压平了边缘） |
 | 三模块共存 | `mb_glsl + csm_glsl + dof_glsl` 拼在一个片段里**编译通过**，21 个 uniform 全在位 |
-| `python -m cli.config_boot all` | **10 个** OK 标记（零回归） |
+| `python -m world3d.cli.config_boot all` | **10 个** OK 标记（零回归） |
 | `scripts/verify_demos.py` 全量 | `ALL_DEMOS_OK (36 demos)` |
 
 > **④ 轨道到此四项全部交付**（CSM / 体积雾 / 景深 / 运动模糊）。
@@ -222,7 +291,7 @@ P3-a 做出了帧图内核（声明 → 编译期校验 → 剔除 → 排序 �
 | `python examples/dof_focus.py --smoke 4` | `EXIT_OK` |
 | `python examples/dof_focus.py --shot` | `[shot] OK 2 files`（两张 md5 不同） |
 | CoC 实测（对焦 8m / f2.8 / 85mm） | 1m **−85.6px** · 3m −20.4 · 8m **+0.0** · 20m +7.3 · 60m +10.6 · 200m **+11.7**（远侧**饱和**，近侧继续涨 ⇒ 摄影上的不对称） |
-| `python -m cli.config_boot all` | **10 个** OK 标记（零回归） |
+| `python -m world3d.cli.config_boot all` | **10 个** OK 标记（零回归） |
 | `scripts/verify_demos.py` 全量 | `ALL_DEMOS_OK (35 demos)` |
 
 ## [未发布] — ④-2：体积雾与光轴（god rays）
@@ -271,7 +340,7 @@ P3-a 做出了帧图内核（声明 → 编译期校验 → 剔除 → 排序 �
 | `python examples/volumetric_fog.py --smoke 4` | `EXIT_OK` |
 | `python examples/volumetric_fog.py --shot` | `[shot] OK 2 files` |
 | 光轴贡献（像素均值，画面中央走廊） | **有光轴 88.31 / 只雾 78.45 / 无雾 77.11** |
-| `python -m cli.config_boot all` | **10 个** OK 标记（零回归） |
+| `python -m world3d.cli.config_boot all` | **10 个** OK 标记（零回归） |
 | `scripts/verify_demos.py` 全量 | `ALL_DEMOS_OK (34 demos)` |
 
 ## [未发布] — ④-1：级联阴影（CSM）—— 把一张阴影图切成 N 级
@@ -320,7 +389,7 @@ P3-a 做出了帧图内核（声明 → 编译期校验 → 剔除 → 排序 �
 | `python examples/csm_shadow.py --smoke 3` | `EXIT_OK` |
 | `python examples/csm_shadow.py --shot` | `[shot] OK 2 files`（两张分别展示不同光向 + 级联染色边界） |
 | 级联实测数据 | 3 级 → 半径 54.6 / 140.4 / 593.7，纹素 **0.022 / 0.130 / 0.548 世界单位**（近处比最远级细 25 倍） |
-| `python -m cli.config_boot all` | **10 个** OK 标记（零回归） |
+| `python -m world3d.cli.config_boot all` | **10 个** OK 标记（零回归） |
 | `scripts/verify_demos.py` 全量 | `ALL_DEMOS_OK (33 demos)` |
 
 ## [未发布] — 《砖境 / Brickward》B4：成片（已录、**未挂**）
@@ -369,7 +438,7 @@ B1/B2 把内核立住了（11 类元素、连接绑定、BFS 求解器、13/13 �
   `level_clear_links` / `level_blank` / `prune_links`。
   **规则全在内核**、全部可 headless 测 —— demo 只负责把 `ValueError` 变成屏幕提示。
 - **`examples/brickward.py`**（交互 demo，32 个示例之一）：
-  * 渲染：墙走 `engine.greedy_mesh.layer_mesh` 一次建网（与 boxward 同一套地基），
+  * 渲染：墙走 `world3d.engine.greedy_mesh.layer_mesh` 一次建网（与 boxward 同一套地基），
     其余元素用共享小网格（cube / sphere / quad / 自建 pyramid）逐个 batch；
     **正交等距视角**（偏航 +45°，与 boxward 同一套看的），`Q/E` 切 90° 档、`P` 循环俯角；
   * 游玩：WASD/方向键走·推·点火，`Z` 重开、`N` 下一关、`R` 种子关；`--flag auto`
@@ -401,8 +470,8 @@ B1/B2 把内核立住了（11 类元素、连接绑定、BFS 求解器、13/13 �
 |------|------|
 | `python -m tests.test_brickward` | **65/65** → `ALL_BRICKWARD_TESTS_PASSED` |
 | `scripts/run_all_tests.py` | 8/8 模块 / **205 项** / `ALL_TESTS_PASSED`（上一批 196 项） |
-| `python -m cli.config_boot brickward` | 7 手工关 + 6 种子 = **13/13** 可解且回放到胜 → `BRICKWARD_OK` |
-| `python -m cli.config_boot all` | **10 个** OK 标记（零回归） |
+| `python -m world3d.cli.config_boot brickward` | 7 手工关 + 6 种子 = **13/13** 可解且回放到胜 → `BRICKWARD_OK` |
+| `python -m world3d.cli.config_boot all` | **10 个** OK 标记（零回归） |
 | `python examples/brickward.py --smoke 3` | `EXIT_OK` |
 | `python examples/brickward.py --shot` | `[shot] OK 2 files`（**两张 md5 不同** —— 同一张图重复输出会被这条抓住） |
 | `scripts/verify_demos.py` 全量 | `ALL_DEMOS_OK (32 demos)` |
@@ -453,8 +522,8 @@ B2b 加的是"**会自己滚 / 会自己走**"的元件 —— 它们把"世界�
 |------|------|
 | `python -m tests.test_brickward` | **56/56** → `ALL_BRICKWARD_TESTS_PASSED` |
 | `scripts/run_all_tests.py` | 8/8 模块 / **196 项** / `ALL_TESTS_PASSED`（上一批 182 项） |
-| `python -m cli.config_boot brickward` | 7 手工关 + 6 种子 = **13/13** 可解且回放到胜 → `BRICKWARD_OK` |
-| `python -m cli.config_boot all` | **10 个** OK 标记（零回归） |
+| `python -m world3d.cli.config_boot brickward` | 7 手工关 + 6 种子 = **13/13** 可解且回放到胜 → `BRICKWARD_OK` |
+| `python -m world3d.cli.config_boot all` | **10 个** OK 标记（零回归） |
 
 ## [未发布] — 《砖境 / Brickward》B2a：炸弹与火球
 
@@ -501,8 +570,8 @@ B2a 加的是"**会自己动、会自己炸**"的元件 —— 它们把"一步"
 |------|------|
 | `python -m tests.test_brickward` | **42/42** → `ALL_BRICKWARD_TESTS_PASSED` |
 | `scripts/run_all_tests.py` | 8/8 模块 / **182 项** / `ALL_TESTS_PASSED`（上一批 170 项） |
-| `python -m cli.config_boot brickward` | 5 手工关 + 6 种子 = **11/11** 可解且回放到胜 → `BRICKWARD_OK` |
-| `python -m cli.config_boot all` | **10 个** OK 标记（零回归） |
+| `python -m world3d.cli.config_boot brickward` | 5 手工关 + 6 种子 = **11/11** 可解且回放到胜 → `BRICKWARD_OK` |
+| `python -m world3d.cli.config_boot all` | **10 个** OK 标记（零回归） |
 
 > 数值是**实测定**的：`FUSE=2` + 十字 1 格。1 步等于自杀，3 步会让"1 格宽走廊"
 > 失去设计空间，3×3 在 1 格宽走廊里必然连推炸弹的玩家一起炸。
@@ -524,7 +593,7 @@ BQM（《砖块迷宫建造者》）**机制致敬**的第二阶段落地。合�
     `block` / `pushable` 标志，供编辑器（B3）与渲染（B4）共用；
   - **一格一步的确定性模拟**：同关卡 + 同输入 ⇒ 同结果（可回放、可断言）；
   - **「连接」绑定**（BQM 编辑器的核心机制）：用 P0-5 自研的
-    `engine.orchestration.Bus` 做级联，`mode = open | close | toggle`，
+    `world3d.engine.orchestration.Bus` 做级联，`mode = open | close | toggle`，
     事件 `src_on` / `src_off` / `src_flip`；
   - **BFS 最短解求解器**：状态指纹去重 + `DIR_ORDER` 固定 ⇒ **同关同解**
     （方向串可直接当断言用）；`make_offline(level)` 是 headless 求解/试解的唯一入口；
@@ -563,8 +632,8 @@ BQM（《砖块迷宫建造者》）**机制致敬**的第二阶段落地。合�
 |------|------|
 | `python -m tests.test_brickward` | **30/30** → `ALL_BRICKWARD_TESTS_PASSED` |
 | `scripts/run_all_tests.py` | 8/8 模块 / **170 项** / `ALL_TESTS_PASSED`（原 140 项 +30） |
-| `python -m cli.config_boot brickward` | 3 手工关 + 6 种子 = 9/9 可解且回放到胜 → `BRICKWARD_OK` |
-| `python -m cli.config_boot all` | **10 个** OK 标记（新增 brickward） |
+| `python -m world3d.cli.config_boot brickward` | 3 手工关 + 6 种子 = 9/9 可解且回放到胜 → `BRICKWARD_OK` |
+| `python -m world3d.cli.config_boot all` | **10 个** OK 标记（新增 brickward） |
 | `scripts/verify_demos.py` 全量 | `ALL_DEMOS_OK`（零回归） |
 
 ## [未发布] — 引擎化改造 P2-3：`demos/` → `examples/`
@@ -590,7 +659,7 @@ BQM（《砖块迷宫建造者》）**机制致敬**的第二阶段落地。合�
 | **录制脚本**（改名后最脆的一环） | `record_all.py --only boids --dur-override 1` → `ALL_RECORDED`；随后恢复完整 45s 成片 |
 | `scripts/run_all_tests.py` | 7/7 模块 / **140 项** / `ALL_TESTS_PASSED` |
 | `python main.py --shot` / `kkrieger_demo.py --shot` | `EXIT_OK` |
-| `python -m cli.config_boot all` | 9 个 OK 标记 |
+| `python -m world3d.cli.config_boot all` | 9 个 OK 标记 |
 | `scripts/verify_demos.py` 全量 | **ALL_DEMOS_OK (31 examples)** |
 
 > 顺带一个操作教训：**全仓文本替换会把"描述迁移本身"的句子也改掉**
@@ -635,8 +704,8 @@ BQM（《砖块迷宫建造者》）**机制致敬**的第二阶段落地。合�
 
 ### 两个已踩的迁移坑（写进规划 §6 检查表）
 
-1. **引用形态三种**都要 grep：`from core.<mod> import X` / **`from core import <mod> as y`** /
-   `import core.<mod>` —— P2-2 漏了第二种，被 `test_nordic_scene_geometry` 抓出来；
+1. **引用形态三种**都要 grep：`from world3d.core.<mod> import X` / **`from core import <mod> as y`** /
+   `import world3d.core.<mod>` —— P2-2 漏了第二种，被 `test_nordic_scene_geometry` 抓出来；
 2. **路径层级推导要同步改**：`world3d/platform/app.py` 找仓库根要 `dirname` 三次
    （`examples/_harness.py` 是两次）。"少一层就炸"这类问题在 P0-3（内核 `_ROOT`）也踩过一次。
 
@@ -648,7 +717,7 @@ BQM（《砖块迷宫建造者》）**机制致敬**的第二阶段落地。合�
 | `scripts/run_all_tests.py` | 7/7 模块 / **140 项** / `ALL_TESTS_PASSED` |
 | `python main.py --shot` / `python kkrieger_demo.py --shot` | `EXIT_OK`（4 张 / 9 张） |
 | `scripts/verify_demos.py`（31 个全量冒烟 + 截图） | 见提交信息（本批的最强门禁：所有 demo 都改了导入） |
-| `python -m cli.config_boot all` | 9 个 OK 标记 |
+| `python -m world3d.cli.config_boot all` | 9 个 OK 标记 |
 
 ## [未发布] — 引擎化改造 P1：库化（可安装 + 公共 API 面 + CLI 入口）
 
@@ -658,7 +727,7 @@ BQM（《砖块迷宫建造者》）**机制致敬**的第二阶段落地。合�
 
 - **`pyproject.toml`**（PEP 621，单一事实来源）：元数据 / 依赖 / extras（`dev`、`pyglet1x`）/
   库级入口点 / 打包范围 / ruff 配置。**库版本用 SemVer，从 `0.1.0` 起步**（发行版仍用 CalVer）。
-- **`world3d/` 薄门面包**：把引擎公共面从 `engine` 转发出来（公共面由 `engine.__all__` 收口，
+- **`world3d/` 薄门面包**：把引擎公共面从 `engine` 转发出来（公共面由 `world3d.engine.__all__` 收口，
   不维护第二份清单）；含 `py.typed`。**发行名 `3dworld` / 导入名 `world3d`** —— 导入包名不能以
   数字开头（`import 3dworld` 是语法错、`'3dworld'.isidentifier()` 为 False），PEP 508 发行名允许。
 - **库级 CLI 入口**：`world3d-info`（环境自检：版本/依赖/GL/cordis/配置树，任何安装方式可用）、
@@ -678,7 +747,7 @@ BQM（《砖块迷宫建造者》）**机制致敬**的第二阶段落地。合�
 ### 修掉的两个打包缺陷（**在干净 venv 里装一遍才发现**）
 
 1. **顶层模块没被打包**：`_cordis_locate.py` 是**模块不是包**，`packages.find` 只找包 →
-   装上后 `host.tree` 报 `ModuleNotFoundError: No module named '_cordis_locate'`。
+   装上后 `world3d.host.tree` 报 `ModuleNotFoundError: No module named '_cordis_locate'`。
    **editable 安装看不出来**（源码本来就在 `sys.path` 上），只有非 editable 装才暴露。
    修复：`[tool.setuptools] py-modules = ["_cordis_locate"]`。
 2. `world3d-info` 取依赖版本用 `__import__(n).__version__` → `watchdog 4.x` 没有该属性，
@@ -707,7 +776,7 @@ BQM（《砖块迷宫建造者》）**机制致敬**的第二阶段落地。合�
 |----|----|
 | `experiments/cordis/<x>_kernel.py` | **`games/<x>/kernel.py`**（8 个玩法内核） |
 | `experiments/cordis/tree_boot.py` | **`host/tree.py`** |
-| `experiments/cordis/config_boot.py` | **`cli/config_boot.py`**，调用方式改 `python -m cli.config_boot <kind>` |
+| `experiments/cordis/config_boot.py` | **`cli/config_boot.py`**，调用方式改 `python -m world3d.cli.config_boot <kind>` |
 | `experiments/cordis/cordis.*.yml` | **`configs/*.yml`**（9 棵） |
 | `experiments/cordis/services/*.py`（24 个 5 行壳） | **删除** → `host/registry.py` 的服务短名表（yml 里写 `- name: economy`） |
 | `experiments/cordis/scene_pipeline.py` | **`host/pipeline.py`**（`python -m host.pipeline`） |
@@ -753,7 +822,7 @@ BQM（《砖块迷宫建造者》）**机制致敬**的第二阶段落地。合�
 ### 验收（全部实测，且刻意不设 `CORDIS_SRC`）
 
 - `scripts/run_all_tests.py` → 7/7 模块 / **140 项** / `ALL_TESTS_PASSED`；
-- `python -m cli.config_boot all` → **9 个 OK 标记**（TD/GODHAND/FPS/BOXWARD/STORM/HALL/VOID/PULSE/CORES）；
+- `python -m world3d.cli.config_boot all` → **9 个 OK 标记**（TD/GODHAND/FPS/BOXWARD/STORM/HALL/VOID/PULSE/CORES）；
 - `python -m host.pipeline` → `PIPELINE_OK`（含卸载回滚与 coeffect 断言）；
 - `python -m tests.bench_fixedstep` → `BENCH_OK`（固定步长帧率无关 Δx=0；变步长 Δ=0.0333m；
   0.5s 卡帧下 变步长穿墙 / 固定步长拦住）；

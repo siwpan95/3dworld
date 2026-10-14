@@ -46,11 +46,11 @@ from pyglet.window import key
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from world3d.platform.app import DemoApp, orbit_camera_input, run  # noqa: E402
-from core.geometry import box_data  # noqa: E402
-from engine.mathkit import (mat4_from_Mat4, mat4_inverse, mat4_mul)  # noqa: E402
-from engine.motionblur import mb_glsl  # noqa: E402
-from engine.targets import RenderTarget, bind_texture  # noqa: E402
-from logic.camera import OrbitCamera  # noqa: E402
+from world3d.core.geometry import box_data  # noqa: E402
+from world3d.engine.mathkit import (mat4_from_Mat4, mat4_inverse, mat4_mul)  # noqa: E402
+from world3d.engine.motionblur import mb_glsl  # noqa: E402
+from world3d.engine.targets import RenderTarget, bind_texture  # noqa: E402
+from world3d.logic.camera import OrbitCamera  # noqa: E402
 
 WINDOW_BLOCK = '''uniform WindowBlock {
     mat4 projection;

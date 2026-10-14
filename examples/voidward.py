@@ -40,10 +40,10 @@ from pyglet.math import Mat4, Vec3                               # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from engine.app import EngineApp, run                            # noqa: E402
-from host.tree import (WANT_VOID, config_path,  # noqa: E402
+from world3d.engine.app import EngineApp, run                            # noqa: E402
+from world3d.host.tree import (WANT_VOID, config_path,  # noqa: E402
                                           mount_tree)
-from games.void.kernel import (CORE_WORLD_R, DOCK_R,  # noqa: E402
+from world3d.games.void.kernel import (CORE_WORLD_R, DOCK_R,  # noqa: E402
                                             GOODS, GOOD_BASE, nearest_station)
 
 TITLE = '3dworld 星阑 · Voidward（§15 太空贸易）'

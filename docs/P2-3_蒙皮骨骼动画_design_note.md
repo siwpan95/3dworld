@@ -18,7 +18,7 @@
 |------|--------------|
 | glTF 2.0 / GLB 解析 | ✅ `engine/gltf.py`（accessor / bufferView / sparse / material） |
 | 顶点属性 | ✅ POSITION / NORMAL / TEXCOORD_0 / TANGENT / COLOR_0 / indices（`primitive_meshdata`，gltf.py:197） |
-| 动画 | ✅ channel/sampler → `engine.timeline.Sampler`（gltf.py:317） |
+| 动画 | ✅ channel/sampler → `world3d.engine.timeline.Sampler`（gltf.py:317） |
 | **skin / joints / weights** | ❌ **无**（`grep skin\|joint\|weight\|JOINTS` 仅命中动画 weights 的"暂不支持"注释） |
 | 蒙皮着色器 | ❌ **无**（`PBR_VERT`/`PBR_INST_VERT` 只处理 position/normals/uvs/tangents） |
 | 骨骼 | 🔶 `logic/skeleton.py` = **节点级** BoneNode 树（纯数学，非蒙皮） |

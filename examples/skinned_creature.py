@@ -34,16 +34,16 @@ from pyglet.math import Vec3                                    # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from engine.app import EngineApp, run                           # noqa: E402
-from engine.camera import OrbitCamera                           # noqa: E402
-from engine.env import LightEnvironment                         # noqa: E402
-from engine.gltf import GLTF                                    # noqa: E402
-from engine.material import PRESETS                             # noqa: E402
-from engine.mesh import SkinnedMesh                             # noqa: E402
-from engine.renderer import Renderer                            # noqa: E402
-from engine.shaders import get                                  # noqa: E402
-from engine.skin import make_skin_from_gltf                     # noqa: E402
-from logic.animation import quat_from_axis_angle                # noqa: E402
+from world3d.engine.app import EngineApp, run                           # noqa: E402
+from world3d.engine.camera import OrbitCamera                           # noqa: E402
+from world3d.engine.env import LightEnvironment                         # noqa: E402
+from world3d.engine.gltf import GLTF                                    # noqa: E402
+from world3d.engine.material import PRESETS                             # noqa: E402
+from world3d.engine.mesh import SkinnedMesh                             # noqa: E402
+from world3d.engine.renderer import Renderer                            # noqa: E402
+from world3d.engine.shaders import get                                  # noqa: E402
+from world3d.engine.skin import make_skin_from_gltf                     # noqa: E402
+from world3d.logic.animation import quat_from_axis_angle                # noqa: E402
 
 GLTF_PATH = os.path.join(ROOT, 'assets', 'skinned_snake.gltf')
 

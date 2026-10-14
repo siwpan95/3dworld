@@ -13,7 +13,7 @@
 #   bpm        —— 初始 BPM（3 谱面：90 / 120 / 150，切换用 load_chart）
 #   offset_ms  —— 实机音画 offset 校准（F4 ±20ms）
 #
-# 运行（headless 验证）：python -m cli.config_boot pulse
+# 运行（headless 验证）：python -m world3d.cli.config_boot pulse
 - name: render
   id: render
 - name: economy

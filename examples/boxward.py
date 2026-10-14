@@ -8,7 +8,7 @@
 
 分层（与既有内核 demo 一致「逻辑在 Cordis、表现由宿主」）：
 
-- setup()   经 asyncio 引导 `cordis.puzzle.yml` 配置树（`host.tree.mount_tree`），
+- setup()   经 asyncio 引导 `cordis.puzzle.yml` 配置树（`world3d.host.tree.mount_tree`），
             内核加载手工关、取得 GL 句柄记账；
 - update()  键盘走子 / `--flag auto` 的求解器回放交给内核，事件转音效；
 - render()  只读内核 / 网格状态：**静态墙 = 贪心合并网格**（`greedy_mesh`，一次建网），
@@ -50,12 +50,12 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 # 试点三：挂载由 cordis.puzzle.yml 声明（与 config_boot 的 headless 验证同一入口）
-from host.tree import WANT_PUZZLE, config_path, mount_tree  # noqa: E402
-from games.puzzle.kernel import (  # noqa: E402
+from world3d.host.tree import WANT_PUZZLE, config_path, mount_tree  # noqa: E402
+from world3d.games.puzzle.kernel import (  # noqa: E402
     _goal_plate, cam_move_dirs, level_from_json, level_to_json,
 )
-from logic.camera import OrbitCamera  # noqa: E402
-from engine.picking import ray_from_screen  # noqa: E402
+from world3d.logic.camera import OrbitCamera  # noqa: E402
+from world3d.engine.picking import ray_from_screen  # noqa: E402
 
 VERTEX_SRC = '''#version 330 core
 in vec3 position;
@@ -195,7 +195,7 @@ class BoxwardDemo(DemoApp):
         self._init_audio()
 
         # ---- 胜负叠层 ----
-        from engine.fonts import resolve_cjk_font
+        from world3d.engine.fonts import resolve_cjk_font
         fk = resolve_cjk_font()
         kw = {'font_name': fk} if fk else {}
         self.overlay = pyglet.text.Label('', font_size=44, color=(255, 230, 120, 255),
@@ -442,7 +442,7 @@ class BoxwardDemo(DemoApp):
             self._make_sfx('undo', 520, 660, 'sine', 0.07)
             self._make_sfx('blocked', 140, 100, 'square', 0.08)
             self._make_sfx('win', 523, 784, 'triangle', 0.50)
-            from engine.audio import SfxPlayer
+            from world3d.engine.audio import SfxPlayer
             self.sfx = SfxPlayer(d, names=('move', 'push', 'goal', 'undo',
                                            'blocked', 'win'), gain=0.5)
         except Exception as e:
@@ -450,7 +450,7 @@ class BoxwardDemo(DemoApp):
             self.sfx = None
 
     def _make_sfx(self, name, f0, f1, wave, dur):
-        from engine.audio import Track, render_wav
+        from world3d.engine.audio import Track, render_wav
         tr = Track(dur, rate=32000)
         tr.tone(0.0, dur, f0, f1, wave=wave, amp=0.3,
                 attack=0.005, release=dur * 0.4)

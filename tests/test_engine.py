@@ -18,18 +18,18 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pyglet.math import Quaternion, Vec3
 
-from engine.camera import FlyCamera, OrbitCamera
-from engine.frustum import AABB, Frustum, SpatialHash
-from engine.geometry import box, ground_grid, merge_meshes, plane, sphere, torus
-from engine.gltf import GLTF
-from engine.mathkit import (look_at_matrix, mat4_from_trs, mat4_identity,
+from world3d.engine.camera import FlyCamera, OrbitCamera
+from world3d.engine.frustum import AABB, Frustum, SpatialHash
+from world3d.engine.geometry import box, ground_grid, merge_meshes, plane, sphere, torus
+from world3d.engine.gltf import GLTF
+from world3d.engine.mathkit import (look_at_matrix, mat4_from_trs, mat4_identity,
                             mat4_inverse, mat4_mul, normal_matrix,
                             quat_from_axis_angle, slerp, trs_decompose)
-from engine.picking import Picker, ray_aabb, ray_from_screen, ray_sphere, ray_triangle
-from engine.physics import Body, PhysicsWorld
-from engine.scene import Node, Scene
-from engine.serialize import SceneWatcher, dumps, loads
-from engine.timeline import PlaybackController, Sampler, Channel, Timeline
+from world3d.engine.picking import Picker, ray_aabb, ray_from_screen, ray_sphere, ray_triangle
+from world3d.engine.physics import Body, PhysicsWorld
+from world3d.engine.scene import Node, Scene
+from world3d.engine.serialize import SceneWatcher, dumps, loads
+from world3d.engine.timeline import PlaybackController, Sampler, Channel, Timeline
 
 
 # ------------------------------------------------------------ 数学 --
@@ -294,7 +294,7 @@ def test_picking_math():
 def test_picking_screen_ray():
     """屏幕点 -> 世界射线 -> 命中指定网格（走完整 unproject 链路）。"""
     from pyglet.math import Mat4
-    from engine.camera import Camera
+    from world3d.engine.camera import Camera
     cam = Camera(position=(0, 2, 8), target=(0, 1, 0), fov=60)
     aspect = 16 / 9
     vp = cam.view_projection(aspect)
@@ -307,7 +307,7 @@ def test_picking_screen_ray():
     # 直接用 ndc(0,0)（屏幕中心）反投影，射线应穿过 (0, ~1.?, 0) 附近
     inv = cam.inverse_view_projection(aspect)
     ray = ray_from_screen(800, 450, 1600, 900, inv, cam.position)
-    from engine.picking import ray_mesh
+    from world3d.engine.picking import ray_mesh
     hit = ray_mesh(ray, m, precise=False)
     assert hit is not None, '屏幕中心射线未命中相机正前方的盒子'
     print(f'  ok: 屏幕射线命中 t={hit.distance:.2f} 点=({hit.point[0]:.2f},'
@@ -423,14 +423,14 @@ def test_gl_pipeline():
     from pyglet.gl import (GL_RGBA, GL_UNSIGNED_BYTE, GL_FRAMEBUFFER,
                            glBindFramebuffer, glReadPixels)
     import ctypes
-    from engine.env import LightEnvironment
-    from engine.geometry import sphere
-    from engine.material import Material, PRESETS
-    from engine.mesh import InstancedMesh, Mesh
-    from engine.postfx import PostSettings
-    from engine.renderer import Renderer
-    from engine.shaders import SOURCES, build
-    from engine.targets import RenderTarget, MipTarget
+    from world3d.engine.env import LightEnvironment
+    from world3d.engine.geometry import sphere
+    from world3d.engine.material import Material, PRESETS
+    from world3d.engine.mesh import InstancedMesh, Mesh
+    from world3d.engine.postfx import PostSettings
+    from world3d.engine.renderer import Renderer
+    from world3d.engine.shaders import SOURCES, build
+    from world3d.engine.targets import RenderTarget, MipTarget
 
     # 1) 全部着色器可编译
     for name in SOURCES:
@@ -454,7 +454,7 @@ def test_gl_pipeline():
                    translation=(0, 1, 0))
     inst = InstancedMesh(box(0.5, 0.5, 0.5), r.program('pbr_inst'),
                          capacity=8, name='inst')
-    from engine.mathkit import mat4_from_trs
+    from world3d.engine.mathkit import mat4_from_trs
     inst.write_all([mat4_from_trs((3, 0.5, 0), (1, 0, 0, 0), (1, 1, 1))] * 4,
                    [(1, 1, 1, 0)] * 4)
     scene.add_mesh(inst, name='inst')
@@ -484,8 +484,8 @@ def test_model_uniform_is_program_scoped():
 
     这里用假 program 记录实际写入，零 GL 依赖。
     """
-    from engine.mathkit import mat4_from_trs
-    from engine.mesh import _bind_model
+    from world3d.engine.mathkit import mat4_from_trs
+    from world3d.engine.mesh import _bind_model
 
     class FakeProgram:
         """只记录被写了哪些 uniform 名。"""
@@ -534,13 +534,13 @@ def test_gl_multimesh_frame_stability():
     import ctypes
 
     from pyglet.gl import GL_RGBA, GL_UNSIGNED_BYTE, glReadPixels
-    from engine.camera import Camera
-    from engine.env import LightEnvironment
-    from engine.geometry import box, ground_grid, sphere
-    from engine.material import PRESETS, Material
-    from engine.mesh import Mesh
-    from engine.renderer import Renderer
-    from engine.scene import Scene
+    from world3d.engine.camera import Camera
+    from world3d.engine.env import LightEnvironment
+    from world3d.engine.geometry import box, ground_grid, sphere
+    from world3d.engine.material import PRESETS, Material
+    from world3d.engine.mesh import Mesh
+    from world3d.engine.renderer import Renderer
+    from world3d.engine.scene import Scene
 
     env = LightEnvironment(sun_dir=(0.3, 0.8, 0.4)).bake()
     r = Renderer(96, 96, environment=env)
@@ -580,7 +580,7 @@ def test_fsm_timeline_and_events():
     重点盯一个易错点：**同一状态的非相邻段**必须是"多个时间窗"而不是一个大窗 ——
     否则中间的别的状态会被 `at()` 错判。
     """
-    from engine.fsm import Machine, machine_from_keys
+    from world3d.engine.fsm import Machine, machine_from_keys
 
     m = machine_from_keys([(0, 'a'), (5, 'b'), (10, 'a')])
     assert m.windows('a') == ((0.0, 5.0), (10.0, float('inf'))), m.windows('a')
@@ -614,7 +614,7 @@ def test_fsm_timeline_and_events():
 
 def test_orchestration_bus():
     """事件总线（`engine/orchestration.py`，P0-5 自研）：顺序确定 + 级联 + 环检测。"""
-    from engine.orchestration import Bus
+    from world3d.engine.orchestration import Bus
 
     seen = []
     bus = Bus('demo')
@@ -649,7 +649,7 @@ def test_orchestration_bus():
 def test_audio_track_and_render():
     """Track 合成 + WAV 写盘：确定性、时长精确、归一化不削波。"""
     import tempfile
-    from engine.audio import Track, render_wav
+    from world3d.engine.audio import Track, render_wav
 
     def build():
         tr = Track(1.0, rate=8000)
@@ -688,7 +688,7 @@ def test_audio_timeline_player():
     import shutil
     import tempfile
     import time as _t
-    from engine.audio import TimelineAudio, Track, render_wav
+    from world3d.engine.audio import TimelineAudio, Track, render_wav
     if not audio_ok():
         print('  SKIP: 无音频驱动')
         return
@@ -732,7 +732,7 @@ def audio_ok():
 def test_kkrieger_ost_structure():
     """kkrieger 配乐：短渲染走通全链路（音效事件越界安全截断）。"""
     import tempfile
-    from logic.kkrieger_audio import build_ost
+    from world3d.logic.kkrieger_audio import build_ost
     with tempfile.TemporaryDirectory() as td:
         path, dur = build_ost(os.path.join(td, 'ost.wav'), duration=4.0)
         assert abs(dur - 4.0) < 1e-6
@@ -766,7 +766,7 @@ def test_merge_meshes_keeps_uv():
 def test_nordic_ost_structure():
     """诺德之境配乐：短渲染走通全链路（事件越界安全截断）。"""
     import tempfile
-    from logic.nordic_audio import build_ost
+    from world3d.logic.nordic_audio import build_ost
     with tempfile.TemporaryDirectory() as td:
         path, dur = build_ost(os.path.join(td, 'nordic.wav'), duration=4.0)
         assert abs(dur - 4.0) < 1e-6
@@ -783,7 +783,7 @@ def test_nordic_ost_structure():
 
 def test_advanced_geometry():
     """新建模：lathe/tube/torus_knot——顶点数、单位法线、闭合无缝。"""
-    from engine.geometry import lathe, torus_knot, tube
+    from world3d.engine.geometry import lathe, torus_knot, tube
     # lathe：顶点 = (segments+1)*len(profile)，法线解析且单位长
     prof = [(0.0, 0.0), (0.5, 0.1), (0.3, 0.8), (0.6, 1.4)]
     md = lathe(prof, segments=20)
@@ -812,7 +812,7 @@ def test_advanced_geometry():
 
 def test_proctex_patterns():
     """程序化纹理：确定性、尺寸正确、fbm 可平铺、法线图是切线空间。"""
-    from engine.proctex import PATTERNS, fbm, height_to_normal, value_noise
+    from world3d.engine.proctex import PATTERNS, fbm, height_to_normal, value_noise
     # 确定性：同参数两次生成逐字节一致
     for name, maker in PATTERNS.items():
         p1, p2 = maker(size=64), maker(size=64)
@@ -839,7 +839,7 @@ def test_proctex_gl_material():
     w = _gl_available()
     if not w:
         return
-    from engine.proctex import material_from
+    from world3d.engine.proctex import material_from
     m = material_from('marble', size=64)
     assert m.base_tex is not None and m.mr_tex is not None
     assert m.normal_tex is not None

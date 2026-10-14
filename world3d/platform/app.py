@@ -25,7 +25,7 @@
   ``ShaderProgram.vertex_list(...)``；着色器里用到哪些属性就要声明哪些
   （``colors`` 不声明而传入会抛 ShaderException）。
 - ``Quaternion.to_mat4()`` 输出是标准旋转矩阵的转置，旋转请用
-  ``logic.animation.quat_to_mat4``。
+  ``world3d.logic.animation.quat_to_mat4``。
 
 子类契约（只覆盖这几个钩子）::
 
@@ -143,7 +143,7 @@ class Hud:
 
     def __init__(self, title='', help_text=''):
         from pyglet import shapes
-        from engine.fonts import resolve_cjk_font
+        from world3d.engine.fonts import resolve_cjk_font
         font_kw = {}
         _cjk = resolve_cjk_font()             # 显式 CJK 字体（跨平台兜底；见 engine/fonts.py）
         if _cjk:
@@ -435,7 +435,7 @@ def run(app_cls, argv=None):
 
 
 def orbit_camera_input(app, camera, invert_y=False):
-    """把鼠标拖动/滚轮接到 ``logic.camera.OrbitCamera``。
+    """把鼠标拖动/滚轮接到 ``world3d.logic.camera.OrbitCamera``。
 
     返回 ``(on_drag, on_scroll)``，赋给子类同名方法即可::
 

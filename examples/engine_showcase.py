@@ -38,18 +38,18 @@ from pyglet.math import Mat4, Vec3                                   # noqa: E40
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from engine.app import EngineApp, run                                # noqa: E402
-from engine.camera import FlyCamera, OrbitCamera                     # noqa: E402
-from engine.env import LightEnvironment                              # noqa: E402
-from engine.geometry import box, cylinder, ground_grid, plane, sphere, torus  # noqa: E402
-from engine.material import PRESETS, Material                        # noqa: E402
-from engine.mesh import InstancedMesh, Mesh                          # noqa: E402
-from engine.physics import Body, PhysicsWorld                        # noqa: E402
-from engine.picking import Picker                                    # noqa: E402
-from engine.renderer import Renderer                                 # noqa: E402
-from engine.scene import Node, Scene                                 # noqa: E402
-from engine.serialize import SceneWatcher, save_scene                # noqa: E402
-from engine.shaders import get                                       # noqa: E402
+from world3d.engine.app import EngineApp, run                                # noqa: E402
+from world3d.engine.camera import FlyCamera, OrbitCamera                     # noqa: E402
+from world3d.engine.env import LightEnvironment                              # noqa: E402
+from world3d.engine.geometry import box, cylinder, ground_grid, plane, sphere, torus  # noqa: E402
+from world3d.engine.material import PRESETS, Material                        # noqa: E402
+from world3d.engine.mesh import InstancedMesh, Mesh                          # noqa: E402
+from world3d.engine.physics import Body, PhysicsWorld                        # noqa: E402
+from world3d.engine.picking import Picker                                    # noqa: E402
+from world3d.engine.renderer import Renderer                                 # noqa: E402
+from world3d.engine.scene import Node, Scene                                 # noqa: E402
+from world3d.engine.serialize import SceneWatcher, save_scene                # noqa: E402
+from world3d.engine.shaders import get                                       # noqa: E402
 
 TITLE = '3dworld engine · PBR/IBL + Bloom + SSAO + instancing + culling'
 HELP = ('ESC quit  SPACE pause  F2 perf  B bloom  O ssao  V camera  '
@@ -152,7 +152,7 @@ class ShowcaseApp(EngineApp):
         self._field_flat = None
         self._write_field(0.0)
         # 整块给一个覆盖全场的世界包围盒：逐实例算包围盒没有意义（它们是一批）
-        from engine.frustum import AABB
+        from world3d.engine.frustum import AABB
         half = FIELD_N * 1.5 * 0.5
         field.world_aabb = AABB((-half, -1.0, -half), (half, 3.0, half))
         self.show_field = True
@@ -339,7 +339,7 @@ class ShowcaseApp(EngineApp):
             path = save_scene(self.scene, os.path.join(ROOT, SCENE_JSON))
             self.reload_msg = f'saved {os.path.basename(path)}'
         elif s == 'L':
-            from engine.serialize import load_scene
+            from world3d.engine.serialize import load_scene
             try:
                 loaded = load_scene(os.path.join(ROOT, SCENE_JSON))
                 self._apply_loaded(loaded)
@@ -414,12 +414,12 @@ class ShowcaseApp(EngineApp):
 
 # ------------------------------------------------------------------ 工具 --
 def _yaw_quat(deg):
-    from engine.mathkit import quat_from_axis_angle
+    from world3d.engine.mathkit import quat_from_axis_angle
     return quat_from_axis_angle((0.0, 1.0, 0.0), deg)
 
 
 def _trs(t):
-    from engine.mathkit import mat4_from_trs
+    from world3d.engine.mathkit import mat4_from_trs
     return mat4_from_trs(t, (1.0, 0.0, 0.0, 0.0), (1.0, 1.0, 1.0))
 
 

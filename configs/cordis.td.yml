@@ -12,7 +12,7 @@
 # host.tree.mount_tree(config_path('cordis.td.yml'), want=WANT_TD) 加载本文件——
 # 「demo 怎么挂的 = headless 验证怎么挂的」，接线只有这一份。
 #
-# 运行（headless 验证）：python -m cli.config_boot td
+# 运行（headless 验证）：python -m world3d.cli.config_boot td
 - name: render
   id: render
 - name: economy

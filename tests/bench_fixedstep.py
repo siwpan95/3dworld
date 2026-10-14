@@ -15,9 +15,9 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from engine.fixedstep import FixedStepper              # noqa: E402
-from engine.frustum import AABB                        # noqa: E402
-from engine.physics import Body, PhysicsWorld          # noqa: E402
+from world3d.engine.fixedstep import FixedStepper              # noqa: E402
+from world3d.engine.frustum import AABB                        # noqa: E402
+from world3d.engine.physics import Body, PhysicsWorld          # noqa: E402
 
 FIXED = 1.0 / 60.0
 MAX_FRAME = 0.25
