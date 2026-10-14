@@ -70,8 +70,9 @@ examples/              37 个单文件示例与工具（详见 examples/README.m
 configs/               10 棵配置树（cordis.*.yml）：
                        声明本次挂哪些服务、各带什么 config
 scripts/
-  verify.py            机械门禁 12 条：同一事实写在两处必须相等（<1 秒，pre-commit 会跑）
+  verify.py            机械门禁 14 条：同一事实写在两处必须相等（<1 秒，pre-commit 会跑）
   docs_index.py        docs/README.md 的生成器（门禁 docs-index-fresh 核对新鲜度）
+  new_demo.py          脚手架：生成能开箱跑的新 demo / 新测试模块（模板被门禁钉住）
   check_imports.py     全仓可达性门禁：world3d/ 下每个模块都 import 一遍
   verify_demos.py      demos 批量验收（冒烟 + 截图 + 退出码）
   run_all_tests.py     14 个测试模块的聚合 runner
@@ -299,7 +300,7 @@ kkrieger 六幕的循环连续性与舱门/平台/灯带状态机、**镜头穿�
 **全靠手改**，而手改每次都可能漏一处（示例数在 README 里就有 6 处）。
 
 ```bat
-python scripts\verify.py              # 12 条门禁（不联网、不跑构建、不改文件）
+python scripts\verify.py              # 14 条门禁（不联网、不跑构建、不改文件）
 python scripts\verify.py --list       # 只列名字与说明
 python scripts\verify.py --verbose    # 每条的证据（"6 处断言 == 37 个 demo"这种）
 python scripts\verify.py --fix        # 重生成生成物（docs/README.md）
@@ -316,13 +317,20 @@ python scripts\verify.py --selfcheck  # 沙箱里逐条注入破坏，证明门�
 | `doc-links` | README / docs / examples 里的**相对链接**都指得到真实文件 |
 | `docs-index-fresh` | `docs/README.md` == `scripts/docs_index.py` 重新生成的结果（新鲜度） |
 | `commands-exist` | 文档里写的每条 `python -m …` / `python <文件名>.py` 目标都存在（模板占位符不算） |
+| `pyrefs-exist` | 文档与 CI 里**每一处**一行式 `python -c "import <模块>"` 都指向**真实存在的模块** |
+| `scaffold-templates-valid` | 脚手架模板渲染 → `ast.parse` → **真 import** → 关键片段齐全 |
 | `cli-usage-names` | `cli/*.py` 用法 docstring 里的模块名 == 真实模块名 |
 | `readme-tree-real` | README「项目结构」树里列出的路径都真实存在 |
 
 **它上线当天就抓到过一个真漂移**：`tests/test_timeline_ui` 注册在
 `run_all_tests.py` 里（14 个模块）却没进 README 的测试清单（只列了 13 个）。
 
-`--selfcheck` 会给每条门禁注入一个**针对性破坏**并断言它变红（12/12 全拦得住）——
+后来加 `pyrefs-exist` 时又抓到**两处我根本不知道已经坏了的**：
+`.github/workflows/ci.yml` 里 `import _cordis_locate`（P2-4 改名前搬走了，只在 GitHub 上跑所以本机看不见）、
+以及 `docs/P0-1_核心抽离_design_note.md` 里的 `from core import contracts`。
+**门禁不只防"未来会漂"，还会揭"现在就已经错了"。**
+
+`--selfcheck` 会给每条门禁注入一个**针对性破坏**并断言它变红（14/14 全拦得住）——
 "永远为绿的门禁等于装饰品"，所以这一步不能省。
 
 **pre-commit 钩子**（可选，已在本仓库启用）：
@@ -333,6 +341,32 @@ git config core.hooksPath .githooks     # 装（已启用；--unset 即卸载）
 
 钩子只跑 `verify.py`（<1 秒），**找不到 Python 就跳过而不是拦下**；
 失败时打印下一步动作（`--fix` / `--verbose` / `--no-verify`）。
+CI（`.github/workflows/ci.yml`）里也挂了 `verify.py` + `check_imports.py` 两步 ——
+pre-commit 只在装了钩子的那台机器上跑，CI 才是"无论如何都会跑"的那一份。
+
+## 脚手架（`scripts/new_demo.py`）：新 demo / 新测试模块
+
+```bat
+:: <名字> 要小写字母开头、只含小写字母与下划线（如 starfield / mathx）
+python scripts\new_demo.py <名字>                     :: → examples/<名字>.py
+python scripts\new_demo.py --test <名字> --register   :: → tests/test_<名字>.py + 登记进 runner
+python scripts\new_demo.py <名字> --force             :: 覆盖已存在的文件
+```
+
+生成成功后，脚手架会把"**怎么先确认骨架能跑**"（冒烟命令 / 测试命令，都带真实名字）
+和"**还差哪几处要同步**"一起打印出来。
+
+> 文档里的 `<名字>` / `<模块>` 是**占位符**，不是命令 —— 门禁只校验能当命令跑的字面，
+> 所以占位符一律写成 `<…>`（`<` 不在校验字符集里，天然被排除）。
+
+模板**不是伪代码**：它带着那些用血换来的行 —— `sys.path` 显式引导块
+（少这行会让**所有** demo 一起 `ModuleNotFoundError`）、`TITLE/HELP/SHOTS` 与
+`setup/update/render` 钩子、测试模块的 runner + `ALL_*_TESTS_PASSED` 标记。
+生成之后**紧接着跑 `verify.py`**：它会列出"还差哪几处"（示例索引行 / README 的示例数 /
+测试清单）—— 新增东西要同步的地方由机器列，不靠记性。
+
+模板腐掉时**没人会发现**（直到下一个用它的人踩坑），所以门禁
+`scaffold-templates-valid` 把它钉在现状上：渲染 → `ast.parse` → **真 import** → 关键片段齐全。
 
 ## 性能基准（真实帧率）
 

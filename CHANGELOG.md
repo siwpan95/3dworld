@@ -3,7 +3,7 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## [未发布] — P4：机械门禁 + 文档站 —— **路线全部收口**
+## [未发布] — P4：机械门禁 + 文档站 + 脚手架 —— **路线全部收口**
 
 引擎化的最后一环不是功能，而是**防止前面所有东西慢慢腐掉**。
 本轮改造里"同一件事被手改过 5~7 次"（示例数在 README 里有 **7 处**、测试清单 14 行、
@@ -15,18 +15,20 @@
 
 ### 新增
 
-- **`scripts/verify.py`** —— 12 条机械门禁，**<1 秒、不联网、不跑构建、不改文件**：
+- **`scripts/verify.py`** —— 14 条机械门禁，**<1 秒、不联网、不跑构建、不改文件**：
   * 一致性：`readme-demo-count`（README 里**每一处**示例数 == 真实 demo 数）、
     `readme-test-modules`（README 表 ↔ `run_all_tests.MODULES`，**双向**）、
     `readme-test-counts`（每行「N 项」== 该模块声明的用例数）、
     `readme-config-count` / `-kernel-count` / `-core-count`、
     `examples-index-pairs`（`examples/README.md` 表格 ↔ `examples/*.py`，**双向**）、
     `commands-exist`、`cli-usage-names`、`readme-tree-real`（项目结构树里的路径都存在）；
-  * 契约：`doc-links`（29 个文件的相对链接全部有效）；
+  * 契约：`doc-links`（30 个文件的相对链接全部有效）、
+    `pyrefs-exist`（文档与 CI 里每一处一行式 `python -c "import <模块>"` 的模块都真实存在）、
+    `scaffold-templates-valid`（脚手架模板渲染 → `ast.parse` → **真 import** → 关键片段齐全）；
   * 新鲜度：`docs-index-fresh`（`docs/README.md` == 重新生成的结果）。
   * `--list / --only / --json / --verbose / --fix / --selfcheck`，退出码 0/1/2。
 - **`scripts/verify.py --selfcheck`** —— 沙箱里给**每条**门禁注入一个针对性破坏，
-  断言它变红：**12/12 全拦得住**。"永远为绿的门禁等于装饰品"，所以这一步不能省。
+  断言它变红：**14/14 全拦得住**。"永远为绿的门禁等于装饰品"，所以这一步不能省。
   沙箱只拷文本（跳过 assets/剧照/vendor），50MB 仓库缩到 ~2MB。
 - **`scripts/docs_index.py` + `docs/README.md`** —— 文档站的第一块：**索引是生成物**
   （26 → 27 篇，按 `P0-`…`P4-` / `4-` / `BQM` / 专题分组，含标题与首段摘要）。
@@ -35,35 +37,60 @@
 - **`.githooks/pre-commit`**（已启用 `git config core.hooksPath .githooks`）——
   只跑 `verify.py`；**找不到 Python 就跳过而不是拦下**；失败时给下一步动作
   （`--fix` / `--verbose` / `--no-verify`）。两条路径用**真实 PortableGit 的 sh** 实测过。
-- README 新增「机械门禁」一节（门禁表 + "改了什么要跑什么"）；`docs/分发指南.md`
-  的发布前检查补上 `verify.py`。
+- **`scripts/new_demo.py`** —— 脚手架：生成**开箱能跑**的新 demo / 新测试模块
+  （`--register` 自动登记进 `run_all_tests.MODULES`）。
+  模板里带着那些用血换来的行：`sys.path` 显式引导块（少它会让**所有** demo 一起
+  `ModuleNotFoundError`）、`TITLE/HELP/SHOTS` 与 `setup/update/render` 钩子、
+  测试模块的 runner + `ALL_*_TESTS_PASSED` 标记。实测用探针名 `zzprobe` 各生成一次：
+  demo 模板 `--smoke 3 → EXIT_OK`、测试模板 **2/2 通过**（验证完即删，不入库）。
+  两条实现坑：模板用 `string.Template`（GLSL 花括号会让 `str.format` KeyError）、
+  `_register_test` 写盘**前先 `ast.parse`**（不留半个坏文件）。
+- **门禁挂进 CI**（`.github/workflows/ci.yml` 新增 `verify.py` + `check_imports.py` 两步）——
+  pre-commit 只在装了钩子的那台机器上跑，CI 才是"无论如何都会跑"的那份。
+- README 新增「机械门禁」与「脚手架」两节；`docs/分发指南.md` 的发布前检查补上 `verify.py`。
 
-### 门禁上线时抓到的三处（这是它值钱的地方）
+### 门禁抓到的五处（这是它值钱的地方）
 
 | # | 抓到什么 | 性质 |
 |---|---------|------|
 | 36 | `tests/test_timeline_ui` 没进 README 测试清单 | **真漂移** —— 典型"改了 A 忘了 B"，此前没人会注意到 |
 | 37 | 用例数门禁只认 `tests = [...]` 一种形态 ⇒ 5 个用 `def test_*` 计数的旧模块全被记成 SKIP | **判据假设太窄**（"先 grep 真实措辞再写正则"）。修时顺手加了更强的检查：**两种形态同时存在时必须相等** ⇒ 能抓"定义了测试函数却没注册进 runner"（定义了但永远不跑） |
 | 38 | `commands-exist` 把 `python -m venv`、`python -m PyInstaller`、`python x.py`（文档里的**模板占位符**）当死命令 | **假阳性**：工具模块要白名单；占位符写成 `python <文件>.py`（`<` 不在路径字符集里，天然被排除） |
+| 39 | `.github/workflows/ci.yml` 里 `import _cordis_locate` —— P2-4 改名后**早就坏了** | **真 bug**：迁移脚本只改**行首** `import`，改不到**命令行字符串里**的；CI 只在 GitHub 上跑，本机验收看不见 ⇒ 新写了 `pyrefs-exist` 才暴露 |
+| 40 | `docs/P0-1_核心抽离_design_note.md` 里 `from core import contracts` 也已经失效 | 同一个门禁抓到的**第二处** —— 证明这类失效**从来不是孤例** |
 
 > 第 38 条最值得记：**门禁会抓它自己的文档** —— 这不是缺点，说明它真的在扫全仓文本。
+> 连**"引用这个模式"的散文**它都抓（写 design note 时原样引用了一次，当场 6 处变红），
+> 于是定下全仓文档约定：**引用模式时写占位符**（`python -c "import <模块>"`、
+> `python <文件>.py`）。**能被机械校验的字面必须是"真命令"；只想说明形状就用占位符。**
+> 第 39/40 条是另一个方向的价值：**门禁不只防"未来会漂"，还会揭"现在就已经错了"** ——
+> 它上线时抓到的第一类漂移是意料之中的（README 手改漏行），这两条则是"我根本不知道它坏了"。
+
+### `--selfcheck` 抓过我两次"假绿"（连自检本身都会假绿）
+
+| # | 我的假绿 | 根因 |
+|---|---------|------|
+| 1 | `scaffold-templates-valid` 的片段断言写成 `'def render'` ⇒ 破坏用例把函数名改成 `render_broken`，**仍然匹配** | 断言太松：**"出现过" ≠ "存在"**。改成带括号的 `'def render(self):'` |
+| 2 | 修完之后**破坏用例还是 PASS** | 加载 `new_demo.py` 用 `import`，而 **`sys.modules` 会缓存第一次导入** ⇒ 沙箱里改过的副本**永远不会被重新加载**。改按**路径 + 唯一模块名**（`SourceFileLoader`） |
 
 ### 验收（实测）
 
 | 门禁 | 结果 |
 |------|------|
-| `python scripts/verify.py` | **12/12 通过** → `== VERIFY_OK ==`（每条都带数字证据，如"7 处断言 == 37 个 demo"） |
-| `python scripts/verify.py --selfcheck` | **12/12 拦得住** |
+| `python scripts/verify.py` | **14/14 通过** → `== VERIFY_OK ==`（每条都带数字证据，如"7 处断言 == 37 个 demo"） |
+| `python scripts/verify.py --selfcheck` | **14/14 拦得住** |
 | `python scripts/docs_index.py --check` | 索引最新（27 篇登记） |
 | pre-commit（真实 git sh） | 通过 `rc=0` / 失败 `rc=1` + 拦截指引 |
+| 脚手架（新 demo / 新测试模块各生成一次） | `--smoke 3 → EXIT_OK`；测试 **2/2** |
 | `scripts/run_all_tests.py` | **14/14 模块 / 281 项** |
 | `python -m world3d.cli.config_boot all` | **10/10** 棵配置树 |
 | `python -m world3d.cli.frame_plan --all-toggles` | **16/16** |
+| `scripts/check_imports.py` | world3d/ 下 **117 模块、失败 0**（1 个按设计跳过） |
 | `scripts/verify_demos.py` 全量 | `ALL_DEMOS_OK (37 demos)` |
 
 > **路线到此全部收口**：`P0 试点转正 ✅ → P1 库化 ✅ → P2 分层归位 ✅ → P3 帧图管线 ✅ →
 > P4 收尾 ✅`；并行的 ④ 渲染扩展（CSM / 体积雾 / 景深 / 运动模糊）与 BQM 致敬线（B1~B4）
-> 也都已交付。**剩余可做**：脚手架（新 demo / 内核 / 测试模板）、CI 里挂 `verify.py`、
+> 也都已交付。**剩余可做**：新内核 / 新配置树的脚手架模板（要同步的地方更多，等下次真新增时补）、
 > 以及发布节点的**待重建清单**（`boxward_60s.mp4` 替换 + `brickward_60s.mp4` 新增
 > + 6 个新 demo 的成片）。
 

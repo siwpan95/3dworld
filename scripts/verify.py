@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import importlib.util
 import json
 import os
 import re
@@ -343,13 +344,139 @@ def g_commands(root, verbose):
 
 
 def _module_exists(root, mod):
-    """`a.b.c` → 存在 a/b/c.py 或 a/b/c/__init__.py（在仓库根或 world3d 下）。"""
+    """`a.b.c` → 存在 a/b/c.py 或 a/b/c/__init__.py（**只按仓库根**）。
+
+    ⚠ **不要加 `world3d/` 兜底**：那会让"忘了改前缀"的旧引用（`python -m cli.x`、
+    `from core import contracts`）照样通过 —— P2-4 之前它们合法，之后已经失效。
+    我第一版就留了这个兜底，结果 `docs/P0-1` 里那条 `from core import contracts`
+    明明已经跑不通、门禁却报"全部可达"（**假绿**）。
+    **门禁的容忍度要跟着"现状"走，不能留着历史包袱。**
+    """
     parts = mod.split('.')
-    for base in (root, os.path.join(root, 'world3d')):
-        p = os.path.join(base, *parts)
-        if os.path.exists(p + '.py') or os.path.exists(os.path.join(p, '__init__.py')):
-            return True
-    return False
+    p = os.path.join(root, *parts)
+    return os.path.exists(p + '.py') or os.path.exists(os.path.join(p, '__init__.py'))
+
+
+@gate('pyrefs-exist', '文档/YAML 里 `python -c "import <模块>"` 的模块真的存在')
+def g_pyrefs(root, verbose):
+    """只扫 **`python -c "…"` 一行式命令**里的 `import`（.md / .yml / .yaml 全部）。
+
+    **这条是 P4-b 实踩出来的**：P2-4 把 `_cordis_locate` 搬进了 `world3d/`，
+    而 `.github/workflows/ci.yml` 里那行 `python -c "import _cordis_locate; …"`
+    没跟着改 —— 迁移脚本只覆盖**行首** `import X`，没覆盖**命令行字符串里的** import。
+    症状是那条 CI 步骤直接 `ModuleNotFoundError`，而**没有任何测试或门禁会碰到它**
+    （CI 在 GitHub 上跑，本机验收根本不执行 workflow）。
+
+    ⚠ 范围必须收紧到"一行式命令"：我第一版扫全文任意 `import \\w+`，
+    结果把散文里的 `import 与`、`import 模块`、占位符 `import X` 全算成了模块（45 处假阳性）。
+    **门禁太松和太紧一样有害 —— 前者让人无视它。**
+
+    ⚠ 还有第 4 条范围约束：**它连"引用这个模式"的散文也一起抓。**
+    写 P4 设计说明时我原样引用了这个模式，当场 6 处变红 ⇒ 定下全仓文档约定：
+    **引用模式时写占位符 `python -c "import <模块>"`**（`<` 不在 `[A-Za-z_]` 里，天然排除）。
+    与 `commands-exist` 的 `python <文件>.py` 同源 —— **能被机械校验的字面必须是"真命令"；
+    只想说明形状，就用占位符。**
+    """
+    bad, n = [], 0
+    cmd_re = re.compile(r'python\s+-c\s+["\'](.+?)["\']', re.S)
+    # 两种形态都要认，而且**只认语句开头**（`^` 或 `;` 之后）：
+    #   * `import a.b.c`     → 模块必须存在
+    #   * `from a.b import C` → **包**必须存在（C 可能是类，也可能是子模块，不校验名字）
+    # 不限定语句开头就会把 `from core import contracts` 里的 `contracts` 当成顶层模块
+    # （假阳性）—— 而"from 形态"本身恰恰是最常见的写法，必须覆盖。
+    imp_re = re.compile(r'(?:^|;)\s*import\s+([A-Za-z_][\w.]*)')
+    from_re = re.compile(r'(?:^|;)\s*from\s+([A-Za-z_][\w.]*)\s+import')
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames
+                       if d not in ('.git', '.venv', 'build', '__pycache__', 'vendor',
+                                    'recordings', 'shots', 'node_modules')]
+        for fn in filenames:
+            if not fn.endswith(('.md', '.yml', '.yaml')):
+                continue
+            rel = os.path.relpath(os.path.join(dirpath, fn), root).replace('\\', '/')
+            text = _read(root, rel)
+            for payload in cmd_re.findall(text):
+                refs = ([(m, 'import') for m in imp_re.findall(payload)]
+                        + [(m, 'from') for m in from_re.findall(payload)])
+                for mod, kind in refs:
+                    head = mod.split('.')[0]
+                    if head in TOOLING_MODULES or head in _STDLIB_HINTS:
+                        continue
+                    n += 1
+                    if not _module_exists(root, mod):
+                        bad.append(f'{rel}: python -c "{kind} {mod} …"')
+    if bad:
+        raise Fail(f'{len(bad)} 处一行式命令引用了不存在的模块：' + '；'.join(bad[:8]))
+    return f'{n} 处 `python -c` 里的 import/from 全部可达（含 .github/workflows）'
+
+
+@gate('scaffold-templates-valid', '脚手架模板仍能渲染 / 可解析 / 关键属性齐全')
+def g_scaffold(root, verbose):
+    """模板会**随项目演进腐掉**（导入路径改名、`DemoApp` 钩子改名、返回类型变了）——
+    而它腐掉时**没人会发现**，直到下一个用它的人踩坑。这条门禁把模板钉在"现状"上。
+
+    检查四项：渲染 → `ast.parse` → **真 import**（抓"导入了不存在的符号"，
+    `ast` 抓不到）→ 关键属性齐全（`TITLE/HELP/SHOTS`、`setup/render`、runner 标记）。
+
+    ⚠ "模板能跑"（`--smoke` 真开窗口）由本批**手测**过（`examples/zzprobe.py --smoke 3
+    → EXIT_OK`）；门禁只做静态 + import 校验 —— 真跑要 GL 且会破坏 <1s 预算。
+
+    ⚠ 加载 `new_demo` 要**按路径 + 唯一模块名**，不能 `import`：`sys.modules` 会缓存
+    第一次的导入，selfcheck 在沙箱里改过的副本就**永远不会被重新加载**（我这版一开始
+    就是这么写的，破坏用例照样 PASS —— 又是 selfcheck 抓出来的）。
+    """
+    from importlib.machinery import SourceFileLoader
+    scaffold = os.path.join(root, 'scripts', 'new_demo.py')
+    if not os.path.exists(scaffold):
+        raise Skip('scripts/new_demo.py 不存在')
+    loader = SourceFileLoader(f'_scaffold_{abs(hash(root))}', scaffold)
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    N = importlib.util.module_from_spec(spec)
+    loader.exec_module(N)
+    demo = N.render_demo('zzprobe')
+    test = N.render_test('zzprobe')
+
+    for label, text in (('demo', demo), ('test', test)):
+        try:
+            ast.parse(text)
+        except SyntaxError as e:
+            raise Fail(f'{label} 模板渲染后不是合法 Python：{e}')
+
+    # ⚠ 断言必须**带括号**：只写 `'def render'` 的话 `def render_broken` 也算"出现过"
+    # —— selfcheck 正是用这条破坏用例指出我的断言太松（宽松的"出现过"是假绿高发区）。
+    need_demo = ('TITLE', 'HELP', 'SHOTS', 'def setup(self):', 'def update(self, dt):',
+                 'def render(self):', 'DemoApp', 'world3d.platform.app',
+                 'sys.path.insert', '__main__')
+    miss = [w for w in need_demo if w not in demo]
+    if miss:
+        raise Fail(f'demo 模板缺关键片段：{miss}')
+    need_test = ('def main() -> int:', 'sys.exit(main())', 'ALL_ZZPROBE_TESTS_PASSED',
+                 'ALL_ZZPROBE_TESTS_FAILED')
+    miss = [w for w in need_test if w not in test]
+    if miss:
+        raise Fail(f'test 模板缺关键片段：{miss}')
+
+    # 真 import 一次（`ast` 抓不到"import 了不存在的名字"）
+    with tempfile.TemporaryDirectory() as td:
+        if root not in sys.path:
+            sys.path.insert(0, root)
+        for fn, text, label in (('zzprobe_demo.py', demo, 'demo'),
+                                ('test_zzprobe.py', test, 'test')):
+            path = os.path.join(td, fn)
+            open(path, 'w', encoding='utf-8', newline='\n').write(text)
+            spec = importlib.util.spec_from_file_location(f'zz_scaffold_{label}', path)
+            mod = importlib.util.module_from_spec(spec)
+            try:
+                spec.loader.exec_module(mod)
+            except Exception as e:                      # noqa: BLE001
+                raise Fail(f'{label} 模板真 import 失败（{type(e).__name__}: {e}）'
+                           f' —— 模板引用了已不存在/已改名的符号')
+    return f'两套模板渲染 + ast + 真 import + {len(need_demo) + len(need_test)} 项关键片段全通过'
+
+
+#: 允许在任何 `python -c` 里出现的非本项目模块
+_STDLIB_HINTS = {'pyglet', 'yaml', 'cordis', 'os', 'sys', 'json', 'math', 're', 'time',
+                 'platform', 'pathlib', 'subprocess'}
 
 
 @gate('cli-usage-names', 'cli/*.py 的用法 docstring 里的模块名 == 真实模块名')
@@ -510,6 +637,12 @@ BREAKS = [
     ('readme-tree-real', '把目录树里的一个文件名改坏',
      _subst('README.md', '    app.py            DemoApp · run',
             '    app_broken.py     DemoApp · run')),
+    ('pyrefs-exist', '把 CI 里的 import 改成不存在的模块',
+     _subst('.github/workflows/ci.yml', 'import world3d._cordis_locate as L',
+            'import no_such_module as L')),
+    ('scaffold-templates-valid', '把模板里的关键钩子改名',
+     _subst('scripts/new_demo.py', '    def render(self):',
+            '    def render_broken(self):')),
 ]
 
 

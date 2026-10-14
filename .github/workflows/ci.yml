@@ -32,7 +32,17 @@ jobs:
         shell: bash
         run: |
           unset CORDIS_SRC
-          python -c "import _cordis_locate; _cordis_locate.ensure(); import cordis; print('cordis ->', cordis.__file__)"
+          python -c "import world3d._cordis_locate as L; L.ensure(); import cordis; print('cordis ->', cordis.__file__)"
+
+      - name: 机械门禁（文档/计数/链接 ↔ 实现，<1 秒）
+        # P4 新增。它抓过两类"没有任何测试会发现"的问题：
+        #   ① 测试模块注册了却不在 README 清单里；
+        #   ② 本文件里那条 `import _cordis_locate` 没跟着 P2-4 的搬运改掉（P4-b 实测抓到）。
+        run: python scripts/verify.py
+
+      - name: 全仓可达性（每个模块都 import 一遍）
+        # 单测只覆盖被引用的模块；没被任何测试 import 的模块改坏了单测不会红。
+        run: python scripts/check_imports.py
 
       - name: 契约自检
         run: python -c "import world3d.core.contracts as c; print(c.status_table())"

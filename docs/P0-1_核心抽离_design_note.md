@@ -54,7 +54,8 @@ core/
 
 ## 5. 验收标准
 
-- `python -c "from core import contracts as c; print(c.verify())"` → 全部 `ok` / `pending`（无 `err:`）；
+- `python -c "from world3d.core import contracts as c; print(c.verify())"` → 全部 `ok` / `pending`（无 `err:`）；
+  （P2-4 把 `core/` 收进 `world3d/` 后，这条命令的路径变了 —— 门禁 `pyrefs-exist` 会核对文档里每条 `python -c` 的模块是否真的可达。）
 - 新增 `tests/test_cores.py`：每核 Protocol 结构检查 + 关键行为单测（如 economy.spend 不足返回 False、rules.state 迁移）；
 - `python experiments/cordis/config_boot.py all` → `TDKERNEL_OK` / `GODHAND_OK` / `FPSKERNEL_OK`；
 - `python -m tests.run_tests` → 既有 36 项 + 新增全绿；
