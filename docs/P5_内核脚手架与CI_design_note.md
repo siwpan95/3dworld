@@ -188,6 +188,22 @@ AttributeError: module 'platform' has no attribute 'system'
 * `config_boot.run_generic` 的日志加上 `seed=`（若内核有该属性）：这是**证明配置树
   `config:` 真的到达了服务**的成本最低的办法（改 yml 一行，日志跟着变）。
 
+### P5-c 追补的两条（重建发行版时踩出来的）
+
+* **`pyrefs-exist` 的"非项目模块白名单"改成标准库判定**：原来手维护
+  `{'os','sys','json',…}`，结果在 `docs/分发指南.md` 里写一句
+  `python -c "import zipfile, hashlib; …"` 就被判成"模块不存在"。现在用
+  `sys.stdlib_module_names`（权威、自动跟进版本），白名单只剩**第三方**那三个
+  （`pyglet` / `yaml` / `cordis`）。计数从 7 → 10，且 10 处**全是真实存在的 `world3d.*`**。
+* **`record_all.find_app_class` 只认 `DemoApp`** ⇒ `pointcloud_edl` 一进来就
+  `未找到 DemoApp 子类`，而且**整批录制随之中断**（实测第一批只产出 7 条就 EXIT=1，
+  `wboit_demo` / `skinned_creature` / `gpu_cull_field` / `voidward` / `pulsefall` 一条没录）。
+  现在 `DemoApp` | `EngineApp` 两类都认。
+* **成片核查判据要能自证**：第一版用 `-f framemd5` 读校验和，**7 条全部误判"静止"**
+  （输出字段不是猜的 `MD5=…` 形态 ⇒ 两边都是 `None` ⇒ 判成"没动"）。改用
+  `-f rawvideo -pix_fmt rgb24` 落到 Python 里 hash，并把"**抽帧失败**"与"**静止**"
+  分开报 —— **取不到数据时不许把它算成"通过/静止"**。
+
 ## 7. 验收（实测，本机 venv）
 
 | 项 | 结果 |

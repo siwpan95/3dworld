@@ -3,6 +3,56 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [未发布] — P5-c：攒批一次性重建发行版 → `v2026.10.14`
+
+按 `docs/分发指南.md` §3.0 的攒批铁律，把"待重建清单"**一次性清空**。
+重建前先把"不可再生的附件"取回本地 —— 这一步是本次新踩出来的（见下）。
+
+### 重建结果（实测）
+
+| 项 | 结果 |
+|----|------|
+| 新发行版 | [`v2026.10.14`](https://gitee.com/siwpan/3dworld/releases/tag/v2026.10.14)（id 1204762，target `5c725f4`） |
+| 附件 | **40 个** = **37 条成片** + `3dworld-demo-pack-20261009.zip` + 2 个自动生成的源码包 |
+| 成片 | **25 → 37 条**（`recordings/` 354MB）；`boxward_60s.mp4` **替换**（正交等距视角重录），其余 13 条新增 |
+| 旧发行版 | `v2026.10.09` 已删除（附件配额 / 单一真相；**tag 保留**，源码包链接不受影响） |
+| 匿名验收 | 发行版页 `releases/tag/v2026.10.14` → **200**；抽两条附件匿名下载并比 sha256 → **MATCH** |
+
+### 新增成片（13 条）
+
+- **④ 渲染四件套**：`csm_shadow_40s`（级联阴影）/ `volumetric_fog_60s`（体积雾与光轴）/
+  `dof_focus_24s`（景深，用 demo 自带 `flag rack` 自动扫焦）/ `motion_blur_40s`（运动模糊）
+- **P3 帧图**：`frame_graph_36s`
+- **引擎特性**：`pointcloud_edl_30s` / `wboit_demo_30s` / `skinned_creature_30s` / `gpu_cull_field_30s`
+- **玩法内核**：`voidward_60s` / `pulsefall_45s`（`flag auto`）、`scene_walker_40s`（`flag walk,interact`）、
+  `brickward_60s`（BQM 致敬线）
+- `record_all.py` 因此新增 12 条录制条目（14 条含 2 条已录的复用），并修了一个**会中断整批录制**的缺陷（见下）
+
+### 修复
+
+- **`record_all.find_app_class` 只认 `DemoApp`** ⇒ `pointcloud_edl` 一进来就
+  `未找到 DemoApp 子类` 并让**整批录制中止**（`wboit_demo` / `skinned_creature` /
+  `gpu_cull_field` / `voidward` / `pulsefall` **一条都没录**，实测第一批只产出 7 条就 EXIT=1）。
+  `build_app` 其实支持三类宿主（harness `DemoApp` / engine `EngineApp` / presentation 裸 App），
+  现在两类都认；那 6 条 `EngineApp` 宿主也显式写了 `cls=`。
+
+### 重建流程里新踩的一条（已写进 `docs/分发指南.md` §3.0）
+
+**删 release 会连附件一起清掉，而有些附件本地已经没有了。** 本项目的 `dist/` 被 gitignore，
+`3dworld-demo-pack-20261009.zip`（63.9MB）当时**只存在于 Gitee** —— 所以重建的**第一步**
+必须是"匿名把不可再生的附件取回本地并校验"（实测 66,966,891 字节 / sha256 `51930d79…` /
+7 个条目 ✅）。没有这一步，重建就等于永久丢失 exe 包（重打包要装 PyInstaller，本机 venv 里没有）。
+
+### 成片核查方式（也是本次踩出来的）
+
+逐条核查：`ffmpeg -i` 读时长/分辨率 + `-f null -` 全解码 + **抽两帧比裸像素 md5** 判断"动没动"
+（本机无 ffprobe，见 MEMORY）。13/13 通过。
+
+> 核查脚本**第一版用 `-f framemd5` 读校验和，7 条全部误判"静止"** —— 那是工具链的错：
+> framemd5 的输出字段不是猜的形态，正则匹配不到 ⇒ 两边都是 `None` ⇒ 判成"没动"。
+> 改用 `-f rawvideo -pix_fmt rgb24` 落到 Python 里 hash，并把"抽帧失败"与"静止"分开报：
+> **判据要能自证，取不到数据时不许把它算成"通过/静止"。**
+
 ## [未发布] — P5：内核脚手架 + CI 扩到 Linux
 
 P4 之后的两件"自选收尾"。做完之后有个额外收获：**给内核写模板这个动作本身，

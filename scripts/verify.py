@@ -400,7 +400,8 @@ def g_pyrefs(root, verbose):
                         + [(m, 'from') for m in from_re.findall(payload)])
                 for mod, kind in refs:
                     head = mod.split('.')[0]
-                    if head in TOOLING_MODULES or head in _STDLIB_HINTS:
+                    if (head in TOOLING_MODULES or head in _STDLIB_HINTS
+                            or head in sys.stdlib_module_names):
                         continue
                     n += 1
                     if not _module_exists(root, mod):
@@ -610,9 +611,10 @@ def g_kernel_scaffold(root, verbose):
             f'并按 run_generic 契约跑到 won（{t:.1f}s / {k.steps} 步）')
 
 
-#: 允许在任何 `python -c` 里出现的非本项目模块
-_STDLIB_HINTS = {'pyglet', 'yaml', 'cordis', 'os', 'sys', 'json', 'math', 're', 'time',
-                 'platform', 'pathlib', 'subprocess'}
+#: 允许在任何 `python -c` 里出现的**非标准库**模块（标准库由 `sys.stdlib_module_names` 判定，
+#: 不必在这里一个个列 —— 早先手维护这份名单，结果文档里写一句
+#: `python -c "import zipfile, hashlib; …"` 就被判成"模块不存在"）
+_STDLIB_HINTS = {'pyglet', 'yaml', 'cordis'}
 
 
 @gate('workflows-valid', 'CI workflow 可解析 / 结构完整 / 里面的命令都可达')
