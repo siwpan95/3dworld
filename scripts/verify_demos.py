@@ -101,6 +101,11 @@ def run_demo(name, path, extra, timeout=180.0):
     挂起容错：某些执行环境（Agent 沙箱等）里 pyglet 窗口会"逻辑完成但
     进程不退"（EXIT_OK 已打印）。超时后不直接失败——把已捕获的 stdout
     装进轻量对象继续验收；真正的失败仍由 EXIT_OK 缺失暴露。
+
+    ⚠️ 子进程必须 ``-u``（2026-10-14 实踩）：超时杀进程走 SIGKILL/TerminateProcess，
+    **不会**触发 Python 的退出刷缓冲——非 -u 时 stdout 是块缓冲，被超时杀掉时
+    已打印的 ``EXIT_OK`` 会留在缓冲区里丢失，挂起容错形同虚设（--shot 阶段曾因此
+    被误判 FAIL：截图明明都产出了，却回报 "EXIT_OK 缺失"）。
     """
     class _Result:
         returncode = -9
@@ -108,7 +113,7 @@ def run_demo(name, path, extra, timeout=180.0):
 
     t0 = time.time()
     try:
-        proc = subprocess.run([PYTHON, path] + extra, cwd=ROOT,
+        proc = subprocess.run([PYTHON, '-u', path] + extra, cwd=ROOT,
                               capture_output=True, text=True, encoding='utf-8',
                               errors='replace', timeout=timeout)
     except subprocess.TimeoutExpired as e:
@@ -204,11 +209,19 @@ def main():
             proc2, secs2 = run_demo(name, path, ['--shot'],
                                     timeout=args.timeout)
             note += f' + {secs2:4.1f}s'
-            if proc2.returncode != 0 or 'EXIT_OK' not in proc2.stdout:
+            # 与冒烟阶段同款的挂起容错（2026-10-14 record 补录实踩）：
+            # 沙箱环境里 --shot 走完、EXIT_OK 已打印，但解释器 teardown 挂住
+            # 被超时杀掉（rc=-9）。曾因这里**只**看 rc==0 而与冒烟阶段口径
+            # 不对称，把"截图已全部产出"的 demo 判红。现在 EXIT_OK 已打印
+            # 即不判失败（rc≠0 记 HUNG-KILLED）；真正的证据仍是下方三项严格
+            # 校验：每张 PNG 存在 + 本次运行被重写 + 非空白。
+            if 'EXIT_OK' not in proc2.stdout:
                 ok_shot = False
                 failures.append(f'{name}: shots failed rc={proc2.returncode}\n'
                                 f'{(proc2.stderr or "").strip()[-400:]}')
             else:
+                if proc2.returncode != 0:
+                    note += '  HUNG-KILLED'
                 for _t, rel in shots:
                     p = rel if os.path.isabs(rel) else os.path.join(ROOT, rel)
                     n_shot += 1

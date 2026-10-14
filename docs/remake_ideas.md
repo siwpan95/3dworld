@@ -204,8 +204,8 @@ DeepSeek Harness 的运行时内核。
 **下一步**：**§17「阈廊 / Liminall」已执行完毕**（2026-10-14，见 §17.9）——
 kkrieger 基座 × 后室 Level 0 × P.T. 循环走廊，8 loops/3 谜全部落地；
 内核 + 表现 + 全合成音频 + 9 项单测全绿 + 16 条机械门禁全绿。
-待办：实机验证恐怖节奏（jump scare 观感/手电光柱/8 圈递进）与 `liminall_60s` 录制
-（本机跑，沙箱 GL 受限）。
+待办：实机验证恐怖节奏（jump scare 观感/手电光柱/8 圈递进）——**成片已录**
+（`recordings/liminall_130s.mp4`，auto 全流程 8 loops 130s，见 §17.10）。
 
 ---
 
@@ -1021,5 +1021,22 @@ Liminal Universe / Liminal Point / Liminalcore）均不同名，且证实「循�
      （原来 `_grace` 从未初始化，每帧把实体弹回 home 吞掉追击）；
   3. **auto-pilot 的 wait 与 respawn 脱节**——被传走后原地白等，stare 永不凑满
      → 新增 `hold` 动作（驻留目标点，被打断自动重新导航）。
-- 待办：实机验证恐怖节奏（**恐怖感是内容验收，沙箱测不了**——jump scare 音爆观感 /
-  手电光柱 / 8 圈递进压迫感）；`record_all liminall_60s` 实机录制。
+- 待办：恐怖节奏的**主观验收**（jump scare 音爆观感 / 手电光柱 / 8 圈递进压迫感
+  仍建议本机亲眼过一遍）；成片与截图已录（§17.10）。
+
+### 17.10 首次录制与补录（2026-10-14 晚）
+
+- **`liminall_130s.mp4`**（record 补录）：auto 全流程 8 loops 从头到电话终局
+  （30Hz 步进实测 124.3s 通关 → 录 130s 含终局字幕）；1280×720 / 3900 帧 / 5.8MB。
+- **截图**：`docs/liminall_01.png`（L3 灯语谜题走廊）/ `liminall_02.png`（L4 迷宫）。
+- **录制中修的四件**（都是首次真实运行暴露的，py_compile/check_imports 都覆盖不到）：
+  1. `examples/liminall.py` 缺 `HALL_B_LEN` / `Mat4` / `Vec3` 导入——首次 build 即 NameError；
+  2. **初始朝向反了**（yaw=π 面壁）——截图/成片全是起点凹室墙；
+  3. `--shot` 无人值守时玩家不动（永远 loop 1）→ shot 模式也走 auto；
+  4. 自绘 HELP 与 EngineApp Hud 的 HELP **重叠成双影** → 删除自绘（HUD 统一画）。
+  另修 pyglet 2.x 音频 API（`Source.player()` → `Player().queue()`）。
+- **record 条目**：`liminall_60s`（占位）→ `liminall_130s`（flags=auto + size=DEMO_SIZE
+  ——EngineApp 宿主 size=None 会产生坏参 `--size NonexNone`）。
+- **recordings/ 一次性补全**：本地从 19 → **40 条**（与录制计划 40 条全对齐，
+  369MB），其中 20 条是本轮补录/重录；**顺手抓出一条名不符实**：老
+  `tower_defense_60s.mp4` 实际只有 15s（450 帧），已重录为真正的 60s。

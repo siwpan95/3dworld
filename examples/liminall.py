@@ -23,20 +23,20 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pyglet
-from pyglet.gl import GL_DEPTH_TEST, glDisable, glClearColor, glEnable
+from pyglet.gl import GL_DEPTH_TEST, glDisable, glEnable
+from pyglet.math import Mat4, Vec3
 
 from world3d.engine.app import EngineApp, run
-from world3d.logic.liminall import (BASE_FOV, HALL_A_LEN, RADIO_LINES,
-                                    ZOOM_FOV, LiminallKernel)
+from world3d.logic.liminall import (BASE_FOV, HALL_A_LEN, HALL_B_LEN,
+                                    RADIO_LINES, ZOOM_FOV, LiminallKernel)
 from world3d.logic.liminall_audio import ensure_sfx
 from world3d.presentation.liminall_scene import LimRenderer
-from world3d.presentation.shot import capture_window
 
 TITLE = '阈廊 / Liminall — 后室循环走廊（P.T. 机制致敬 · 8 loops）'
 HELP = ('WASD 走   拖拽 转视角   SHIFT 疾走   右键按住 zoom   E 交互   '
         'F 手电   R 重开   SPACE 暂停   ESC 退出')
-SHOTS = ((14.0, 'docs/liminall_01.png'),        # 走廊·谜题 1 段落
-         (100.0, 'docs/liminall_02.png'))       # 后室迷宫（红潮前后）
+SHOTS = ((16.0, 'docs/liminall_01.png'),        # 走廊 · L3 灯语谜题（镜柜）
+         (40.0, 'docs/liminall_02.png'))       # L4/L5 后室迷宫（noclip 坠入后）
 HOTSPOTS = (
     ('radio', 0.9, 8.0), ('lamp', 0.5, 6.0), ('mirror_cab', -1.05, 9.0),
     ('cabinet_keypad', -1.05, 9.0), ('start_door', -HALL_B_LEN + 0.5, 0.0),
@@ -53,8 +53,10 @@ class LimApp(EngineApp):
     def setup(self):
         self.k = LiminallKernel(self._seed())
         self.renderer = LimRenderer(self.k, self.window)
-        self.auto = 'auto' in self.args.flags
-        self.yaw = math.pi                        # 面向 -z（走廊深处）
+        # `--shot` 是无人值守抓帧：也给 auto（否则玩家不动，永远停在 loop 1）
+        self.auto = ('auto' in self.args.flags
+                     or bool(getattr(self.args, 'shot', False)))
+        self.yaw = 0.0                            # 面向 -z（走廊深处；π 会面壁）
         self.keys = set()
         self._firing_zoom = False
         self._light = False
@@ -62,14 +64,15 @@ class LimApp(EngineApp):
         self._caption, self._caption_t = '', 0.0
         self._scare_t = 0.0
         self.renderer.apply_projection(self.window.width, self.window.height)
-        # ---- 音频（best-effort）----
+        # ---- 音频（best-effort；pyglet 2.x：Source 用 Player 包装，无 .player()）----
         self.sfx = {}
         self.hum = None
         try:
             paths = ensure_sfx()
             self.sfx = {n: pyglet.media.load(p, streaming=False)
                         for n, p in paths.items()}
-            self.hum = self.sfx['hum'].player()
+            self.hum = pyglet.media.Player()
+            self.hum.queue(self.sfx['hum'])
             self.hum.loop = True
             self.hum.volume = 0.5
             self.hum.play()
@@ -92,10 +95,8 @@ class LimApp(EngineApp):
                                            anchor_x='center', anchor_y='center',
                                            x=self.window.width // 2,
                                            y=self.window.height // 2)
-        self._hint = pyglet.text.Label(HELP, font_size=11,
-                                       color=(150, 150, 145, 200),
-                                       anchor_x='center', anchor_y='center',
-                                       x=self.window.width // 2, y=24)
+        # 注：帮助行由 EngineApp 的 Hud 统一绘制（TITLE/HELP），此处不再自绘
+        # ——曾自绘一行 HELP 与 HUD 重叠成双影（首条成片目检抓出）。
 
     def _seed(self):
         for f in self.args.flags:
@@ -205,6 +206,9 @@ class LimApp(EngineApp):
                 self._play('scare')
             elif ev in ('radio', 'ring'):
                 self._play('broadcast')
+            elif ev == 'won':
+                # 成片/实机结尾可读：接听电话后的终局字幕
+                self._caption, self._caption_t = '你被选中了。门开着。', 10.0
         self._caption_t = max(0.0, self._caption_t - dt)
         self._scare_t = max(0.0, self._scare_t - dt)
 
@@ -240,7 +244,6 @@ class LimApp(EngineApp):
             self._caption_lb.draw()
         if self._scare_t > 0.0:
             self._scare_lb.draw()
-        self._hint.draw()
         glEnable(GL_DEPTH_TEST)
         self.window.projection = saved_proj
         self.window.view = saved_view
@@ -252,7 +255,6 @@ class LimApp(EngineApp):
         self._caption_lb.width = width - 160
         self._scare_lb.x = width // 2
         self._scare_lb.y = height // 2
-        self._hint.x = width // 2
 
 
 def main(argv=None):

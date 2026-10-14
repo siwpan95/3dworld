@@ -111,7 +111,12 @@ ENTRIES = [
     dict(name='voidward_60s',        mod='examples/voidward.py',      cls='VoidwardApp',
          dur=60.0, size=DEMO_SIZE,
          flags='auto'),                            # 贸易脚本自动跑（够跑到资产达标）
-    dict(name='liminall_60s',        mod='examples/liminall.py',    cls='LimApp',      dur=60.0, size=None),
+    # liminall：无 auto 是静止画面（玩家不动）；必须给 size——EngineApp 宿主
+    # 收到 size=None 会得到坏参 `--size NonexNone`。auto 全流程 8 loops：30Hz 步进
+    # 实测 124.3s 通关（60Hz 122.4s），130s 录完整弧线 + 终局字幕
+    # （走廊 → noclip 坠入后室迷宫 → 红潮 → 电话终局）
+    dict(name='liminall_130s',       mod='examples/liminall.py',    cls='LimApp',      dur=130.0, size=DEMO_SIZE,
+         flags='auto'),
     dict(name='pulsefall_45s',       mod='examples/pulsefall.py',     cls='PulsefallApp',
          dur=45.0, size=DEMO_SIZE,
          flags='auto'),                            # 自动演奏一首谱面（BPM 90 / 16 小节 ≈ 42.7s）
