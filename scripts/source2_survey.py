@@ -238,12 +238,16 @@ def build_report(vpk_path, samples):
     lines.append('\n## 结论\n')
     cs = sorted(st_real.cos_abs)
     med_cos = _quantiles(cs, [0.5])[0]
+    from world3d.logic.sandward import MATERIALS as _SW
+    tiers = sorted({m['tile'] for m in _SW.values()})
+    tier_txt = ' / '.join(f'{t:g}' for t in tiers)
     lines.append(
         f'- 真实地图 ∇u/∇v 近正交（|cos| 中位 **{med_cos:.3f}**），'
         f'密度多档分布（见直方图）且方向以轴对齐为主——'
         f'**UV = 面片局部仿射投影**（texinfo 同构）的量化证据；\n'
         f'- 引擎 texproj 输出在同口径下：正交（|cos|≈0）、'
-        f'轴对齐 100%、密度落 5 档（96/128/144/160/176）——规则同源、数值同型。\n')
+        f'轴对齐 100%、密度落 5 档（{tier_txt} 米/贴图 = CS2 档 ÷32）'
+        f'——规则同源、数值同型。\n')
     return '\n'.join(lines), None
 
 

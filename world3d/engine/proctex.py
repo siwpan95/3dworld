@@ -23,7 +23,7 @@ __all__ = [
     'make_brushed',
     'make_wood_planks', 'make_thatch', 'make_rock', 'make_rune_stone',
     'make_snow', 'make_pine', 'make_dragon_scale',
-    'make_sandstone', 'make_plaster', 'make_atlas', 'atlas_texture',
+    'make_sandstone', 'make_plaster', 'make_dune', 'make_atlas', 'atlas_texture',
     'texture', 'material_from', 'PATTERN_CACHE',
 ]
 
@@ -547,6 +547,32 @@ def make_plaster(size=256, seed=21):
                 height=_quantize_height(h))
 
 
+def make_dune(size=256, seed=22):
+    """沙丘地面：低频**风纹涟漪**（沿 v 整周期，平铺无缝）+ 细沙噪点。
+
+    §19 执行中补：原图集 ground 格借用花岗岩 ``make_rock``——近景裂缝感
+    过强、不像沙地（首帧目检抓出）。本生成器的涟漪高度柔和（法线强度低），
+    配合 5.5 米/贴图的密度读作"沙面"。
+    """
+    base, mr, h = _blank(size), _blank(size), [0.0] * (size * size)
+    for y in range(size):
+        for x in range(size):
+            u, v = x / size, y / size
+            # 涟漪：沿 v 的 7 个整周期 + 噪声扰动（v=0/1 相位一致 → 无缝）
+            wob = value_noise(u, v, cells_u=4, cells_v=4, seed=seed) * 2.2
+            ripple = 0.5 + 0.5 * math.sin((v * 7.0 + wob) * 2.0 * math.pi)
+            grain = value_noise(u, v, cells_u=96, cells_v=96, seed=seed + 4)
+            w = fbm(u, v, 3, cells=3, seed=seed + 9)
+            k = ripple * 0.45 + w * 0.40 + grain * 0.15
+            g = 186 + 40 * (k - 0.5)
+            _px(base, size, x, y, g * 1.05, g * 0.955, g * 0.74)
+            _px(mr, size, x, y, 255, 202 + 26 * grain, 0)
+            h[y * size + x] = ripple * 0.55 + grain * 0.18 + w * 0.22
+    return dict(base=bytes(base), mr=bytes(mr),
+                normal=height_to_normal(h, size, 0.8), size=size,
+                height=_quantize_height(h))
+
+
 PATTERNS = {
     'marble': make_marble, 'rust_metal': make_rust_metal,
     'hex_panel': make_hex_panel, 'circuit': make_circuit,
@@ -558,6 +584,7 @@ PATTERNS = {
     'aurora': make_aurora,
     # ---- 沙垒题材（sandward）：沙岩墙 / 石膏墙 ----
     'sandstone': make_sandstone, 'plaster': make_plaster,
+    'dune': make_dune,
 }
 
 
@@ -608,13 +635,13 @@ PATTERN_CACHE = {}
 
 
 # --------------------------------------------------------------- 图集 --
-#: 图集格的生成器名 → 图案函数（albedo 进图集；PBR 其余通道不进）
+#: 图集格的生成器名 → 图案函数（三通道进图集；含 §19 新增的 dune 沙地）
 _ATLAS_CELLS = {
     'sandstone': make_sandstone,
     'plaster': make_plaster,
     'crate': make_wood_planks,
     'metal': make_brushed,
-    'sand': make_rock,
+    'sand': make_dune,
 }
 
 

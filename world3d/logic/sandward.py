@@ -17,21 +17,23 @@ dust 风格**块状竞技场**（致敬结构，非复制地图）+ 5 检查点�
     │  SW 角场          SE 角场     │
     └──────────────────────────────┘   z=+36 南缘（出生点 (0,32)）
 
-材质即"贴图规则"样本：五种材质、五档贴图密度（world units per UV）——
-沙岩 160 / 石膏 144 / 木箱 96 / 金属 128 / 砂石地 176，与 §18 实证的
-CS2 "多档密度共存" 呼应。
+材质即『贴图规则』样本：五种材质、五档贴图密度（world units per UV）——
+档位取自 §18 实测的 CS2 档 **÷32 等比缩放**：CS2 是英寸口径
+（160 英寸 ≈ 4.06 米/贴图），demo 世界以米为单位——直接搬 96~176 会让一张
+128px 贴图铺满上百米（法线/POM 细节全被稀释，§19 执行中实测发现）；
+÷32 后 = 3.0/4.0/4.5/5.0/5.5 米每贴图，物理密度与观感对齐、比例保持不变。
 """
 import math
 
 from world3d.engine.texproj import UvProjection, dominant_axis, project_uv
 
-#: 材质表：图集格名 + 贴图密度（一张贴图覆盖的世界单位）
+#: 材质表：图集格名 + 贴图密度（一张贴图覆盖的世界单位；CS2 档 ÷32）
 MATERIALS = {
-    'sandstone': dict(atlas='sandstone', tile=160.0),
-    'plaster': dict(atlas='plaster', tile=144.0),
-    'crate': dict(atlas='crate', tile=96.0),
-    'metal': dict(atlas='metal', tile=128.0),
-    'sand': dict(atlas='sand', tile=176.0),
+    'sandstone': dict(atlas='sandstone', tile=5.0),
+    'plaster': dict(atlas='plaster', tile=4.5),
+    'crate': dict(atlas='crate', tile=3.0),
+    'metal': dict(atlas='metal', tile=4.0),
+    'sand': dict(atlas='sand', tile=5.5),
 }
 
 #: 图集格顺序（渲染器与测试共用）
@@ -293,6 +295,7 @@ def build_geometry(brushes=None):
       主导轴生成（这就是要被演示/目检的"贴图规则"本体）；
     * ``cell`` = 图集矩形 (u0,v0,u1,v1)（图集格内平铺在片元里做）；
     * ``extra`` = 该材质的贴图密度（世界单位/UV，与 CS2 ``m_flUvDensity`` 同语义）；
+    * ``normals`` = 逐顶点面法线（盒面平直法线=精确值，PBR 光照用）；
     * ``tangents`` = 逐顶点切线（每顶点 3 分量，= 投影 u 方向——UV 规则的第二次
       兑现：TBN 零反解）；``hands`` = 逐顶点手性 ±1（PBR 法线贴图用）。
     """
@@ -300,7 +303,7 @@ def build_geometry(brushes=None):
     atlas = Atlas(ATLAS_NAMES, cols=3, rows=2)
     brushes = brushes if brushes is not None else build_arena()
     pos, col, uv, cell, extra, idx = [], [], [], [], [], []
-    tan, hands = [], []
+    nrm, tan, hands = [], [], []
     n = 0
     for (x0, z0, x1, z1, y0, y1, matname) in brushes:
         m = MATERIALS[matname]
@@ -323,10 +326,11 @@ def build_geometry(brushes=None):
                 uv.extend((u, w))
                 cell.extend(rect)
                 extra.append(tile)
+                nrm.extend(fn)
                 tan.extend(tu)
                 hands.append(hand)
             idx.extend((n, n + 1, n + 2, n, n + 2, n + 3))
             n += 4
     return dict(positions=pos, colors=col, uvs=uv, cells=cell, extras=extra,
-                tangents=tan, hands=hands, indices=idx, vertex_count=n,
-                counts=len(brushes))
+                normals=nrm, tangents=tan, hands=hands, indices=idx,
+                vertex_count=n, counts=len(brushes))

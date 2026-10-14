@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 """沙垒 / Sandward —— UV 投影规则演示场（dust 风格块状竞技场 · 5 检查点巡游）。
 
-引擎级 UV 特性（§18）的可跑样板：程序化重建的块状竞技场，每一面墙/箱/地
-的 UV 都由 ``texproj.UvProjection``（世界投影）生成——**"贴图规则"本体**；
-材质来自 ``proctex`` 程序化图集（零外部素材）。三种显示模式演示不同视角：
+引擎级 UV 特性（§18）与 PBR 深化（§19）的可跑样板：程序化重建的块状竞技场，
+每一面墙/箱/地的 UV 都由 ``texproj.UvProjection``（世界投影）生成——**"贴图
+规则"本体**；材质来自 ``proctex`` 程序化**三通道图集**（albedo / normal+高度 /
+mr=ORM，零外部素材），光照为 **GGX 直接光 + 半球环境 + 法线贴图**（TBN 切线
+由投影同源导出）。三种显示模式演示不同视角：
 
-* **材质**——真实观感（图集采样，格内平铺）；
+* **PBR**——真实观感（三通道 PBR 光照）；
 * **棋盘格**——目检 UV 密度/扭曲/接缝（片元程序化棋盘，不采纹理）；
 * **UV 规则**——按贴图密度着色阶（world units per UV，冷→暖）。
 
@@ -100,6 +102,7 @@ class SandwardApp(EngineApp):
         self.window.view = Mat4.look_at(
             Vec3(p['x'], EYE_H, p['z']),
             Vec3(p['x'] + fx, EYE_H - 0.08, p['z'] + fz), Vec3(0, 1, 0))
+        self.renderer.set_camera(p['x'], EYE_H, p['z'])
 
     # ---------------------------------------------------- 渲染 --
     def render(self):
