@@ -271,6 +271,7 @@ python -m tests.test_timeline_ui    底部时间轴面板（9 项）
 python -m tests.test_brickward      《砖境》机关内核：BQM 致敬 B1~B3（65 项，零 GL）
 python -m tests.test_liminall       阈廊内核：后室 × P.T. 循环走廊（9 项，零 GL）
 python -m tests.test_texproj        UV 投影与贴图规则：投影/逆投影/反解/图集/密度（12 项，零 GL）
+python -m tests.test_source2        Source 2 解析：VPK / KV3 v5 / LZ4 block（10 项，零依赖）
 python -m tests.test_csm            级联阴影 CSM（20 项：分割/角点/光盒/纹素吸附/GLSL 展开）
 python -m tests.test_volumetrics    体积雾/光轴（12 项：闭式积分可加性/HG 归一/抖动同式/GLSL 组合）
 python -m tests.test_dof            景深 DoF（12 项：CoC/超焦距/景深端点恒等式/散景面积均匀）
