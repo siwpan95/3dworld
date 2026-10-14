@@ -199,6 +199,18 @@ python examples\voxel_terrain.py   --bench 5 --flag reseed        :: 渐进
 - **`Framebuffer.clear()` 在 2.1.16 是坏的**：它把附件点枚举
   （`GL_COLOR_ATTACHMENT0|GL_DEPTH_ATTACHMENT`）当成 `glClear` 的掩码传下去，
   驱动报 `GL_INVALID_VALUE`；要自己 `glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)`。
+- **多纹理绑定**：pyglet 2.x 的 `Texture.bind()` **默认参数是 unit 0**，且内部
+  自己 `glActiveTexture`——外面先 `glActiveTexture(GL_TEXTURE1)` 再无参 `bind()`
+  会被**拽回 unit 0**，多张纹理叠在一起（后绑覆盖前绑，其余单元空 → 采样黑）。
+  正确用法：**把单元号直接交给 `bind(0/1/2)`**。（§19 执行中 PBR 全黑根因，
+  用临时 `u_dbg` 逐分量可视化定位：albedo 正常 / 其余全黑 → 一眼锁定采样层。）
+- **顶点属性静默丢弃**：`ShaderProgram.vertex_list` 对**着色器里不存在**的属性名
+  是 `continue` 跳过（只在 `debug_gl_shaders` 下打警告）——拼错名字不会报错，
+  只会拿到 GL 默认值（全零），表现为"光照全黑"。属性名必须与 GLSL `in` 声明
+  逐字一致（项目既有 shader 用 `normals`/`uvs`，新写 shader 起名时注意对齐）。
+- **EngineApp 的 SHOTS 快照**：`EngineApp.__init__` 会把 `SHOTS` 快照成
+  `self._shots`（排序后）——子类在 `setup()` 里改类属性/实例 SHOTS **都不生效**，
+  要覆盖 `self._shots` 本身（演示专属截图用）。
 - **DPI**：`pyglet.options['dpi_scaling'] = 'real'` 必须在建窗口前设置，
   `platform/app.py` 已经统一处理；截图走 `glReadPixels` 按实际 buffer 尺寸读，
   不用 `get_color_buffer()`（后者会按被 DPI 放大的 VIEWPORT 读，出黑边）。
