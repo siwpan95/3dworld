@@ -36,6 +36,7 @@ MODULES = [
     ('tests.test_brickward', 'ALL_BRICKWARD_TESTS_PASSED', '砖境内核（BQM 致敬 B1/B2/B3）'),
     ('tests.test_csm', 'ALL_CSM_TESTS_PASSED', '级联阴影 CSM'),
     ('tests.test_volumetrics', 'ALL_VOLUMETRICS_TESTS_PASSED', '体积雾/光轴'),
+    ('tests.test_dof', 'ALL_DOF_TESTS_PASSED', '景深 DoF'),
     ('tests.test_gpu_cull', 'ALL_GPU_CULL_TESTS_PASSED', 'GPU 剔除'),
     ('tests.test_p2_render', 'ALL_P2_TESTS_PASSED', 'P2 渲染能力'),
     ('tests.test_skin', 'ALL_SKIN_TESTS_PASSED', '蒙皮骨骼'),
