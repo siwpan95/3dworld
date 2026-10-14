@@ -45,6 +45,7 @@ MODULES = [
     ('tests.test_skin', 'ALL_SKIN_TESTS_PASSED', '蒙皮骨骼'),
     ('tests.test_timeline_ui', 'ALL_TIMELINE_UI_TESTS_PASSED', '时间轴 UI 面板'),
     ('tests.test_liminall', 'ALL_LIMINALL_TESTS_PASSED', '阈廊内核（后室 × P.T. 循环走廊）'),
+    ('tests.test_texproj', 'ALL_TEXPROJ_TESTS_PASSED', 'UV 投影与贴图规则（投影/反解/图集/密度）'),
 ]
 
 

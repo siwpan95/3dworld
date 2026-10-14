@@ -9,7 +9,7 @@
     app  ->  renderer / postfx  ->  mesh / material / shaders
                                 ->  scene -> camera / frustum
     gltf  ->  mesh / material / scene
-    mathkit / timeline / picking / physics / frustum ：纯数学，可无窗口单测
+    mathkit / timeline / picking / physics / frustum / texproj：纯数学，可无窗口单测
 
 ``engine`` 同时是 3dworld 中 ``core/`` ``logic/`` ``presentation/`` 的
 公共下沉层：原先散落在三层的通用件（四元数插值、时间轴、相机、HUD、
@@ -41,6 +41,10 @@ from world3d.engine.greedy_mesh import layer_mesh, merge_rects   # noqa: E402  �
 from world3d.engine.baked_mesh import unit_cube, unit_sphere      # noqa: E402  纯函数，无 GL
 from world3d.engine.fsm import Machine, machine_from_keys        # noqa: E402  纯逻辑，无 GL
 from world3d.engine.orchestration import Bus                     # noqa: E402  纯逻辑，无 GL
+from world3d.engine.texproj import (                             # noqa: E402  纯数学，无 GL
+    UvProjection, project_uv, uv_to_world, uv_for_faces, fit_projection,
+    Atlas, TexWrap, wrap_uv, density_report, texel_scale,
+)
 
 __all__ = [
     '__version__',
@@ -53,4 +57,6 @@ __all__ = [
     'layer_mesh', 'merge_rects',
     'unit_cube', 'unit_sphere',
     'Machine', 'machine_from_keys', 'Bus',
+    'UvProjection', 'project_uv', 'uv_to_world', 'uv_for_faces', 'fit_projection',
+    'Atlas', 'TexWrap', 'wrap_uv', 'density_report', 'texel_scale',
 ]
