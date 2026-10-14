@@ -41,6 +41,15 @@ import shutil
 import sys
 import tempfile
 
+# stdio 编码兜底（必须在任何 print 之前）：本文件会打印 ⚠/✔/⊆ 等 GBK 编不出的字符，
+# 2026-10-14 实测 `--selfcheck` 在 GBK 控制台抛 UnicodeEncodeError、连结论一起丢掉
+# （selfcheck 打印「⚠ 沙箱基线有 N 条 FAIL」那一行时崩）。兜底本体与完整理由见 scripts/_console.py。
+_spec = importlib.util.spec_from_file_location(
+    '_console', os.path.join(os.path.dirname(os.path.abspath(__file__)), '_console.py'))
+_console = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_console)
+_console.ensure_utf8_stdio()
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # ============================================================== 框架 ==

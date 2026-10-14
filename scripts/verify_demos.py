@@ -32,6 +32,13 @@ import subprocess
 import sys
 import time
 
+# stdio 编码兜底（必须在任何 print 之前）：见 scripts/_console.py
+_spec = importlib.util.spec_from_file_location(
+    '_console', os.path.join(os.path.dirname(os.path.abspath(__file__)), '_console.py'))
+_console = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_console)
+_console.ensure_utf8_stdio()
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXAMPLES_DIR = os.path.join(ROOT, 'examples')
 PYTHON = os.path.join(ROOT, '.venv', 'Scripts', 'python.exe')

@@ -138,27 +138,49 @@ ENTRIES = [
          flags='auto'),
 ]
 
+#: 跨仓约定：本仓 = `<PROJECTS_ROOT>/3dworld`，兄弟仓直接按相对名找（铁律 5，不写死盘符）
+PROJECTS_ROOT = os.path.dirname(ROOT)
+
+#: 候选表只放**仓内相对**与**跨仓约定相对**形态，绝对路径一律不许进门禁（铁律 5）。
+#: 本机专属位置改由环境变量 `WORLD3D_FFMPEG` 提供，见 ffmpeg_exe()。
 FFMPEG_CANDIDATES = [
-    # 本机（2026-10 盘符变更后）：E 盘为主；G:\repos 的旧路径已失效（G 盘移除），
-    # 保留在末尾仅作跨机兼容。
-    r'E:\ffmpeg\bin\ffmpeg.exe',
-    r'D:\custom\ffmpeg\bin\ffmpeg.exe',
-    r'G:\repos\musickit\radio\ffmpeg\ffmpeg.exe',
-    r'G:\repos\pluginplayer\vendor\ffmpeg\bin\ffmpeg.exe',
+    os.path.join('pluginplayer', 'vendor', 'ffmpeg', 'bin', 'ffmpeg.exe'),
+    os.path.join('musickit', 'radio', 'ffmpeg', 'ffmpeg.exe'),
+    os.path.join('ffmpeg', 'bin', 'ffmpeg.exe'),
+    os.path.join('ffmpeg.exe',),
 ]
 
 
 def ffmpeg_exe():
-    """按「PATH → 候选表」逐一**校验可用性**（-version 能跑才采用）。
+    """按「`WORLD3D_FFMPEG` → PATH → 相对候选表」逐一**校验可用性**（`-version` 能跑才采用）。
 
-    PATH 里可能有不完整的 ffmpeg 包装器（实测踩过：G:\\Python314\\Scripts\\ffmpeg.exe
+    PATH 里可能有不完整的 ffmpeg 包装器（实测踩过：`G:\\Python314\\Scripts\\ffmpeg.exe`
     是个 108KB 的坏壳，直接采用会让录制在全黑输出后失败）——所以逐个试跑。
+
+    ⚠ 2026-10-14 改造（`铁律 5` 去符盘）：原候选表把**本机专属绝对路径**烤进源码
+    （两条「固定盘符 + 固定目录」形态的候选），三个问题：
+
+    1. 本机那两个盘位**根本不存在** ⇒ `scan_hardcoded.ps1` 判为死根路径（`新增阻断项 2`）；
+    2. 换机器 / 克隆到别处即失效，而它是**录制全链路的第一步**（找不到 ffmpeg 就整批录不出来）；
+    3. 扫描器只看得到盘符形态，**看不到散文里的判断** —— 所以下面这段说明也刻意不写盘符字面量：
+       若在此处引用被删掉的路径当反例，门禁照样会判红（实测：写了就被拦）。
+       教训是「解释为什么删掉某个绝对路径」时，也别把那个路径原样抄回来。
+
+    紧邻原注释还写着「某盘位的旧路径已失效（该盘已移除）」—— **与事实相反**：那个盘位在，
+    而且 `docs/分发指南.md` 正把该盘位下的 `musickit/radio/ffmpeg/ffmpeg.exe` 列为**推荐**位置。
+    那句注释连同两条死盘符一并删除。
+
+    现在的顺序：① `WORLD3D_FFMPEG`（本机专属位置的唯一正确落点，也便于 CI/换机覆盖）
+    → ② PATH → ③ `PROJECTS_ROOT` 下的兄弟仓相对候选（等价于原两条能用的那条）。
     """
     candidates = []
+    override = os.environ.get('WORLD3D_FFMPEG')
+    if override:
+        candidates.append(override)
     p = shutil.which('ffmpeg')
     if p:
         candidates.append(p)
-    candidates.extend(FFMPEG_CANDIDATES)
+    candidates.extend(os.path.join(PROJECTS_ROOT, c) for c in FFMPEG_CANDIDATES)
     for c in candidates:
         if not os.path.exists(c):
             continue
@@ -169,7 +191,14 @@ def ffmpeg_exe():
                 return c
         except Exception:
             continue
-    raise SystemExit('ffmpeg 未找到可用版本：请把它加入 PATH 或改脚本里的 FFMPEG_CANDIDATES')
+    raise SystemExit(
+        'ffmpeg 未找到可用版本。按顺序试过：\n'
+        '  ① 环境变量 WORLD3D_FFMPEG（当前{}）\n'
+        '  ② PATH\n'
+        '  ③ {}/<兄弟仓> 下的相对候选：{}'.format(
+            '已设置：' + override if override else '未设置',
+            PROJECTS_ROOT,
+            '、'.join(FFMPEG_CANDIDATES)))
 
 
 def import_module(rel_path, name):

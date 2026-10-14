@@ -70,6 +70,7 @@ examples/              39 个单文件示例与工具（详见 examples/README.m
 configs/               10 棵配置树（cordis.*.yml）：
                        声明本次挂哪些服务、各带什么 config
 scripts/
+  _console.py          入口脚本的 stdio 编码兜底（GBK 控制台不再因 ⚠/⊆ 崩掉而吞掉结论）
   verify.py            机械门禁 16 条：同一事实写在两处必须相等（<1 秒，pre-commit 会跑）
   docs_index.py        docs/README.md 的生成器（门禁 docs-index-fresh 核对新鲜度）
   new_demo.py          脚手架：生成能开箱跑的新 demo / 新测试模块（模板被门禁钉住）
