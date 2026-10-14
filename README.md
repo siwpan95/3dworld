@@ -70,6 +70,8 @@ examples/              37 个单文件示例与工具（详见 examples/README.m
 configs/               10 棵配置树（cordis.*.yml）：
                        声明本次挂哪些服务、各带什么 config
 scripts/
+  verify.py            机械门禁 12 条：同一事实写在两处必须相等（<1 秒，pre-commit 会跑）
+  docs_index.py        docs/README.md 的生成器（门禁 docs-index-fresh 核对新鲜度）
   check_imports.py     全仓可达性门禁：world3d/ 下每个模块都 import 一遍
   verify_demos.py      demos 批量验收（冒烟 + 截图 + 退出码）
   run_all_tests.py     14 个测试模块的聚合 runner
@@ -263,6 +265,7 @@ python -m tests.test_engine         引擎层无窗口单测（30 项，含 mode
 python -m tests.test_skin           蒙皮骨骼动画（8 项）
 python -m tests.test_gpu_cull       GPU 驱动渲染（7 项，含"GPU 剔除 == CPU 剔除"逐实例比对）
 python -m tests.test_p2_render      PCSS / WBOIT / 点云+EDL（7 项）
+python -m tests.test_timeline_ui    底部时间轴面板（9 项）
 python -m tests.test_brickward      《砖境》机关内核：BQM 致敬 B1~B3（65 项，零 GL）
 python -m tests.test_csm            级联阴影 CSM（20 项：分割/角点/光盒/纹素吸附/GLSL 展开）
 python -m tests.test_volumetrics    体积雾/光轴（12 项：闭式积分可加性/HG 归一/抖动同式/GLSL 组合）
@@ -289,6 +292,47 @@ kkrieger 六幕的循环连续性与舱门/平台/灯带状态机、**镜头穿�
 后批追加：**蒙皮绑定姿态 == 单位矩阵**、**热点命中/节点图连通/谜题顺序解锁/场景校验**、
 **市场确定性/事件冲击/均值回归**、**谱面可打性约束/判定窗**、
 **弹幕图案确定性与角度覆盖/boss 阶段切换/编波单调**。
+
+## 机械门禁（`scripts/verify.py`，<1 秒）
+
+把"同一事实写在两处必须相等"从散文变成**可跑的检查** —— 因为本项目的这些数字
+**全靠手改**，而手改每次都可能漏一处（示例数在 README 里就有 6 处）。
+
+```bat
+python scripts\verify.py              # 12 条门禁（不联网、不跑构建、不改文件）
+python scripts\verify.py --list       # 只列名字与说明
+python scripts\verify.py --verbose    # 每条的证据（"6 处断言 == 37 个 demo"这种）
+python scripts\verify.py --fix        # 重生成生成物（docs/README.md）
+python scripts\verify.py --selfcheck  # 沙箱里逐条注入破坏，证明门禁拦得住
+```
+
+| 门禁 | 断言 |
+|------|------|
+| `readme-demo-count` | README 里**每一处**示例数 == `examples/*.py` 真实可发现数 |
+| `readme-test-modules` | README 测试命令表 ↔ `run_all_tests.MODULES`（**双向**） |
+| `readme-test-counts` | README 每行的「N 项」== 该模块声明的用例数（两种真实形态都认） |
+| `readme-config-count` / `-kernel-count` / `-core-count` | 配置树 / 内核 / 共同核计数 |
+| `examples-index-pairs` | `examples/README.md` 表格 ↔ `examples/*.py`（**双向**） |
+| `doc-links` | README / docs / examples 里的**相对链接**都指得到真实文件 |
+| `docs-index-fresh` | `docs/README.md` == `scripts/docs_index.py` 重新生成的结果（新鲜度） |
+| `commands-exist` | 文档里写的每条 `python -m …` / `python <文件名>.py` 目标都存在（模板占位符不算） |
+| `cli-usage-names` | `cli/*.py` 用法 docstring 里的模块名 == 真实模块名 |
+| `readme-tree-real` | README「项目结构」树里列出的路径都真实存在 |
+
+**它上线当天就抓到过一个真漂移**：`tests/test_timeline_ui` 注册在
+`run_all_tests.py` 里（14 个模块）却没进 README 的测试清单（只列了 13 个）。
+
+`--selfcheck` 会给每条门禁注入一个**针对性破坏**并断言它变红（12/12 全拦得住）——
+"永远为绿的门禁等于装饰品"，所以这一步不能省。
+
+**pre-commit 钩子**（可选，已在本仓库启用）：
+
+```bat
+git config core.hooksPath .githooks     # 装（已启用；--unset 即卸载）
+```
+
+钩子只跑 `verify.py`（<1 秒），**找不到 Python 就跳过而不是拦下**；
+失败时打印下一步动作（`--fix` / `--verbose` / `--no-verify`）。
 
 ## 性能基准（真实帧率）
 

@@ -1,0 +1,48 @@
+#!/bin/sh
+# 机械门禁 pre-commit（P4）
+#
+# 装：git config core.hooksPath .githooks
+# 卸：git config --unset core.hooksPath
+#
+# 设计三条（照抄 `repo-consistency-gates` 的实测结论）：
+#
+# 1. **找不到解释器就跳过，而不是拦下** —— 别让人因为没装 Python 就无法提交；
+# 2. 失败时**给下一步动作**（怎么自动修 / 怎么跳过），不是只打一句"校验失败"；
+# 3. 只跑 `scripts/verify.py`（<1 秒、不联网、不跑构建、不改文件）——
+#    单测/全量验收太慢，不适合放进 pre-commit。想跑全套请看 README。
+
+root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+cd "$root" || exit 0
+
+# 优先用项目 venv（它有 pyglet/PyYAML），退到系统 python
+PY=""
+if [ -x ".venv/Scripts/python.exe" ]; then
+    PY=".venv/Scripts/python.exe"
+elif [ -x ".venv/bin/python" ]; then
+    PY=".venv/bin/python"
+elif command -v python3 >/dev/null 2>&1; then
+    PY="python3"
+elif command -v python >/dev/null 2>&1; then
+    PY="python"
+fi
+
+if [ -z "$PY" ]; then
+    echo "[pre-commit] 找不到 Python 解释器 —— 跳过机械门禁（不拦下本次提交）"
+    exit 0
+fi
+
+if [ ! -f "scripts/verify.py" ]; then
+    echo "[pre-commit] 没有 scripts/verify.py —— 跳过（老版本仓库？）"
+    exit 0
+fi
+
+if "$PY" scripts/verify.py; then
+    exit 0
+fi
+
+echo ""
+echo "[pre-commit] ✗ 机械门禁未通过，本次提交被拦下。"
+echo "    只改了文档里的计数/链接？   $PY scripts/verify.py --fix   # 重生成生成物后重试"
+echo "    想看每条门禁的证据：        $PY scripts/verify.py --verbose"
+echo "    确实需要跳过：              git commit --no-verify   （请在提交说明里写清原因）"
+exit 1

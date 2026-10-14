@@ -1,0 +1,593 @@
+# -*- coding: utf-8 -*-
+"""机械门禁（P4）—— 把"同一事实写在两处必须相等"从散文变成 <1 秒可跑的检查。
+
+## 为什么这个项目**特别**需要它
+
+本轮改造里，**同一件事被手改过 5~6 次**：示例数（`37 个` 在 README 里出现 6 处）、
+测试模块清单与逐模块用例数、配置树/内核/共同核计数、文档间相对链接（P2-4 搬了 205 个文件）、
+`cli` 的用法 docstring（P2-4 改了命令名）。**这些手改每一次都可能漏一处。**
+
+门禁上线**当天就抓到一个真漂移**：`tests/test_timeline_ui` 在 `run_all_tests.py` 里
+（14 个模块）却没进 README 的测试清单（只列了 13 个）。
+
+## 设计约束（照抄 `repo-consistency-gates` 的踩坑表）
+
+* **只校验"现状"，豁免"快照"**：README 里"当前有 N 个示例"是现状（必须同步）；
+  `CHANGELOG` 里的历史计数是快照（**不校验**）。
+* **失败信息要点名哪两处不一致、附两边实际值**；通过时也要**给数字**。
+* **跳过 ≠ 通过**：前提不满足记 SKIP 并说明原因，不计入通过数。
+* **不跑构建、不联网、不改文件**（`--fix` 只重新生成 `docs/README.md`）。
+* **每条门禁都要能回答"我把它防的那件事做出来，它会不会红"** —— 见 `--selfcheck`。
+
+用法::
+
+    python scripts/verify.py                 # 全部门禁
+    python scripts/verify.py --list          # 只列名字
+    python scripts/verify.py --only docs-index-fresh,readme-demo-count
+    python scripts/verify.py --verbose       # 打印每条的证据
+    python scripts/verify.py --json          # 机器可读
+    python scripts/verify.py --fix           # 只重新生成生成物（docs/README.md）
+    python scripts/verify.py --selfcheck     # 在沙箱里逐条注入破坏，证明它拦得住
+"""
+from __future__ import annotations
+
+import argparse
+import ast
+import json
+import os
+import re
+import shutil
+import sys
+import tempfile
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# ============================================================== 框架 ==
+
+
+class Skip(Exception):
+    """前提不满足（缺文件/缺工具）—— 记 SKIP，不计入通过数。"""
+
+
+class Fail(Exception):
+    """门禁不通过。消息里必须点名**哪两处不一致 + 两边实际值**。"""
+
+
+GATES = []
+
+#: `python -m venv` / `python -m PyInstaller …` 这类是**工具**，不是本项目的模块。
+#: （写门禁时先把文档里真实出现过的命令列一遍 —— 凭想象会把这些记成"死命令"。）
+TOOLING_MODULES = {'venv', 'pip', 'pytest', 'unittest', 'json', 'http', 'compileall',
+                   'ensurepip', 'PyInstaller', 'pyinstaller', 'pydoc'}
+
+
+def gate(name, desc):
+    def deco(fn):
+        GATES.append((name, desc, fn))
+        return fn
+    return deco
+
+
+# ====================================================== 权威源（不 import 项目模块）==
+# 刻意**不用 import**：import 会拖进 pyglet / 开窗口 / 几十个 demo 模块，
+# 而门禁要能在 <1 秒、无 GL 的环境（含 pre-commit）里跑。
+
+def _read(root, rel):
+    path = os.path.join(root, rel)
+    if not os.path.exists(path):
+        raise Skip(f'{rel} 不存在')
+    return open(path, encoding='utf-8').read()
+
+
+def _ast_value(root, rel, name):
+    """AST 取某个模块级赋值（比正则稳；`WANT_CORES` / `MODULES` / `SKIP` 都用它）。"""
+    tree = ast.parse(_read(root, rel))
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Name) and t.id == name:
+                    return ast.literal_eval(node.value)
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) \
+                and node.target.id == name:
+            return ast.literal_eval(node.value)
+    raise Skip(f'{rel} 里没有 {name}（可能改成动态构造了）')
+
+
+def real_demos(root):
+    """真实可发现的 demo：与 `verify_demos.py` 同规则（examples/*.py 减 SKIP）。"""
+    skip = set(_ast_value(root, 'scripts/verify_demos.py', 'SKIP'))
+    ed = os.path.join(root, 'examples')
+    return sorted(f[:-3] for f in os.listdir(ed)
+                  if f.endswith('.py') and f not in skip)
+
+
+def real_test_modules(root):
+    mods = _ast_value(root, 'scripts/run_all_tests.py', 'MODULES')
+    return [(m.split('.')[-1], flag) for m, flag, _label in mods]
+
+
+def test_case_count(root, module_name):
+    """测试模块**声明**的用例数。两种真实形态都要认（写之前先 grep 过实际写法）：
+
+    * **新式**（`tests = [...]` 显式运行清单）—— brickward / csm / volumetrics / dof /
+      motionblur / framegraph / compat 都是这种；
+    * **旧式**（没有清单，靠 `def test_*` 函数计数）—— run_tests / test_cores / test_skin /
+      test_gpu_cull / test_p2_render 是这种。
+
+    我第一版只认新式，于是那 5 个模块全被记成 SKIP —— **而它们的 README 数字其实是对的**
+    （62/17/8/7/7 逐个吻合）。**门禁的启发式必须来自真实措辞，不能凭想象。**
+
+    两种形态同时存在时还断言它们相等 —— 那能抓"定义了测试函数却没注册进 runner"
+    （= 定义了但永远不会跑）这种更隐蔽的问题。
+    """
+    src = _read(root, f'tests/{module_name}.py')
+    tree = ast.parse(src)
+    listed = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Name) and t.id == 'tests' \
+                        and isinstance(node.value, (ast.List, ast.Tuple)):
+                    listed = len(node.value.elts)
+    defined = sum(1 for n in ast.walk(tree)
+                  if isinstance(n, ast.FunctionDef) and n.name.startswith('test_'))
+    if listed is not None and defined and listed != defined:
+        raise Fail(f'tests/{module_name}.py: 定义了 {defined} 个 `test_*`，'
+                   f'但 runner 里只注册了 {listed} 个（有测试永远不会跑）')
+    if listed is not None:
+        return listed, 'runner 清单'
+    if defined:
+        return defined, 'def test_* 计数'
+    raise Skip(f'tests/{module_name}.py 里既没有 runner 清单也没有 test_* 函数')
+
+
+def _fenced(text, heading):
+    """取某个 `## 标题` 之下的第一个围栏代码块。"""
+    m = re.search(re.escape(heading) + r'\n+```[a-z]*\n(.*?)```', text, re.S)
+    if not m:
+        raise Skip(f'找不到 `{heading}` 下的代码块')
+    return m.group(1)
+
+
+# ============================================================== 门禁 ==
+
+
+@gate('readme-demo-count', 'README 里每一处示例数 == 真实可发现 demo 数')
+def g_demo_count(root, verbose):
+    n = len(real_demos(root))
+    text = _read(root, 'README.md')
+    hits = re.findall(r'(\d+)\s*个\s*(?:独立示例与工具|单文件示例与工具|单文件\s*3D\s*示例与工具|demo)',
+                      text)
+    if not hits:
+        raise Fail('README 里一处示例数都没匹配到（措辞变了？先 grep 真实措辞再改正则）')
+    bad = [(i + 1, v) for i, v in enumerate(hits) if int(v) != n]
+    if bad:
+        raise Fail(f'真实 demo 数 = {n}，但 README 有 {len(bad)} 处不一致：'
+                   + '；'.join(f'第 {i} 处写 {v}' for i, v in bad))
+    return f'{len(hits)} 处断言 == {n} 个 demo'
+
+
+@gate('readme-test-modules', 'README 的测试命令表 ↔ run_all_tests 的模块表（双向）')
+def g_test_modules(root, verbose):
+    have = {m for m, _f in real_test_modules(root)}
+    text = _read(root, 'README.md')
+    listed = set(re.findall(r'python -m tests\.(\w+)', text))
+    missing = sorted(have - listed)
+    extra = sorted(listed - have)
+    if missing or extra:
+        msg = []
+        if missing:
+            msg.append(f'注册了但 README 没列：{missing}')
+        if extra:
+            msg.append(f'README 列了但没注册：{extra}')
+        raise Fail('；'.join(msg))
+    return f'{len(have)} 个模块双向一致'
+
+
+@gate('readme-test-counts', 'README 每行的「N 项」== 该模块声明用例数')
+def g_test_counts(root, verbose):
+    text = _read(root, 'README.md')
+    pairs = re.findall(r'python -m tests\.(\w+)\s+[^\n（]*（(\d+)\s*项', text)
+    if not pairs:
+        raise Fail('README 里没匹配到「N 项」的写法')
+    bad, checked, how = [], 0, {}
+    for name, claimed in pairs:
+        try:
+            real, rule = test_case_count(root, name)
+        except Skip as e:
+            bad.append(f'{name}: {e}')
+            continue
+        checked += 1
+        how[rule] = how.get(rule, 0) + 1
+        if real != int(claimed):
+            bad.append(f'{name}: README 写 {claimed} 项，实际声明 {real} 项')
+    if bad:
+        raise Fail('；'.join(bad))
+    tail = '、'.join(f'{v} 个用{k}' for k, v in sorted(how.items()))
+    return f'{checked} 个模块用例数与声明一致（{tail}）'
+
+
+@gate('readme-config-count', 'README 的配置树数 == configs/cordis.*.yml 数')
+def g_config_count(root, verbose):
+    n = len([f for f in os.listdir(os.path.join(root, 'configs'))
+             if f.startswith('cordis.') and f.endswith('.yml')])
+    text = _read(root, 'README.md')
+    hits = re.findall(r'(\d+)\s*棵配置树', text)
+    if not hits:
+        raise Fail('README 里没匹配到「N 棵配置树」')
+    bad = [v for v in hits if int(v) != n]
+    if bad:
+        raise Fail(f'真实 {n} 棵，README 里不一致的写法：{bad}')
+    return f'{len(hits)} 处断言 == {n} 棵配置树'
+
+
+@gate('readme-kernel-count', 'README 的内核数 == games/*/kernel.py 数')
+def g_kernel_count(root, verbose):
+    gd = os.path.join(root, 'world3d', 'games')
+    n = len([d for d in os.listdir(gd)
+             if os.path.exists(os.path.join(gd, d, 'kernel.py'))])
+    text = _read(root, 'README.md')
+    hits = re.findall(r'(\d+)\s*个\s*(?:内核|Cordis 内核)', text)
+    if not hits:
+        raise Fail('README 里没匹配到「N 个内核」')
+    bad = [v for v in hits if int(v) != n]
+    if bad:
+        raise Fail(f'真实 {n} 个内核，README 里不一致的写法：{bad}')
+    return f'{len(hits)} 处断言 == {n} 个内核'
+
+
+@gate('readme-core-count', 'README 的共同核数 == host/tree.WANT_CORES 长度')
+def g_core_count(root, verbose):
+    n = len(_ast_value(root, 'world3d/host/tree.py', 'WANT_CORES'))
+    text = _read(root, 'README.md')
+    hits = re.findall(r'(\d+)\s*(?:个)?\s*共同核', text)
+    if not hits:
+        raise Fail('README 里没匹配到「N 共同核」')
+    bad = [v for v in hits if int(v) != n]
+    if bad:
+        raise Fail(f'真实 {n} 个共同核，README 里不一致的写法：{bad}')
+    return f'{len(hits)} 处断言 == {n} 个共同核'
+
+
+@gate('examples-index-pairs', 'examples/README.md 的表格 ↔ examples/*.py（双向）')
+def g_examples_index(root, verbose):
+    text = _read(root, 'examples/README.md')
+    listed = set(re.findall(r'^\|\s*`([\w.]+\.py)`', text, re.M))
+    have = {f + '.py' for f in real_demos(root)}
+    missing = sorted(have - listed)
+    ghosts = sorted(listed - set(
+        f for f in os.listdir(os.path.join(root, 'examples')) if f.endswith('.py')))
+    if missing or ghosts:
+        msg = []
+        if missing:
+            msg.append(f'有 demo 但表里没行：{missing}')
+        if ghosts:
+            msg.append(f'表里有行但文件不存在：{ghosts}')
+        raise Fail('；'.join(msg))
+    return f'{len(have)} 个 demo 与索引双向一致（表内 {len(listed)} 行）'
+
+
+@gate('doc-links', 'README/docs/examples 里的相对链接都指得到真实文件')
+def g_doc_links(root, verbose):
+    targets = ['README.md', 'examples/README.md']
+    dd = os.path.join(root, 'docs')
+    targets += [f'docs/{f}' for f in sorted(os.listdir(dd)) if f.endswith('.md')]
+    dead, checked = [], 0
+    link_re = re.compile(r'\[[^\]]*\]\(([^)\s]+)\)')
+    for rel in targets:
+        base = os.path.dirname(os.path.join(root, rel))
+        for url in link_re.findall(_read(root, rel)):
+            if url.startswith(('http://', 'https://', 'mailto:', '#')):
+                continue
+            path = url.split('#')[0]
+            if not path:
+                continue
+            checked += 1
+            if not os.path.exists(os.path.normpath(os.path.join(base, path))):
+                dead.append(f'{rel} → {url}')
+    if dead:
+        raise Fail(f'{len(dead)} 条死链：' + '；'.join(dead[:8])
+                   + ('…' if len(dead) > 8 else ''))
+    return f'{checked} 条相对链接全部有效（{len(targets)} 个文件）'
+
+
+@gate('docs-index-fresh', 'docs/README.md == scripts/docs_index.py 重新生成的结果')
+def g_docs_index(root, verbose):
+    sys.path.insert(0, os.path.join(root, 'scripts'))
+    try:
+        import docs_index
+        importlib = None
+        expected = docs_index.build_index()
+    finally:
+        sys.path.pop(0)
+    del importlib
+    path = os.path.join(root, 'docs', 'README.md')
+    if not os.path.exists(path):
+        raise Fail('docs/README.md 不存在 —— 跑 `python scripts/docs_index.py --write`')
+    cur = open(path, encoding='utf-8').read()
+    if cur != expected:
+        raise Fail('docs/README.md 不是最新的 —— 跑 '
+                   '`python scripts/docs_index.py --write`（或 `verify.py --fix`）')
+    from_index = len(re.findall(r'^\|\s*\[', expected, re.M))
+    return f'索引最新（{from_index} 篇登记）'
+
+
+@gate('commands-exist', 'README/docs 里写的每条命令，目标都真的存在')
+def g_commands(root, verbose):
+    files = ['README.md', 'examples/README.md', 'docs/分发指南.md', 'docs/引擎设计.md']
+    bad, n = [], 0
+    for rel in files:
+        if not os.path.exists(os.path.join(root, rel)):
+            continue
+        text = _read(root, rel)
+        for mod in set(re.findall(r'python -m ([\w.]+)', text)):
+            if mod.split('.')[0] in TOOLING_MODULES:
+                continue            # `python -m venv` 这类是工具，不是本项目模块
+            n += 1
+            if not _module_exists(root, mod):
+                bad.append(f'{rel}: python -m {mod}')
+        # `python scripts/x.py` 与 `python x.py` **两种写法 README 里都有**：
+        # 后者是"先 cd 进 examples/ 再跑"的简写 ⇒ 要在 scripts/ examples/ 根 三处找
+        for script in set(re.findall(r'python ([\w./\\-]+\.py)', text)):
+            rel2 = script.replace('\\', '/')
+            if rel2.split('/')[0] in ('scripts', 'examples'):
+                cands = [rel2]
+            else:
+                cands = [rel2, f'scripts/{rel2}', f'examples/{rel2}']
+            n += 1
+            if not any(os.path.exists(os.path.join(root, c)) for c in cands):
+                bad.append(f'{rel}: python {script}')
+    if bad:
+        raise Fail(f'{len(bad)} 条命令指向不存在的目标：' + '；'.join(bad[:8]))
+    return f'{n} 条命令全部可达'
+
+
+def _module_exists(root, mod):
+    """`a.b.c` → 存在 a/b/c.py 或 a/b/c/__init__.py（在仓库根或 world3d 下）。"""
+    parts = mod.split('.')
+    for base in (root, os.path.join(root, 'world3d')):
+        p = os.path.join(base, *parts)
+        if os.path.exists(p + '.py') or os.path.exists(os.path.join(p, '__init__.py')):
+            return True
+    return False
+
+
+@gate('cli-usage-names', 'cli/*.py 的用法 docstring 里的模块名 == 真实模块名')
+def g_cli_usage(root, verbose):
+    cd = os.path.join(root, 'world3d', 'cli')
+    bad, n = [], 0
+    for fn in sorted(os.listdir(cd)):
+        if not fn.endswith('.py') or fn == '__init__.py':
+            continue
+        text = _read(root, f'world3d/cli/{fn}')
+        names = set(re.findall(r'python -m world3d\.cli\.(\w+)', text))
+        if not names:
+            continue
+        n += 1
+        want = fn[:-3]
+        wrong = sorted(names - {want})
+        if wrong:
+            bad.append(f'{fn}: docstring 写了 {wrong}，模块是 {want}')
+    if bad:
+        raise Fail('；'.join(bad))
+    return f'{n} 个 cli 模块的用法行都指向自己'
+
+
+@gate('readme-tree-real', 'README 项目结构树里列出的路径都真实存在')
+def g_readme_tree(root, verbose):
+    text = _read(root, 'README.md')
+    block = _fenced(text, '## 项目结构')
+    stack, checked, bad = [], 0, []
+    for raw in block.split('\n'):
+        if not raw.strip():
+            continue
+        indent = len(raw) - len(raw.lstrip(' '))
+        m = re.match(r'^([\w./-]+)', raw.strip())
+        if not m:
+            continue
+        token = m.group(1)
+        if not re.match(r'^[\w./-]+(\.py|/)$|^[\w.-]+\.(py|toml|yml|cfg|txt)$', token):
+            continue          # 非路径行（说明文字/分隔）
+        depth = indent // 2
+        stack = stack[:depth]
+        rel = '/'.join(stack + [token.rstrip('/')])
+        stack = stack + [token.rstrip('/')] if token.endswith('/') else stack
+        checked += 1
+        if not os.path.exists(os.path.join(root, rel)):
+            bad.append(rel)
+    if bad:
+        raise Fail(f'{len(bad)} 个路径不存在：' + '；'.join(bad[:8]))
+    return f'树里 {checked} 个路径全部存在'
+
+
+# ============================================================== runner ==
+
+
+def run(gates, root, verbose):
+    rows = []
+    for name, desc, fn in gates:
+        try:
+            detail = fn(root, verbose)
+            rows.append({'name': name, 'status': 'PASS', 'detail': detail, 'desc': desc})
+        except Skip as e:
+            rows.append({'name': name, 'status': 'SKIP', 'detail': str(e), 'desc': desc})
+        except Fail as e:
+            rows.append({'name': name, 'status': 'FAIL', 'detail': str(e), 'desc': desc})
+        except Exception as e:                              # noqa: BLE001
+            rows.append({'name': name, 'status': 'FAIL',
+                         'detail': f'{type(e).__name__}: {e}', 'desc': desc})
+    return rows
+
+
+def report(rows, as_json=False, verbose=False):
+    if as_json:
+        print(json.dumps(rows, ensure_ascii=False, indent=2))
+    else:
+        for r in rows:
+            mark = {'PASS': 'ok  ', 'SKIP': 'skip', 'FAIL': 'FAIL'}[r['status']]
+            print(f'  [{mark}] {r["name"]:<24} {r["detail"]}')
+        n_pass = sum(1 for r in rows if r['status'] == 'PASS')
+        n_skip = sum(1 for r in rows if r['status'] == 'SKIP')
+        n_fail = sum(1 for r in rows if r['status'] == 'FAIL')
+        print('-' * 74)
+        print(f'[verify] {len(rows)} 条门禁：通过 {n_pass}，跳过 {n_skip}，失败 {n_fail}')
+    return sum(1 for r in rows if r['status'] == 'FAIL')
+
+
+# ============================================================== selfcheck ==
+SANDBOX_SKIP = {'.git', '.venv', 'build', 'recordings', 'shots', '__pycache__',
+                'assets', 'vendor', 'node_modules'}
+SANDBOX_SKIP_EXT = {'.png', '.jpg', '.mp4', '.wav', '.gif', '.zip', '.exe', '.raw'}
+
+
+def _sandbox(root):
+    """只拷**文本**（门禁只读文本）—— 50MB 的仓库因此缩到 ~2MB。"""
+    dst = tempfile.mkdtemp(prefix='verify_selfcheck_')
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames
+                       if d not in SANDBOX_SKIP and not d.endswith('.egg-info')]
+        for fn in filenames:
+            if os.path.splitext(fn)[1].lower() in SANDBOX_SKIP_EXT:
+                continue
+            src = os.path.join(dirpath, fn)
+            rel = os.path.relpath(src, root)
+            out = os.path.join(dst, rel)
+            os.makedirs(os.path.dirname(out), exist_ok=True)
+            shutil.copy2(src, out)
+    return dst
+
+
+def _subst(rel, old, new):
+    def fn(root):
+        p = os.path.join(root, rel)
+        text = open(p, encoding='utf-8').read()
+        if old not in text:
+            raise AssertionError(f'沙箱里找不到要替换的文本：{rel} :: {old[:40]!r}')
+        open(p, 'w', encoding='utf-8', newline='\n').write(text.replace(old, new, 1))
+    return fn
+
+
+def _append_line(rel, line):
+    def fn(root):
+        p = os.path.join(root, rel)
+        with open(p, 'a', encoding='utf-8', newline='\n') as fh:
+            fh.write(line + '\n')
+    return fn
+
+
+def _delete(rel):
+    def fn(root):
+        os.remove(os.path.join(root, rel))
+    return fn
+
+
+#: 每条门禁一到两个**针对性破坏**（"我把它防的那件事做出来，它会不会红"）
+BREAKS = [
+    ('readme-demo-count', '把 README 里第一处示例数改成 99',
+     _subst('README.md', '**37 个独立示例与工具**', '**99 个独立示例与工具**')),
+    ('readme-test-modules', '从 README 删掉一行测试命令',
+     _subst('README.md', 'python -m tests.test_compat', 'python -m tests.test_removed_thing')),
+    ('readme-test-counts', '把某个模块的用例数写错',
+     _subst('README.md', '（65 项，零 GL）', '（999 项，零 GL）')),
+    ('readme-config-count', '把配置树数改成 99',
+     _subst('README.md', '10 棵配置树', '99 棵配置树')),
+    ('readme-kernel-count', '把内核数改成 99',
+     _subst('README.md', '9 个内核 + 13 共同核', '99 个内核 + 13 共同核')),
+    ('readme-core-count', '把共同核数改成 99',
+     _subst('README.md', '9 个内核 + 13 共同核', '9 个内核 + 99 共同核')),
+    ('examples-index-pairs', '从 examples/README 删掉一个 demo 的行',
+     _subst('examples/README.md', '| `frame_graph.py` |', '| `removed.py` |')),
+    ('doc-links', '把一个文档链接指到不存在的文件',
+     _subst('README.md', '](examples/README.md)', '](examples/NOPE.md)')),
+    ('docs-index-fresh', '往索引里塞一行假的',
+     _append_line('docs/README.md', '| [`假的`](nope.md) | 假 |')),
+    ('commands-exist', '把一条命令的模块名改坏',
+     _subst('README.md', 'python -m world3d.cli.frame_plan --all-toggles',
+            'python -m world3d.cli.no_such_cli')),
+    ('cli-usage-names', '把 cli docstring 的用法行改成别的模块',
+     _subst('world3d/cli/frame_plan.py', 'python -m world3d.cli.frame_plan',
+            'python -m world3d.cli.config_boot')),
+    ('readme-tree-real', '把目录树里的一个文件名改坏',
+     _subst('README.md', '    app.py            DemoApp · run',
+            '    app_broken.py     DemoApp · run')),
+]
+
+
+def selfcheck(root):
+    print('[selfcheck] 建沙箱（只拷文本）…')
+    sandbox = _sandbox(root)
+    print(f'[selfcheck] 沙箱 {sandbox}')
+    base = {r['name']: r['status'] for r in run(GATES, sandbox, False)}
+    bad_base = [n for n, s in base.items() if s == 'FAIL']
+    rows = []
+    for name, desc, breaker in BREAKS:
+        if base.get(name) == 'FAIL':
+            rows.append({'name': name, 'status': 'FAIL',
+                         'detail': f'沙箱基线就是 FAIL（{base[name]}）', 'desc': desc})
+            continue
+        work = tempfile.mkdtemp(prefix='verify_break_')
+        shutil.copytree(sandbox, work, dirs_exist_ok=True)
+        try:
+            breaker(work)
+            gates = [g for g in GATES if g[0] == name]
+            after = run(gates, work, False)
+            st = after[0]['status']
+            rows.append({'name': name, 'status': 'PASS' if st == 'FAIL' else 'FAIL',
+                         'detail': (f'注入「{desc}」→ 门禁 {st}'
+                                    + (f'：{after[0]["detail"][:50]}…' if st == 'FAIL'
+                                       else '（**没拦住**）')),
+                         'desc': desc})
+        except AssertionError as e:
+            rows.append({'name': name, 'status': 'FAIL', 'detail': str(e), 'desc': desc})
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+    if bad_base:
+        print(f'[selfcheck] ⚠ 沙箱基线有 {len(bad_base)} 条 FAIL：{bad_base}')
+    report(rows)
+    shutil.rmtree(sandbox, ignore_errors=True)
+    print('[selfcheck] 每条门禁都被自己的破坏用例验证过'
+          if all(r['status'] == 'PASS' for r in rows) else
+          '[selfcheck] 有门禁没拦住破坏 —— 它是装饰品')
+    return sum(1 for r in rows if r['status'] == 'FAIL')
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description='机械门禁（P4）')
+    ap.add_argument('--list', action='store_true', help='只列门禁名字与说明')
+    ap.add_argument('--only', default='', help='逗号分隔，只跑这些')
+    ap.add_argument('--json', action='store_true', help='机器可读输出')
+    ap.add_argument('--verbose', action='store_true', help='打印证据细节')
+    ap.add_argument('--fix', action='store_true', help='只重新生成生成物')
+    ap.add_argument('--selfcheck', action='store_true', help='沙箱注入破坏，证明门禁拦得住')
+    args = ap.parse_args(argv)
+
+    if args.list:
+        for name, desc, _fn in GATES:
+            print(f'  {name:<24} {desc}')
+        return 0
+    if args.fix:
+        sys.path.insert(0, os.path.join(ROOT, 'scripts'))
+        import docs_index
+        docs_index.main(['--write'])
+        print('[verify] 生成物已刷新；重跑 `python scripts/verify.py` 复核')
+        return 0
+    if args.selfcheck:
+        return 1 if selfcheck(ROOT) else 0
+
+    gates = GATES
+    if args.only:
+        want = {x.strip() for x in args.only.split(',') if x.strip()}
+        gates = [g for g in GATES if g[0] in want]
+        unknown = want - {g[0] for g in GATES}
+        if unknown:
+            print(f'[verify] 未知门禁：{sorted(unknown)}')
+            return 2
+    rows = run(gates, ROOT, args.verbose)
+    n_fail = report(rows, args.json, args.verbose)
+    if not args.json:
+        print('== VERIFY_OK ==' if not n_fail else 'VERIFY_FAILED')
+    return 1 if n_fail else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
