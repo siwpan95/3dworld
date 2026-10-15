@@ -23,8 +23,16 @@ requires-python = ">=3.11"
 authors = [{ name = "siwpan" }]
 keywords = ["3d", "engine", "pyglet", "opengl", "procedural", "animation", "headless"]
 classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Operating System :: OS Independent",
   "Topic :: Multimedia :: Graphics :: 3D Rendering",
+  "Topic :: Games/Entertainment",
   "License :: OSI Approved :: MIT License",
 ]
 
@@ -57,8 +65,12 @@ Changelog = "https://gitee.com/siwpan/3dworld/blob/master/CHANGELOG.md"
 # `python scripts/<名>.py` 运行。见 docs/分发指南.md。
 [project.scripts]
 world3d-info = "world3d._info:main"
-world3d-config = "cli.config_boot:main"
-world3d-pipeline = "host.pipeline:main"
+# ⚠ P2-4 把 cli/ host/ 收进 world3d/ 之后，这两个入口的目标模块必须同步改成
+# world3d.cli.config_boot / world3d.host.pipeline。若沿用旧的顶层路径
+# （cli.config_boot:main），wheel 装上后一执行就 ModuleNotFoundError —— 
+# 2026-10-15 首次发布前实测发现并修掉（顶层已无 cli/ host/ 包）。
+world3d-config = "world3d.cli.config_boot:main"
+world3d-pipeline = "world3d.host.pipeline:main"
 
 # ---------------------------------------------------------------------------
 # 打包范围（P1 用"顶层多包"，src/ 布局留到 P2 一次性切换 —— 规划 §7-Q2）

@@ -1,5 +1,8 @@
 # 3dworld — pyglet 三维世界示例
 
+> 仓库：<https://gitee.com/siwpan/3dworld> ｜ 许可：MIT（见 [LICENSE](LICENSE)）
+> 注：文中 `<PATH>` 为路径占位符，请替换为你本机实际的目录 / 可执行文件路径。
+
 用 Python + pyglet 从零构建三维世界与**动画演出**：时间轴 / 关键帧插值 /
 层级骨骼 / 程序化场景，外加一组单文件 3D 示例（`examples/`）。
 
@@ -475,3 +478,9 @@ python scripts\new_kernel.py <名字> --undo            :: 撤销（含从三张
 
 MIT，见 [LICENSE](LICENSE)。
 
+---
+
+## 仓库索引标注（2026-10-15 · siwpan 统一治理）
+
+> 3dworld 程序化 3D 场景/动画引擎（现行，独立仓 siwpan/3dworld）；本地对应 `<PATH>`。
+> 本标注为发布面统一追加，不改变原有内容。

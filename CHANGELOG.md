@@ -3,6 +3,33 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [未发布] — PyPI 首发：发行名 `3dworld` / 导入名 `world3d`（库级 SemVer 0.1.0）
+
+CalVer 发行版轨道（Gitee release / exe / 成片）不变；本条为库级 SemVer 首次上 PyPI
+（版本双轨口径见 `pyproject.toml` 头部注释）。
+
+- **修 entry points 陈旧路径（真缺陷）**：P2-4 把 `cli/` `host/` 收进 `world3d/` 后，
+  `[project.scripts]` 仍指向顶层 `cli.config_boot:main` / `host.pipeline:main` ——
+  按原样发布，装上后这两个命令一执行即 ModuleNotFoundError。改为
+  `world3d.cli.config_boot:main` / `world3d.host.pipeline:main`。
+- **classifiers 补齐**：Development Status / Intended Audience / Python 3.11–3.14 /
+  OS Independent / Games/Entertainment（与同作坊 an-engine、foolproof-operation 对齐）。
+- **README 发布面治理**：首屏补仓库链接与许可行；尾部按统一惯例追加「仓库索引标注」
+  （本地路径用 `<PATH>` 占位 —— 与 audio-generation / an-engine 2026-09-23 去本地化
+  之后的口径一致；PyPI 上那三包的标注是去符盘之前的旧快照，带真实路径）。
+- **打包实测（2026-10-15）**：
+  - `python -m build` → `3dworld-0.1.0.tar.gz` + `3dworld-0.1.0-py3-none-any.whl`，
+    `twine check` 双 PASSED；
+  - wheel 仅含 `world3d`（132 文件，含 py.typed）+ vendored `cordis`（16 文件），
+    examples/tests/scripts/docs/assets/recordings/configs **零泄漏**；
+  - 干净 venv（Python 3.13）装 wheel 后 `world3d-info` 全绿：版本 0.1.0、依赖
+    pyglet 2.1.16 / PyYAML / watchdog 齐、cordis 来自 site-packages、GL 4.6
+    （RTX 3060）、19 着色器、24 服务；
+  - 三个 console script（`world3d-info` / `world3d-config` / `world3d-pipeline`）
+    全部可达（后两个正是本次修的入口）；
+  - TestPyPI 沙盒链路：twine 上传成功、页面 200、从 TestPyPI 索引装进全新 venv
+    复跑 `world3d-info` 依旧全绿。
+
 ## [未发布] — P5-d：让 CI 真跑（GitHub 通路实测 + 手动触发入口）
 
 `regression` / `regression-linux` 两个 job 写好了，但有个前提一直没落实：
