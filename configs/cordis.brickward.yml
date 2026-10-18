@@ -1,6 +1,7 @@
 # 《砖境 / Brickward》 · cordis.yml 配置树（BQM 机制致敬 · B1/B2/B3）
 #
-# 本文件同时是 examples/brickward.py 的**实际挂载声明**：demo 的 _mount_kernel 经
+# 本文件同时是《砖境》演示的**实际挂载声明**（演示已迁往独立仓 siwpan/3dworld-demos）：
+# 其 examples/brickward.py 的 _mount_kernel 经
 # host.tree.mount_tree(config_path('cordis.brickward.yml'), want=WANT_BRICKWARD) 加载
 # 本文件 —— 「demo 怎么挂的 = headless 验证怎么挂的」，接线只有这一份。
 #
@@ -13,8 +14,8 @@
 #   —— 否则那套"等 live_count() > 0"的就绪判定会一直等不到东西（见 run_one 的注释）。
 #
 # 运行（headless 验证）：python -m world3d.cli.config_boot brickward
-# 运行（可玩 demo）：    python examples/brickward.py
-# 运行（auto 回放）：    python examples/brickward.py --flag auto
+# 运行（可玩演示）：    3dworld-demos 仓内 python examples/brickward.py
+# 运行（auto 回放）：   3dworld-demos 仓内 python examples/brickward.py --flag auto
 - name: brickward
   id: brickward_kernel
 - name: render

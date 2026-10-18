@@ -1047,7 +1047,7 @@ Liminal Universe / Liminal Point / Liminalcore）均不同名，且证实「循�
 
 - **`liminall_130s.mp4`**（record 补录）：auto 全流程 8 loops 从头到电话终局
   （30Hz 步进实测 124.3s 通关 → 录 130s 含终局字幕）；1280×720 / 3900 帧 / 5.8MB。
-- **截图**：`docs/liminall_01.png`（L3 灯语谜题走廊）/ `liminall_02.png`（L4 迷宫）。
+- **截图**：`docs/liminall_01.png`（L3 灯语谜题走廊）/ `liminall_02.png`（L4 迷宫）—— 已随 demo 迁往 3dworld-demos。
 - **录制中修的四件**（都是首次真实运行暴露的，py_compile/check_imports 都覆盖不到）：
   1. `examples/liminall.py` 缺 `HALL_B_LEN` / `Mat4` / `Vec3` 导入——首次 build 即 NameError；
   2. **初始朝向反了**（yaw=π 面壁）——截图/成片全是起点凹室墙；
@@ -1279,7 +1279,7 @@ scripts/source2_survey.py            # 对拍 survey（本地参考可选）
 同步）；`check_imports` 130 模块 0 失败。
 
 **成片与截图**：`recordings/sandward_50s.mp4`（auto 巡游 43.6s → 录 50s）；
-`docs/sandward_01.png`（西北角场 · 沙岩/石膏/木箱材质区分）/ `sandward_02.png`。
+`docs/sandward_01.png`（西北角场 · 沙岩/石膏/木箱材质区分）/ `sandward_02.png` —— 已随 demo 迁往 3dworld-demos。
 
 **待办**：`sandward_50s.mp4` 已追加发行版 v2026.10.14（10-14 晚，附件 id
 3390522，匿名下载 200 全量校验）；Tab 三模式的 "棋盘格 / UV 规则" 两个模式

@@ -165,7 +165,7 @@ core/shaders/gpu_cull.comp（GLSL，字符串常量放 engine/shaders.py 与现�
 | compute（剔除 + LOD + 命令生成，一趟完成） | `engine/shaders.py` → `GPU_CULL_COMP` |
 | 顶点着色器（SSBO 查可见表 → 取实例矩阵） | `engine/shaders.py` → `GPU_DRIVEN_VERT` + `get_compute()` |
 | 驱动器（能力探测 / SSBO 管理 / dispatch / indirect 提交 / CPU 对照 / 读回） | `engine/gpu_cull.py` |
-| demo（4096 实例 · F2 GPU/CPU 对照 · F3 LOD 开关） | `demos/gpu_cull_field.py` → `docs/gpu_cull_01..03.png` |
+| demo（4096 实例 · F2 GPU/CPU 对照 · F3 LOD 开关） | `examples/gpu_cull_field.py`（已迁往 3dworld-demos）→ `docs/gpu_cull_01..03.png`（同迁） |
 | 测试 | `tests/test_gpu_cull.py`（**7 项**） |
 
 **验收（全绿）**：

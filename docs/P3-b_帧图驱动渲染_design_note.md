@@ -66,7 +66,7 @@ for unit, r in enumerate(self.plan.reads_of(pass_name)):
 | `python examples/frame_graph.py --smoke 5` | `EXIT_OK`，`重编译 → 8 pass，别名组 3` |
 | `--flag off=fog,dof,motionblur` | 逐次重编译 **8 → 7 → 6 → 5** pass，剔除列表/别名组同步变化 |
 | `--flag off=shadows` / `off=dof,off=fog` / 无 flag | 7 / 6 / 8 pass（四种写法都验过） |
-| 剧照 | `docs/framegraph_01/02.png`（HUD 上直接读到 pass 列表与别名组数） |
+| 剧照 | `docs/framegraph_01/02.png`（已随 demo 迁往 3dworld-demos；HUD 上直接读到 pass 列表与别名组数） |
 | `scripts/run_all_tests.py` | **13/13 模块 / 275 项** |
 | `python -m world3d.cli.config_boot all` | 10 个 OK 标记（零回归） |
 | `scripts/verify_demos.py` 全量 | `ALL_DEMOS_OK (37 demos)` |

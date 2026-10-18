@@ -1,33 +1,35 @@
-# 3dworld — pyglet 三维世界示例
+# 3dworld — pyglet 三维世界引擎
 
 > 仓库：<https://gitee.com/siwpan/3dworld> ｜ 许可：MIT（见 [LICENSE](LICENSE)）
 > 注：文中 `<PATH>` 为路径占位符，请替换为你本机实际的目录 / 可执行文件路径。
 
 用 Python + pyglet 从零构建三维世界与**动画演出**：时间轴 / 关键帧插值 /
-层级骨骼 / 程序化场景，外加一组单文件 3D 示例（`examples/`）。
+层级骨骼 / 程序化场景。**本仓是引擎库**（发行名 `3dworld` / 导入名 `world3d`）；
+39 个可运行的演示程序（含成片与截图产物）已剥离至独立仓
+[siwpan/3dworld-demos](https://gitee.com/siwpan/3dworld-demos) ——
+演示所代表的能力全部保留在本仓引擎内（`logic/` `engine/` `games/` `presentation/`）。
 
-当前面貌：
+当前面貌（能力均在引擎内，演示见独立仓）：
 
-- `main.py`（`pyglet_3d_demo`）—— **48 秒五幕演出**：环形立方体升起 → 环形波 →
+- `presentation/app.py`（WorldApp）—— **48 秒五幕演出**：环形立方体升起 → 环形波 →
   机械臂逆运动学取放宝石 → 螺旋柱 → 归位，双相机模式 + 幕字幕 + 时间轴面板；
-- `kkrieger_demo.py` —— **150 秒六幕程序化走廊漫游 + 程序化配乐**（致敬 .kkrieger）：
-  走廊舱门/管道/货箱/频闪 → 大厅纪念碑/全息扫描/升降平台 → 核心过载 →
-  撤离时逐段熄灯 → 重启突入（核心爆发白闪）→ 白闪传送至环面结反应堆圣殿；
-- `examples/` —— **39 个独立示例与工具**：无限隧道、SDF 光线步进、GPU 实例化粒子、
-  太阳系、程序化地形飞行、体素面剔除、水面波动、3D 鸟群、阴影贴图、
-  方块世界、引擎综合展示、材质实验室、《诺德之境》、可漫步场景（S1 场景交互化）、
-  方块世界可交互版（挖掘/放置 + 区块化重建）、KID-A WALKER 3D（无限走廊 + 能量/碎片）、
-  《山》（Mountain：漂浮孤峰 + 昼夜气象 + 人格测验 + 键盘钢琴）。
+- `presentation/kkrieger_app.py` + `logic/kkrieger.py` —— **150 秒六幕程序化走廊
+  漫游 + 程序化配乐**（致敬 .kkrieger）：走廊舱门/管道/货箱/频闪 → 大厅纪念碑/
+  全息扫描/升降平台 → 核心过载 → 撤离时逐段熄灯 → 重启突入（核心爆发白闪）→
+  白闪传送至环面结反应堆圣殿；
+- `world3d/engine/` + `world3d/logic/` + `world3d/games/` —— 引擎全量能力：
+  PBR/IBL 渲染、级联阴影、体积雾、景深、运动模糊、帧图管线、GPU 驱动渲染、
+  顺序无关透明、点云+EDL、蒙皮骨骼、程序化地形/体素/粒子、9 个玩法内核
+  （详见下文「能力清单」）。
 
-## 两条 pyglet 技术路线（历史版本，仍保留）
+## 两条 pyglet 技术路线（历史版本）
 
-| 文件 | 适配版本 | 渲染管线 | 适用环境 |
-|------|----------|----------|----------|
-| `main.py`（= `pyglet_3d_demo.py`） | pyglet 2.x | 可编程管线（Mat4 / Batch，来自 M1 分层重构） | 新项目、独立 venv |
-| `pyglet_3d_demo_1x.py` | pyglet 1.x | 固定管线（gluPerspective 等） | 与 cocos2d 共存的环境 |
+| 文件 | 适配版本 | 渲染管线 | 现状 |
+|------|----------|----------|------|
+| `world3d`（引擎库） | pyglet 2.x | 可编程管线（Mat4 / Batch） | 现行 |
+| `pyglet_3d_demo_1x.py` | pyglet 1.x | 固定管线（gluPerspective 等） | 已随 demo 迁往 3dworld-demos（与 cocos2d 共存环境的历史兼容件） |
 
 > 注意：pyglet 1.x 与 2.x API 不互通（2.x 已移除 GLU），教程代码不可混用。
-> 1.x 版是 M1 重构前的单文件形态，仅作兼容保留。
 
 ## 项目结构
 
@@ -39,18 +41,30 @@ world3d/              **唯一的顶层包**（P2-4 收口；发行名 3dworld /
                       拿到**同一个模块对象**；本模块是过渡件，外界迁完即删
   _cordis_locate.py   cordis 定位：先试已安装的，再退回 vendored `vendor/cordis/src`
   platform/           **平台层骨架**（P2-1）：窗口 / DPI / 命令行 / HUD / 截图 / 主循环
-    app.py            DemoApp · run · orbit_camera_input …（39 个 demo 的统一入口）
+    app.py            DemoApp · run · orbit_camera_input …（演示程序的统一骨架；
+                      演示本体在独立仓 3dworld-demos，本模块是其接入面）
   core/               核心层：窗口 / 渲染 / 几何 / 资源（**允许** pyglet.gl）
     geometry.py        立方体/盒体/地面/静态合并盒体构建（ShaderProgram.vertex_list）
     resources.py       外部模型加载（当前 .obj）
     contracts.py       契约注册表 + 全仓可达性检查（P0-5）
+    particles_core.py  粒子逻辑核（games/storm 等内核消费）
+    sdf_core.py        SDF 距离场核（games/fps 迷宫距离场消费）
+    terrain_core.py    可编辑高度场核（games/godhand 消费）
   logic/              逻辑层：场景与动画（**禁止** pyglet.gl，可无窗口单测）
     animation.py       时间轴/关键帧/插值（glTF TRS 对齐 + tint/glow 材质通道）
-    choreography.py    main.py 的 48s 五幕编排（含两连杆逆运动学）
+    choreography.py    48s 五幕编排（含两连杆逆运动学）
     kkrieger.py        kkrieger 的 150s 六幕编排（相机脚本 + 场景动画）
     camera.py          轨道相机状态机 + 手写 look-at 矩阵
     playback.py        播放控制器：播放/暂停/循环/倍速/seek
     skeleton.py        节点级层级动画（转台→大臂→小臂→夹爪）
+    terrain.py         程序化地形：值噪声 fBm 高程场 + 分层烘焙色 + 逐行网格发射
+                       （2026-10-15 自 terrain_flyover 演示上提；渐进重建的数学
+                       保证由 test_terrain_row_emitter 钉住）
+    voxel.py           体素世界：高度图生成 + 面剔除网格化（可分段）
+                       （2026-10-15 自 voxel_terrain 演示上提；剔除率与可复现性
+                       由 test_voxel_mesh_invariants 钉住）
+    blocks.py          方块世界逻辑：像素材质像素 / 世界生成 / 网格化 / 生物步态 / 昼夜
+    kid_a.py           KID-A 房间模版与无限走廊逻辑
   engine/              引擎层（P3-2 起引擎级件陆续下沉；见 docs/引擎设计.md）
     fsm.py             确定性有限状态机（时间窗 + 事件转移，P0-5 自研）
     orchestration.py   事件总线 + 声明式 when→then 级联（P0-5 自研）
@@ -58,6 +72,8 @@ world3d/              **唯一的顶层包**（P2-4 收口；发行名 3dworld /
     greedy_mesh.py     单层体素贪心合批（P0-1 从内核上提）
     csm.py / volumetrics.py / dof.py / motionblur.py   ← ④ 轨道的四个渲染模块
     framegraph.py      帧图：声明 → 编译期校验 → 剔除 → 拓扑排序 → 别名（P3）
+    particles.py       GPU 实例化粒子系统（2026-10-15 自 particles_gpu 演示上提；
+                       逐帧动画 100% 在顶点着色器，CPU 每帧只更新标量）
   presentation/        表现层：装配窗口事件 → 逻辑层 → 渲染
     app.py             WorldApp：48s 演出装配（双相机模式 + 夹持混合）
     kkrieger_app.py    KKApp：150s 漫游装配 + 跳帧截图 + 音频同步
@@ -67,25 +83,22 @@ world3d/              **唯一的顶层包**（P2-4 收口；发行名 3dworld /
   host/                宿主层：tree.py（配置树挂载/就绪等待）· registry.py（服务短名表）
                        pipeline.py（场景校验流水线：checker→loader→reporter）
   cli/                 引擎 CLI（`python -m world3d.cli.<名>`）
-    config_boot.py     每棵配置树的 headless 验收（与 demo 共用 host.tree）
+    config_boot.py     每棵配置树的 headless 验收（与内核共用 host.tree）
     frame_plan.py      帧图门禁：16 种效果组合的计划必须合法且顺序正确
-examples/              39 个单文件示例与工具（详见 examples/README.md）
 configs/               10 棵配置树（cordis.*.yml）：
                        声明本次挂哪些服务、各带什么 config
 scripts/
   _console.py          入口脚本的 stdio 编码兜底（GBK 控制台不再因 ⚠/⊆ 崩掉而吞掉结论）
-  verify.py            机械门禁 16 条：同一事实写在两处必须相等（<1 秒，pre-commit 会跑）
+  verify.py            机械门禁 14 条：同一事实写在两处必须相等（<1 秒，pre-commit 会跑）
   docs_index.py        docs/README.md 的生成器（门禁 docs-index-fresh 核对新鲜度）
-  new_demo.py          脚手架：生成能开箱跑的新 demo / 新测试模块（模板被门禁钉住）
+  new_test.py          脚手架：生成能开箱跑的新测试模块（模板被门禁钉住；
+                       demo 脚手架已随 demo 迁往 3dworld-demos）
   new_kernel.py        脚手架：生成新玩法内核 + 配置树 + 单测，并登记三张表（--undo 可撤销）
   check_imports.py     全仓可达性门禁：world3d/ 下每个模块都 import 一遍（+ sys.path 不变量）
-  verify_demos.py      demos 批量验收（冒烟 + 截图 + 退出码）
   run_all_tests.py     21 个测试模块的聚合 runner（数字由 readme-test-modules 门禁钉住）
-  record_all.py        成片批量录制（ffmpeg）
   migrate_p2_4.py      P2-4 的一次性迁移工具（保留以便复查改了什么）
 tests/               逻辑层无窗口单测：python -m tests.run_tests
-main.py / kkrieger_demo.py / pyglet_3d_demo.py(兼容 shim)   入口
-docs/                设计文档 + 渲染验证截图
+docs/                设计文档（渲染验证截图已随 demo 迁往 3dworld-demos）
 ```
 
 依赖方向：presentation → logic → core，反向禁止。
@@ -113,33 +126,22 @@ docs/                设计文档 + 渲染验证截图
   - **WBOIT 顺序无关透明**（`oit.py`）：一趟写 accum/reveal 两张 MRT 再合成，无需排序
   - **点云 + EDL**（`pointcloud.py`）：程序化点云 + imposter 圆盘 + 深度轮廓增强
 
-综合演示（把上面全部跑一遍）：
-
-```bat
-python examples/engine_showcase.py            正常运行
-python examples/engine_showcase.py --bench 5  5 秒基准（实测 ~115 fps @720p）
-python examples/engine_showcase.py --shot     抓帧到 docs/ 后关闭
-```
-
-按键：`F2` 性能面板 · `B` Bloom · `O` SSAO · `V` 相机切换 · `1/2/3` 调试视图 ·
-`G` 实例阵列开关 · `K` 保存场景（改 JSON 可热重载） · 点击拾取物体。
-
-设计与踩坑记录见 **docs/引擎设计.md**；引擎测试：`python -m tests.test_engine`。
+综合演示（把上面全部跑一遍的演示程序）已随 demo 迁往独立仓
+[siwpan/3dworld-demos](https://gitee.com/siwpan/3dworld-demos)（`examples/engine_showcase.py`，
+`pip install 3dworld` 后即可运行）；引擎测试：`python -m tests.test_engine`。
 
 ## 快速开始
 
 ```bat
-:: 方式 A（推荐，当作项目开发 / 跑示例）：项目级 venv
-python -m venv .venv
-.venv\Scripts\activate
-pip install -e .            :: 依赖与元数据以 pyproject.toml 为唯一来源
-                            :: （requirements.txt 已改为转发它，等价于旧用法）
-python main.py
-
-:: 方式 B（当作**库**装进任意环境）
-pip install .               :: 或 pip install "git+https://gitee.com/siwpan/3dworld.git"
+:: 当作**库**装进任意环境（PyPI 已发布）
+pip install 3dworld
 python -c "import world3d; print(world3d.__version__)"
 world3d-info                :: 自检：版本 / 依赖 / GL 能力 / cordis / 配置树位置
+
+:: 当作项目开发（editable，依赖与元数据以 pyproject.toml 为唯一来源）
+python -m venv .venv
+.venv\Scripts\activate
+pip install -e .
 ```
 
 **命名**（P1 库化定）：**发行名 `3dworld` / 导入包名 `world3d`** —— Python 的导入包名不能以
@@ -149,24 +151,19 @@ world3d-info                :: 自检：版本 / 依赖 / GL 能力 / cordis / �
 P2「分层归位」会把它们收进 `world3d.*` 命名空间。
 
 **库与仓库的边界**：`pip install` 装的是**引擎库**（engine/core/host/cli/games + vendored cordis）。
-`examples/`（示例）、`scripts/`（批量验收 / 离线录制 / 打包）、`configs/`（配置树）、`assets/` 属
-**仓库资产**，不随 wheel 分发 —— 所以：
+`configs/`（配置树）、`assets/` 属**仓库资产**，不随 wheel 分发 —— 所以：
 
-- 面向仓库的工具用 `python scripts/<名>.py`（如 `scripts/verify_demos.py`、`scripts/record_all.py`）；
 - `world3d-config` / `world3d-pipeline` 需要 `configs/`：从仓库运行（或 editable 安装）天然可用，
-  非 editable 安装下用环境变量 `WORLD3D_CONFIGS` 指向配置树目录。
+  非 editable 安装下用环境变量 `WORLD3D_CONFIGS` 指向配置树目录；
+- 演示程序（39 个）在独立仓 [siwpan/3dworld-demos](https://gitee.com/siwpan/3dworld-demos)，
+  `pip install 3dworld` 后即可运行（成片录制/批量验收等工具随仓附带）。
 
-- 若你的环境绑死 cocos2d（pyglet 1.x），无需安装任何东西，
-  直接用系统 Python 跑 `pyglet_3d_demo_1x.py` 即可。
+## 48 秒五幕演出（能力：`presentation/app.py` + `logic/choreography.py`）
 
-## main.py —— 48 秒五幕演出
-
-```bat
-python main.py                    正常运行（循环播放）
-python main.py --smoke            冒烟测试：2 秒后自动关闭
-python main.py --shot             渲染四张验证截图到 docs/ 后自动关闭
-python main.py --shot --only 2    只截第 3 张（调试单帧）
-```
+环形立方体升起 → 环形波 → 机械臂逆运动学取放宝石 → 螺旋柱 → 归位，
+双相机模式 + 幕字幕 + 时间轴面板。演示程序已迁往独立仓 3dworld-demos
+（`examples/` 内的入口脚本）；**能力本体在本仓**：编排在 `logic/choreography.py`，
+窗口装配在 `presentation/app.py`（WorldApp）。
 
 | 幕 | 时间 | 内容 |
 |----|------|------|
@@ -183,7 +180,7 @@ python main.py --shot --only 2    只截第 3 张（调试单帧）
 > `t=0` 与 `t=48` 逐分量相等、幕边界无跳变，以及夹爪在 t=22/t=26.5
 > 分别落在宝石与台座 0.3 单位内。
 
-## kkrieger 致敬 Demo —— 150 秒六幕程序化走廊漫游（含程序化配乐）
+## kkrieger 致敬 · 150 秒六幕程序化走廊漫游（能力：`presentation/kkrieger_app.py` + `logic/kkrieger.py`）
 
 参考 2004 年 Breakpoint 96k 冠军作品 .kkrieger（Farbrausch/.theprodukkt）的
 "程序化生成"精神：**零外部素材**——金属板、灯带、舱门、管道、货箱、立柱、
@@ -191,12 +188,7 @@ python main.py --shot --only 2    只截第 3 张（调试单帧）
 反应堆、爆发碎片全部由代码即时生成，面板颜色用确定性哈希抖动模拟"程序化纹理"；
 **配乐同样是程序生成的**（`logic/kkrieger_audio.py` 离线合成 150s 电子乐，
 首次运行渲染缓存到 `assets/kkrieger_ost_150s.wav`，音画共用同一套时间常量）。
-
-```bat
-python kkrieger_demo.py            正常运行（SPACE 暂停 / R 重播 / N,P 切幕 / M 静音）
-python kkrieger_demo.py --smoke    冒烟测试（2.5s 自动关闭）
-python kkrieger_demo.py --shot     抓一组验证截图（9 张）到 docs/（跳帧采样，约 3s）
-```
+演示程序已迁往独立仓 3dworld-demos。
 
 | 幕 | 时间 | 内容 |
 |----|------|------|
@@ -211,61 +203,65 @@ python kkrieger_demo.py --shot     抓一组验证截图（9 张）到 docs/（�
 配乐结构与画面对位：开门气浪在开门时刻、核心亚低频脉冲与视觉脉冲同相、
 灯带熄灭的轻响逐段对应、117.5s 爆发低频坠落、141.5s 点火二次爆发。
 
-截图：`docs/kkrieger_corridor.png` / `_atrium.png` / `_core.png` / `_blackout.png`
-/ `_sprint.png` / `_converge.png` / `_flash.png` / `_ignition.png` / `_sanctum.png`
-
 > 已知平台坑（实测 pyglet 2.1.16 / Win10 150% DPI）：`dpi_scaling` 默认
 > "platform" 模式下实际 framebuffer = 请求尺寸，但 viewport setter 会乘
-> scale → 渲染放大裁切；本 Demo 统一设 `pyglet.options['dpi_scaling'] = 'real'`。
+> scale → 渲染放大裁切；本演出统一设 `pyglet.options['dpi_scaling'] = 'real'`。
 
-## examples/ —— 39 个单文件 3D 示例与工具
+## 能力清单（原 39 个演示的能力落点）
 
-```bat
-python examples\demoscene_tunnel.py --smoke     冒烟
-python examples\solar_system.py                 1..8 聚焦行星
-python scripts\verify_demos.py               批量验收（冒烟 + 截图 + 退出码）
-```
+2026-10-15 demo 剥离：39 个演示程序迁往独立仓
+[siwpan/3dworld-demos](https://gitee.com/siwpan/3dworld-demos)（含成片、截图与
+批量验收工具）；**每个演示代表的能力全部保留在本仓引擎内**，落点如下：
 
-| demo | 技术点 |
-|------|--------|
-| `demoscene_tunnel.py` | 纯片元着色器：极坐标隧道 + 程序化面板 + 色散/扫描线 |
-| `raymarch_sdf.py` | SDF 光线步进：smooth-min 融合 + 软阴影 + AO |
-| `particles_gpu.py` | 原生实例化（`vertex_list_instanced`）4.5 万粒子，全 GPU 动画 |
-| `solar_system.py` | 层级变换 + 压缩轨道力学 + 土星环 + 实例化小行星带 |
-| `terrain_flyover.py` | 值噪声 + fBm 高程图、分层着色、低空航线飞行 |
-| `voxel_terrain.py` | 体素面剔除（实测剔除 85% 面）+ 线框对比 |
-| `water_waves.py` | Gerstner 波顶点位移 + 解析法线 + 菲涅尔天空 |
-| `boids.py` | 逻辑层纯数学群集 + 实例化渲染（顶点着色器按速度定向） |
-| `shadow_map.py` | 两趟渲染 / render-to-texture：光源深度图 + PCF 阴影 |
-| `minecraft_style.py` | 程序化 16×16 像素材质图集 + 昼夜统一光照 + 实例化下落方块；五幕 48s 短片（**方块世界风格致敬，零外部素材**） |
-| `engine_showcase.py` | 引擎综合巡礼：PBR/IBL + Bloom + SSAO + 实例化 + 视锥剔除 + 拾取与物理 + 性能面板 + 场景序列化 |
-| `material_lab.py` | 材质实验室：新建模（车削/管扫/环面结）× 程序化 PBR 纹理（拉丝/大理石/电路板等 5 套） |
-| `nordic_saga.py` | **《诺德之境》60s 程序化动画**：上古卷轴风格雪原遗迹、巨龙与龙语古墙，含程序化配乐 |
-| `scene_walker.py` | **可漫步场景（交互化）**：S1 场景 JSON → 第一人称物理漫步（固定步长）+ 马尔可夫演出变体 + 拾取/E 互动 + SFX/自适应 BGM + 场景热重载 |
-| `blockworld.py` | **方块世界 · 可交互版**：第一人称漫步/跳跃 + DDA 准星拾取 + 左键挖/右键放 + hotbar + 区块化网格重建 |
-| `scene_viewer.py` | 场景查看器（**工具**，非定时演出）：加载 `--file` 的 JSON 并热重载，是「LLM 场景生成工作流」的"看"这一端；`--flag orbit` 相机自转 |
-| `mountain.py` | **《山》**（致敬 David OReilly 的 Mountain，观察式）：复用 terrain_flyover 噪声管线生成**悬浮孤峰**（顶/底两面闭合）+ 片元级动态光照昼夜 + 云雨雪气象 + 坠落物体/生长植物 + 哲学独白叠层 + **人格测验嵌进生成参数** + 键盘钢琴（即时合成）+ 流星崩解重生 |
-| `godhand.py` | **《神之手》**（P1-①，致敬 Populous）：鼠标「抬山/挖海」实时改写地形高度场，淹没敌方聚落即胜（Cordis 内核插件） |
-| `tower_defense.py` | **《戍卫之路》**（P1-② 塔防内核，致敬 Warcraft/Dune II）：3 类塔 + 3 类敌人 + 5 波 + 经济循环（Cordis 内核插件） |
-| `rayhold.py` | **《迷堡枪影》**（P1-③ 射线 FPS，致敬 Wolfenstein 3D/Doom）：程序化迷宫 + 全屏 SDF 光线步进 + hitscan 枪 + 敌人状态机（Cordis 内核插件） |
-| `skinned_creature.py` | **蒙皮骨骼动画**（P2-3）：加载程序化生成的带 skin 的 glTF「骨节蛇」，蒙皮顶点着色器 + 关节矩阵管线驱动骨骼链摆动 |
-| `gpu_cull_field.py` | **GPU 驱动渲染**（P3-1）：4096 实例，剔除 + LOD + 命令生成全在 compute 里；CPU 每帧只做 1 次 dispatch + 3 次 indirect draw；F2 切 GPU/CPU、F3 切 LOD |
-| `wboit_demo.py` | **顺序无关透明**（P2-2）：Weighted Blended OIT —— 4 个相交半透明球，一趟写 accum/reveal 两张 MRT 再合成，无需排序；S 切 WBOIT/排序、O 反转顺序 |
-| `pointcloud_edl.py` | **点云 + EDL**（P2-4）：程序化点云（地形/双螺旋）+ `gl_PointSize` 圆盘点 + EDL 深度轮廓增强；E 开关 EDL |
-| `stillhall.py` | **《静馆》**（§14 节点式漫游解谜，致敬 Myst）：固定机位点击热点换景/取物/开机关 + 物品栏 + 谜题状态机；场景 JSON 与 scene_viewer 同 schema 且热重载；`--flag auto` 循环重放（成片用） |
-| `voidward.py` | **《星阑》**（§15 Elite 式太空贸易）：1 星系 + 5 货确定性市场（事件冲击）+ 惯性飞行 + 海盗拦截 + 交易/升级；资产达标 10000 → won |
-| `pulsefall.py` | **《落音》**（§16 下落式音击）：4 轨道（DFJK）+ 3 谱面（BPM 90/120/150 种子复现）+ 判定 3 档 + 血量/连击/结算；音乐由 audio 核按谱面程序化合成 |
-| `swarmward.py` | **《弹潮》**（P1-⑤ 全向生存弹幕，致敬 Robotron 2084）：固定屏双摇杆 + 程序化编波（难度单调）+ **boss 波**（三阶段 + 血条 + 五图案弹幕生成器）+ 粒子/编队两核消费者 |
-| `boxward.py` | **《归仓》**（P1-④ 方块解谜，致敬 Sokoban）：光栅贪心合批 + **正交等距视角**（45° 偏航 + 45° 俯角，Q/E 切档 / P 调俯角） + **BFS 求解器 auto-play** + 程序化关卡 + 关卡编辑器 |
-| `kid_a_walker_3d.py` | **KID-A WALKER 3D**（arcade 伪 3D 重制为真 3D）：41 房间模版 → 区块无限走廊 + 能量/碎片系统 |
-| `director.py` | **可视化导演台**（**工具**）：关键帧编排相机运镜 / 环境光 / 物件 TRS，导出「演出 JSON」并可回放与录制（`record_all.py` 的 `director_20s`）；`--shot-json` 载入既有演出 |
+| 能力 | 引擎落点 |
+|------|----------|
+| 极坐标隧道（纯片元） | `engine/shaders.py` → `tunnel` |
+| SDF 光线步进（smooth-min 融合 + 软阴影 + AO） | `engine/shaders.py` → `raymarch`（距离场数学同源：`core/sdf_core.py`） |
+| GPU 实例化粒子（4.5 万颗全 GPU 动画） | `engine/particles.py` + `shaders.py` → `particles`（逻辑核：`core/particles_core.py`） |
+| 程序化地形（值噪声 fBm + 分层烘焙 + 渐进重建） | `logic/terrain.py` |
+| 体素面剔除 | `logic/voxel.py` |
+| Gerstner 波顶点位移 | `logic/waves.py` |
+| Reynolds 群集（boids） | `logic/boids.py` |
+| 层级变换 + 轨道力学（太阳系） | `logic/skeleton.py` + `logic/animation.py` |
+| 阴影贴图 / PCF | `engine/soft_shadow.py` |
+| 程序化像素材质 + 昼夜（方块世界） | `logic/blocks.py` |
+| PBR/IBL + Bloom + SSAO + 实例化 + 视锥剔除 + 拾取 + 物理 + 序列化 | `engine/renderer.py` `engine/scene.py` `engine/serialize.py` `engine/frustum.py` `engine/picking.py` `engine/physics.py` |
+| 新建模 × 程序化 PBR 纹理（材质实验室） | `engine/proctex.py` + `engine/material.py` |
+| 《诺德之境》程序化动画 + 配乐 | `logic/nordic_saga.py` `logic/nordic_scene.py` `logic/nordic_audio.py` |
+| 可漫步场景（第一人称 + 自适应音乐） | `engine/adaptive_music.py` `engine/audio.py` `engine/fixedstep.py` |
+| 方块世界可交互版（DDA 拾取 + 区块重建） | `logic/blocks.py` + `engine/fixedstep.py` |
+| 场景 JSON 查看器 + 热重载 | `engine/scene.py` `engine/scene_build.py`（查看器形态随演示迁出） |
+| 《山》悬浮孤峰 + 气象 | 孤峰生成复用 `logic/terrain.py` 噪声管线（艺术向部分随演示迁出） |
+| 《迷堡枪影》射线 FPS | `games/fps/kernel.py` + `configs/cordis.fps.yml` |
+| 《归仓》方块解谜 | `games/puzzle/kernel.py` + `configs/cordis.puzzle.yml` |
+| 《砖境》机关解谜 | `games/brickward/kernel.py` + `configs/cordis.brickward.yml` |
+| 《弹潮》弹幕生存 | `games/storm/kernel.py` + `configs/cordis.storm.yml` |
+| 《神之手》地形改写 | `games/godhand/kernel.py` + `configs/cordis.godhand.yml`（高度场：`core/terrain_core.py`） |
+| 《戍卫之路》塔防 | `games/tower_defense/kernel.py` + `configs/cordis.td.yml` |
+| 《星阑》太空贸易 | `games/void/kernel.py` + `configs/cordis.void.yml` |
+| 《落音》下落式音击 | `games/pulse/kernel.py` + `configs/cordis.pulse.yml` |
+| 《静馆》节点式漫游解谜 | `games/hall/kernel.py` + `configs/cordis.hall.yml` |
+| 《阈廊》后室循环走廊 | `logic/liminall.py` `logic/liminall_audio.py` `presentation/liminall_scene.py` |
+| 《沙垒》UV 投影规则演示场 | `logic/sandward.py` `presentation/sandward_scene.py` `engine/texproj` `engine/proctex.py` |
+| KID-A WALKER 3D | `logic/kid_a.py` |
+| 蒙皮骨骼动画 | `engine/skin.py` + `engine/gltf.py` |
+| GPU 驱动渲染（剔除 + LOD + 命令生成） | `engine/gpu_cull.py` |
+| 顺序无关透明（WBOIT） | `engine/oit.py` |
+| 点云 + EDL | `engine/pointcloud.py` + `engine/postfx.py` |
+| 级联阴影 CSM | `engine/csm.py` |
+| 体积雾与光轴 | `engine/volumetrics.py` |
+| 景深 DoF | `engine/dof.py` |
+| 运动模糊（相机重投影） | `engine/motionblur.py` |
+| 帧图驱动渲染 | `engine/framegraph.py` |
+| 可视化导演台（关键帧编排） | `engine/shot.py` `engine/timeline.py` `presentation/timeline_ui.py` |
 
-详见 [examples/README.md](examples/README.md)（含统一命令行与踩坑清单）。
+演示程序的运行方式、统一命令行（`--smoke/--shot/--bench/--flag`）与踩坑清单见
+独立仓 3dworld-demos 的 `examples/README.md`。
 
 ## 测试与验收
 
 ```bat
-python -m tests.run_tests           逻辑层无窗口单测（62 项）
+python -m tests.run_tests           逻辑层无窗口单测（63 项）
 python -m tests.test_cores          共同核契约（17 项，含 P1-⑤ 玩法模块）
 python -m tests.test_engine         引擎层无窗口单测（30 项，含 model uniform 作用域 + 多网格连续三帧逐字节一致）
 python -m tests.test_skin           蒙皮骨骼动画（8 项）
@@ -290,11 +286,10 @@ python -m world3d.cli.frame_plan --all-toggles  帧图门禁：16 种效果组�
 python -m world3d.cli.config_boot all   9 个内核 + 13 共同核全部 headless 验收（10 棵树，逐项 OK 标记）
 python scripts\check_imports.py          全仓可达性门禁：world3d/ 下 117 个模块逐个 import
                                         （单测只覆盖被引用的模块，这个是「改漏」的唯一防线）
-python main.py --shot               主线演出渲染验证（4 张）
-python kkrieger_demo.py --shot      漫游渲染验证（9 张）
-python scripts\verify_demos.py      39 个 demo 逐个冒烟 + 截图
-python scripts\verify_demos.py --bench 3   39 个 demo 的真实帧率（vsync 与重绘节流全关）
 ```
+
+> 演示程序的批量验收（冒烟 + 截图 + 退出码）与成片录制已随 demo 迁往独立仓
+> 3dworld-demos（其 `scripts/verify_demos.py` / `scripts/record_all.py`）。
 
 单测覆盖：相机位姿与钳制（含**自定义范围**与非法范围拒绝）、look-at 矩阵性质、
 四元数 slerp、Sampler/Timeline 语义、播放控制、UI 命中、OBJ 资产解码、
@@ -309,32 +304,33 @@ kkrieger 六幕的循环连续性与舱门/平台/灯带状态机、**镜头穿�
 ## 机械门禁（`scripts/verify.py`，<1 秒）
 
 把"同一事实写在两处必须相等"从散文变成**可跑的检查** —— 因为本项目的这些数字
-**全靠手改**，而手改每次都可能漏一处（示例数在 README 里就有 6 处）。
+**全靠手改**，而手改每次都可能漏一处。
 
 ```bat
-python scripts\verify.py              # 16 条门禁（不联网、不跑构建、不改文件）
+python scripts\verify.py              # 14 条门禁（不联网、不跑构建、不改文件）
 python scripts\verify.py --list       # 只列名字与说明
-python scripts\verify.py --verbose    # 每条的证据（"7 处断言 == 39 个 demo"这种）
+python scripts\verify.py --verbose    # 每条的证据
 python scripts\verify.py --fix        # 重生成生成物（docs/README.md）
 python scripts\verify.py --selfcheck  # 沙箱里逐条注入破坏，证明门禁拦得住
 ```
 
 | 门禁 | 断言 |
 |------|------|
-| `readme-demo-count` | README 里**每一处**示例数 == `examples/*.py` 真实可发现数 |
 | `readme-test-modules` | README 测试命令表 ↔ `run_all_tests.MODULES`（**双向**） |
 | `readme-test-counts` | README 每行的「N 项」== 该模块声明的用例数（两种真实形态都认） |
 | `readme-config-count` / `-kernel-count` / `-core-count` | 配置树 / 内核 / 共同核计数 |
-| `examples-index-pairs` | `examples/README.md` 表格 ↔ `examples/*.py`（**双向**） |
-| `doc-links` | README / docs / examples 里的**相对链接**都指得到真实文件 |
+| `doc-links` | README / docs 里的**相对链接**都指得到真实文件 |
 | `docs-index-fresh` | `docs/README.md` == `scripts/docs_index.py` 重新生成的结果（新鲜度） |
 | `commands-exist` | 文档里写的每条 `python -m …` / `python <文件名>.py` 目标都存在（模板占位符不算） |
 | `pyrefs-exist` | 文档与 CI 里**每一处**一行式 `python -c "import <模块>"` 都指向**真实存在的模块** |
-| `scaffold-templates-valid` | demo / 测试脚手架模板渲染 → `ast.parse` → **真 import** → 关键片段齐全 |
+| `scaffold-templates-valid` | 测试脚手架模板渲染 → `ast.parse` → **真 import** → 关键片段齐全 |
 | `scaffold-kernel-valid` | 内核 / 配置树 / 测试模板渲染 → `ast.parse` → **真 import** → **按 `run_generic` 的契约跑到 won** |
 | `workflows-valid` | `.github/workflows/*.yml` 可解析、结构完整（`runs-on`/`steps`/`uses` 钉版本）、里面的命令可达 |
 | `cli-usage-names` | `cli/*.py` 用法 docstring 里的模块名 == 真实模块名 |
 | `readme-tree-real` | README「项目结构」树里列出的路径都真实存在 |
+
+> 2026-10-15 demo 剥离时移除两条门禁：`readme-demo-count` 与 `examples-index-pairs`
+> （示例数/示例索引的断言对象已迁往独立仓 3dworld-demos）。
 
 **它上线当天就抓到过一个真漂移**：`tests/test_timeline_ui` 注册在
 `run_all_tests.py` 里（14 个模块）却没进 README 的测试清单（只列了 13 个）。
@@ -371,16 +367,18 @@ Linux 那份用 `PYGLET_HEADLESS=1` 让 pyglet 走 **EGL**（Mesa llvmpipe 软�
 ⚠ 前提：workflow 只有 **GitHub** 会执行，而本仓当前 remote 只有 Gitee ⇒
 要让它真跑，需要加一个 GitHub 镜像 remote（或改用 Gitee Go）。
 
-## 脚手架（`scripts/new_demo.py` / `scripts/new_kernel.py`）
+## 脚手架（`scripts/new_test.py` / `scripts/new_kernel.py`）
 
-### 新 demo / 新测试模块
+### 新测试模块
 
 ```bat
-:: <名字> 要小写字母开头、只含小写字母与下划线（如 starfield / mathx）
-python scripts\new_demo.py <名字>                     :: → examples/<名字>.py
-python scripts\new_demo.py --test <名字> --register   :: → tests/test_<名字>.py + 登记进 runner
-python scripts\new_demo.py <名字> --force             :: 覆盖已存在的文件
+:: <名字> 要小写字母开头、只含小写字母与下划线（如 mathx）
+python scripts\new_test.py <名字>                  :: → tests/test_<名字>.py
+python scripts\new_test.py <名字> --register       :: 顺便登记进 run_all_tests.py
+python scripts\new_test.py <名字> --force          :: 覆盖已存在的文件
 ```
+
+> demo 脚手架（`new_demo.py`）已随 demo 迁往独立仓 3dworld-demos。
 
 ### 新玩法内核 / 新配置树
 
@@ -391,35 +389,34 @@ python scripts\new_kernel.py <名字>
 python scripts\new_kernel.py <名字> --undo            :: 撤销（含从三张表摘除，逐字节还原）
 ```
 
-内核脚手架比 demo 那个值钱：新增一个内核要同步 **7 处**，其中**三张表**（`host/registry.py`、
+内核脚手架比测试那个值钱：新增一个内核要同步 **7 处**，其中**三张表**（`host/registry.py`、
 `host/tree.py`、`cli/config_boot.py`）漏一处就**静默失效** —— `registry` 漏了会让 cordis
 的 Loader 吞掉构造期异常，只报"服务未就绪"（P0-3 为此查了半天）。所以那三张表交给脚本改，
 **改完立刻 `ast.parse` 守卫**；`config_boot` 也已改成**表驱动 + 通用 runner**，
 于是生成的纯逻辑内核**零代码**接入 headless 验收。
 
-生成成功后，脚手架会把"**怎么先确认骨架能跑**"（冒烟命令 / 测试命令，都带真实名字）
+生成成功后，脚手架会把"**怎么先确认骨架能跑**"（测试命令，带真实名字）
 和"**还差哪几处要同步**"一起打印出来。
 
 > 文档里的 `<名字>` / `<模块>` 是**占位符**，不是命令 —— 门禁只校验能当命令跑的字面，
 > 所以占位符一律写成 `<…>`（`<` 不在校验字符集里，天然被排除）。
 
 模板**不是伪代码**：它带着那些用血换来的行 —— `sys.path` 显式引导块
-（demo 少这行会让**所有** demo 一起 `ModuleNotFoundError`；内核少算一层则会把
-`world3d/` 推上 `sys.path`、遮蔽标准库 `platform`）、`TITLE/HELP/SHOTS` 与
-`setup/update/render` 钩子、测试模块的 runner + `ALL_*_TESTS_PASSED` 标记。
-生成之后**紧接着跑 `verify.py`**：它会列出"还差哪几处"（示例索引行 / README 的示例数 /
-测试清单 / 内核与配置树计数）—— 新增东西要同步的地方由机器列，不靠记性。
+（内核少算一层则会把 `world3d/` 推上 `sys.path`、遮蔽标准库 `platform`）、
+测试模块的 runner + `ALL_*_TESTS_PASSED` 标记。
+生成之后**紧接着跑 `verify.py`**：它会列出"还差哪几处"（测试清单 /
+内核与配置树计数）—— 新增东西要同步的地方由机器列，不靠记性。
 
 模板腐掉时**没人会发现**（直到下一个用它的人踩坑），所以两条门禁把它们钉在现状上：
-`scaffold-templates-valid`（demo / 测试模板）与 `scaffold-kernel-valid`
+`scaffold-templates-valid`（测试模板）与 `scaffold-kernel-valid`
 （内核 / 配置树 / 测试模板 → 渲染 → `ast.parse` → **真 import** → **按 `run_generic`
 的契约真跑到 `won`**）。
 
-## 性能基准（真实帧率）
+## 性能基准（真实帧率，demo 期实测留存）
 
 `--bench` 会同时关掉 vsync 与 pyglet 的窗口重绘节流
 （`pyglet.app.run(interval=…)` 默认 1/60 —— 这才是"59.9 fps"的真正来源），
-所以量到的是真吞吐。1280×720 实测：
+所以量到的是真吞吐。1280×720 实测（演示程序已迁往独立仓，数据作为能力证据留存）：
 
 | 项 | 均值 fps | p1 fps | 最慢帧 |
 |----|---------:|-------:|-------:|
@@ -431,23 +428,20 @@ python scripts\new_kernel.py <名字> --undo            :: 撤销（含从三张
 | voxel 换种子（同步重建，对照） | — | — | **352 ms** |
 | voxel 换种子（渐进重建，现状） | — | — | **23 ms** |
 
-最后两行是本轮修掉的"按 `R` 卡一下"：把重建拆成"每帧最多几毫秒"的渐进式，
-最慢帧从 1132ms 降到 62ms；voxel 那边同理，352ms → 23ms（其中一半功劳来自
-**把"全部面"对照网格改成按 `H` 懒建** —— 它有 11MB 顶点数据，之前每次重建
-都要重传）。剩下的几十毫秒是换网格时的显存上传，一次性，重建期间旧地形/
-旧体素照常可玩。
+渐进重建（`logic/terrain.py` 的 `emit_row` + `logic/voxel.py` 的分段 `build_mesh`）
+把重建拆成"每帧最多几毫秒"：最慢帧从 1132ms 降到 62ms、352ms → 23ms，
+重建期间旧地形/旧体素照常可玩；逐位一致性由 `test_terrain_row_emitter` 钉住。
 
 **rayhold 的 86.8 fps** 是"全屏片元着色器逐像素走 SDF 光线步进"的成本
 （迷宫距离场与命中判定同源，不开 ray marching 就没有这个品类）；`jank>20ms 5.7%`
-主要来自敌人/光弹状态切换时的分支发散（核显上属预期）。录制产物见
-`recordings/rayhold_60s.mp4`（`scripts/record_all.py --only rayhold_60s`）。
+主要来自敌人/光弹状态切换时的分支发散（核显上属预期）。
 
 ## 已知限制（现状）
 
-- **主线 demo 的美术风格是"玩具感"方块**：这是"零外部素材 + 稳健优先"的自觉
+- **演出美术风格是"玩具感"方块**：这是"零外部素材 + 稳健优先"的自觉
   选择。要更真实需要贴图/程序化细节/软阴影，属美术投入而非缺陷修复。
-- **粒子在默认 4.5 万颗时看不出单颗的软衰减**：加性混合下密度一高必然饱和，
-  这是混合模式的性质而非 bug。demo 现在给了数量档（`,`/`.`）与尺寸档（`[`/`]`），
+- **粒子在默认 4.5 万颗时看不出单颗的软衰减**（`engine/particles.py`）：加性混合下
+  密度一高必然饱和，这是混合模式的性质而非 bug。演示给了数量档与尺寸档，
   降到几千颗即可看清单颗的圆形软边。
 - **光线步进在弱核显上需要降分辨率**：本机 1280×720 均值 757fps（每像素最多
   96 步），更弱的集显建议 `--size 960x540`。
@@ -480,7 +474,8 @@ MIT，见 [LICENSE](LICENSE)。
 
 ---
 
-## 仓库索引标注（2026-10-15 · siwpan 统一治理）
+## 仓库索引标注（2026-10-19 · siwpan 统一治理）
 
-> 3dworld 程序化 3D 场景/动画引擎（现行，独立仓 siwpan/3dworld）；本地对应 `<PATH>`。
-> 本标注为发布面统一追加，不改变原有内容。
+> 3dworld 程序化 3D 场景/动画引擎（现行，独立仓 siwpan/3dworld，PyPI 包名 `3dworld`）；
+> 本地对应 `<PATH>`。演示程序（39 个 + 成片/截图/验收工具）在独立仓
+> siwpan/3dworld-demos；本标注为发布面统一追加，不改变原有内容。

@@ -157,8 +157,8 @@ def build_index() -> str:
         out.append('')
     out.append('---')
     out.append('')
-    out.append('> 图片产物（剧照 / 深度图小窗等）在 `docs/*.png`，由 `scripts/verify_demos.py` '
-               '与各 demo 的 `--shot` 生成，不入索引。')
+    out.append('> 图片产物（剧照 / 深度图小窗等）已随 demo 迁往独立仓 '
+               '`siwpan/3dworld-demos`（其 `docs/*.png`），本仓不再生成。')
     return '\n'.join(out) + '\n'
 
 

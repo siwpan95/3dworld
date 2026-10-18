@@ -6,7 +6,7 @@
     python scripts/scene_build.py docs/llm_scene_demo.json --validate   # 只校验
     python scripts/scene_build.py docs/llm_scene_demo.json --dry-run    # 校验+CPU 构建
 
-交互式渲染请用 ``examples/scene_viewer.py --file <json>``（热重载查看器）。
+交互式渲染（热重载查看器）已随 demo 迁往独立仓 siwpan/3dworld-demos。
 """
 import argparse
 import os

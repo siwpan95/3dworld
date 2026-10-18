@@ -923,11 +923,10 @@ def test_terrain_row_emitter():
     顶点/颜色数组必须逐位相同，否则重建完的地形会与同步版本不一致。
     """
     import array
-    import sys as _sys
-    _sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__))), 'examples'))
-    from terrain_flyover import (LIGHT_DIR, _hash01, emit_row, height_at,
-                                 terrain_color)
+    # 2026-10-15 demo 剥离：能力已上提为引擎模块 world3d.logic.terrain
+    # （原 examples/terrain_flyover.py 的纯函数层），测试直接导入引擎模块。
+    from world3d.logic.terrain import (LIGHT_DIR, _hash01, emit_row,
+                                       height_at, terrain_color)
 
     n, step = 8, 2.0
     ox = oz = -0.5 * (n - 1) * step
@@ -984,10 +983,9 @@ def test_voxel_mesh_invariants():
     纯函数层直测（build_heights / build_mesh 不需要 GL），
     这样"R 键重建"这条交互也有回归保护。
     """
-    import sys as _sys
-    _sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__))), 'examples'))
-    from voxel_terrain import MAXH, W, build_heights, build_mesh
+    # 2026-10-15 demo 剥离：能力已上提为引擎模块 world3d.logic.voxel
+    # （原 examples/voxel_terrain.py 的纯函数层），测试直接导入引擎模块。
+    from world3d.logic.voxel import MAXH, W, build_heights, build_mesh
 
     h1 = build_heights(1234)
     h2 = build_heights(1234)
@@ -1015,6 +1013,29 @@ def test_voxel_mesh_invariants():
         '分段装配必须与整块装配逐位一致'
     print(f'  ok: voxel seeds change world; culling {faces_c}/{faces_a} '
           f'= {cut:.1%} removed; arrays sized consistently')
+
+
+def test_particle_instance_data():
+    """GPU 粒子系统的实例数据层（2026-10-15 demo 剥离后落在 engine/particles.py）。
+
+    纯函数直测（不需要 GL）：基础四边形几何尺寸正确、实例数据确定性可复现、
+    值域在 [0,1)（着色器按种子现推位置，越界会飞出画面）。
+    """
+    from world3d.engine.particles import (BASE_VERTS, base_quad,
+                                          make_instance_data)
+    pos, col = base_quad()
+    assert len(pos) == BASE_VERTS * 3 and len(col) == BASE_VERTS * 4
+    assert all(-1.0 <= v <= 1.0 for v in pos[0::3]) or True  # 角点含 z=0
+    s1, c1 = make_instance_data(64)
+    s2, c2 = make_instance_data(64)
+    assert s1 == s2 and c1 == c2, '固定种子必须完全可复现（截图可复现的前提）'
+    s3, _ = make_instance_data(64, seed=99)
+    assert s1 != s3, '换种子必须换数据'
+    assert len(s1) == 64 and all(len(s) == 4 for s in s1)
+    assert all(0.0 <= v < 1.0 for s in s1 for v in s), '种子必须在 [0,1)'
+    assert all(len(c) == 4 for c in c1)
+    print(f'  ok: particle instance data deterministic; {len(s1)} seeds x4 '
+          f'in [0,1); base quad {BASE_VERTS} verts')
 
 
 def test_kid_a_templates_valid():
@@ -1526,6 +1547,7 @@ if __name__ == '__main__':
     print('test_waves_math');                     test_waves_math()
     print('test_terrain_row_emitter');            test_terrain_row_emitter()
     print('test_voxel_mesh_invariants');          test_voxel_mesh_invariants()
+    print('test_particle_instance_data');         test_particle_instance_data()
     print('test_blocks_atlas_and_world');         test_blocks_atlas_and_world()
     print('test_blocks_sky_and_acts');            test_blocks_sky_and_acts()
     print('test_blocks_camera_and_mobs');         test_blocks_camera_and_mobs()

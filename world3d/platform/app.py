@@ -53,11 +53,18 @@ pyglet.options['dpi_scaling'] = 'real'
 # ⚠️ 层级推导：本文件在 world3d/platform/ 下 —— 仓库根要 dirname 三次
 # （world3d/platform/app.py → world3d/platform → world3d → 仓库根）。
 # 这类推导在搬迁时最容易错，改路径务必同步改这里。
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+#
+# 2026-10-19 demo 剥离：pip 安装后三级上推会落到 site-packages（没有 configs/
+# 与 docs/）。演示程序在独立仓 3dworld-demos 运行，经 **WORLD3D_PROJECT_ROOT**
+# 环境变量指向其仓库根；**WORLD3D_DOCS_DIR** 可单独指定截图落点。
+# 两者都未设时按源码仓推导（开发期行为不变）。
+PROJECT_ROOT = (os.environ.get('WORLD3D_PROJECT_ROOT')
+                or os.path.dirname(os.path.dirname(os.path.dirname(
+                    os.path.abspath(__file__)))))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-DOCS_DIR = os.path.join(PROJECT_ROOT, 'docs')
+DOCS_DIR = os.environ.get('WORLD3D_DOCS_DIR') or os.path.join(PROJECT_ROOT, 'docs')
 
 from pyglet import text                                        # noqa: E402
 from pyglet.gl import (GL_BLEND, GL_DEPTH_TEST,                 # noqa: E402

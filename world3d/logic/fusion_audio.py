@@ -19,7 +19,7 @@ from world3d.engine.audio import Track
 
 RATE = 32000
 BEAT = 0.5                          # 120 BPM
-XFADE = 0.8                         # 与 record_all.py --fusion 的转场时长一致
+XFADE = 0.8                         # 与成片录制的转场时长一致（录制工具已随 demo 迁往 3dworld-demos）
 
 # (录制文件名, 时长s, 情绪)——顺序就是成片顺序
 FUSION_SEGMENTS = (

@@ -3,7 +3,73 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+# 更新日志
+
+本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
+格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
+
+## [未发布] — demo 剥离：引擎仓 × 演示仓拆分（2026-10-19）
+
+「将所有 demo 剥离，仅保留每个 demo 代表的能力」—— 39 个演示程序 + 两条主线
+演出入口 + 成片/exe/截图/验收工具全部迁往独立仓 `siwpan/3dworld-demos`；
+本仓收敛为纯引擎库。全哥拍板：五项能力全提取、拆独立仓、截图/成片/exe/
+Gitee release 全部转移。
+
+### 能力上提（先提取后删除，测试承重项逐位验证）
+
+- **`world3d/logic/terrain.py`**（新）：程序化地形 —— 值噪声 fBm 高程场 +
+  分层烘焙色 + `emit_row` 逐行网格发射。自 `examples/terrain_flyover.py` 上提；
+  `test_terrain_row_emitter` 改导入本模块，逐行拼接 == 朴素拼接逐位一致
+  （882 floats）✅
+- **`world3d/logic/voxel.py`**（新）：体素世界 —— 高度图生成 + 面剔除网格化
+  （可分段）。自 `examples/voxel_terrain.py` 上提；`test_voxel_mesh_invariants`
+  改导入本模块，剔除率 86.1%、分段 == 整块逐位一致 ✅
+- **`world3d/engine/particles.py`**（新）：GPU 实例化粒子系统（逐帧动画 100%
+  在顶点着色器，CPU 每帧只更新标量；pyglet 2.1.16 `vertex_list_instanced`
+  封装，三个坑位写进 docstring）。自 `examples/particles_gpu.py` 上提；
+  新增 `test_particle_instance_data`（确定性/值域/几何尺寸）✅
+- **`engine/shaders.py`**：SOURCES 19 → 22 项，新增 `particles` / `tunnel`
+  （极坐标隧道）/ `raymarch`（SDF 光线步进）三对着色器（terrain/voxel 的
+  着色器随其逻辑层留在 `logic/terrain.py` `logic/voxel.py`，自包含）
+
+### 引擎仓删除
+
+- `examples/`（39 demo + `_harness.py` + README）、根入口 `main.py` /
+  `kkrieger_demo.py` / `pyglet_3d_demo.py` / `pyglet_3d_demo_1x.py`、
+  空遗留目录 `demos/`、孤立实验产物 `experiments/`
+- demo 工具链：`scripts/record_all.py` `verify_demos.py` `build_exe.py`
+  `gen_sfx.py` `new_demo.py`（`new_demo.py` 一分为二：demo 模板随演示迁出，
+  测试脚手架留仓为 `scripts/new_test.py`，`new_kernel.py` 的导入同步改指）
+
+### 连带更新
+
+- **README 重写**：首屏改引擎库定位 + 独立仓指引；「48 秒演出」「kkrieger」
+  两节改为能力文档（真身在 `presentation/`）；新增「能力清单」一节
+  （39 演示 → 引擎落点对照表）；项目结构树、快速开始、测试验收、门禁表
+  （16 → 14 条，移除 `readme-demo-count` / `examples-index-pairs`）、
+  脚手架、性能基准（改标注为 demo 期实测留存）全部同步
+- **`scripts/verify.py`**：删 2 条 demo 门禁 + `real_demos()`；`doc-links` /
+  `commands-exist` 扫描范围去 examples；`scaffold-templates-valid` 换靶
+  `new_test.py`（只验测试模板）；selfcheck 破坏注入表同步
+- **`world3d/platform/app.py`**：`PROJECT_ROOT` / `DOCS_DIR` 支持
+  `WORLD3D_PROJECT_ROOT` / `WORLD3D_DOCS_DIR` 环境变量覆盖 —— pip 安装后
+  三级上推会落到 site-packages，演示在独立仓运行必须显式指向（实测验证）
+- **`docs/分发指南.md`** 重写为引擎库分发（PyPI 流程 + 凭据口径 + wheel
+  内容口径），录制/打包/发行版手册随演示迁出（原全文在 3dworld-demos）
+- docs 设计笔记里 7 处截图引用改标「已随 demo 迁往 3dworld-demos」；
+  `docs/README.md` 索引页脚同步；configs 两处注释、`engine/audio.py` /
+  `logic/fusion_audio.py` / `scene_build.py` 的脚本引用同步更新
+
+### 验证收口（2026-10-19 实测）
+
+- `verify.py` 14/14 通过（含 selfcheck 口径）；`check_imports.py` 133 模块
+  失败 0；`run_all_tests.py` 21 模块 / 334 用例全过；`world3d-info` 全绿
+  （着色器 22 个 / 服务表 24 条 / 配置树 10 棵）
+- `python -m build` + `twine check` 双 PASSED；wheel 157 文件 =
+  world3d（含 3 个新上提模块）+ vendored cordis，examples/scripts 零泄漏
+
 ## [未发布] — PyPI 首发：发行名 `3dworld` / 导入名 `world3d`（库级 SemVer 0.1.0）
+
 
 CalVer 发行版轨道（Gitee release / exe / 成片）不变；本条为库级 SemVer 首次上 PyPI
 （版本双轨口径见 `pyproject.toml` 头部注释）。

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """脚手架（P5-a）：生成**能跑通 headless 验收**的新玩法内核 + 配置树 + 单测模块。
 
-## 为什么 `new_demo.py` 不够，还要这一个
+## 为什么 `new_test.py` 不够，还要这一个
 
-`new_demo.py` 生成的是"一个单文件示例"，它**不动**引擎的任何注册表。
+`new_test.py` 生成的是"一个测试模块"，它**不动**引擎的任何注册表。
 而新增一个**玩法内核**要同步 7 处（本批实测清点）：
 
 | # | 同步点 | 漏了会怎样 |
@@ -50,7 +50,7 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
 
-from new_demo import (  # noqa: E402  复用同一套登记器与写盘工具
+from new_test import (  # noqa: E402  复用同一套登记器与写盘工具
     register_test, unregister_test, write_preserving_eol,
 )
 
@@ -412,7 +412,7 @@ def _rewrite(path, transform, quiet=False):
     if new == text:
         return False, note
     ast.parse(new)
-    write_preserving_eol(path, new)      # 保行尾：见 new_demo.write_preserving_eol
+    write_preserving_eol(path, new)      # 保行尾：见 new_test.write_preserving_eol
     if not quiet:
         print(f'[new] {note}')
     return True, note
@@ -583,8 +583,8 @@ def main(argv=None) -> int:
     print('      python scripts/verify.py                  # 它会红：README 的计数还没同步')
     print('      → README 的「内核数」「配置树数」各 +1（门禁 readme-kernel-count / -config-count）')
     print(f'      → README「测试与验收」加一行 python -m tests.test_{name}（readme-test-modules 会核对）')
-    print(f'      → examples/README.md 与示例数：若要配 demo，用 '
-          f'python scripts/new_demo.py {name} 再补索引行')
+    print('      → 若要配演示：demo 已迁往独立仓 siwpan/3dworld-demos，'
+          '在那里用其 scripts/new_demo.py 生成并补索引行')
     return 0
 
 

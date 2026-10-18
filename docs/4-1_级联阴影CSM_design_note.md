@@ -62,5 +62,5 @@
 2. **没做光源空间裁剪**（light-space culling）：现在每级都把**整个场景**画进深度图；
    场景一大就是 N 倍 draw call。按光盒做视锥剔除即可，但那是 ④ 的另一件事；
 3. **没叠 PCSS**：把 `soft_shadow.pcss_glsl()` 的动态半径与 CSM 的选级接起来是自然的下一步；
-4. **没进录制清单**：本批只出剧照（`docs/csm_01/02.png`）。要出成片的话，
+4. **没进录制清单**：本批只出剧照（`docs/csm_01/02.png`，已随 demo 迁往 3dworld-demos）。要出成片的话，
    加一条 `record_all.py` 条目即可（与 `brickward_60s` 同样的攒批口径）。

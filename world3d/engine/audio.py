@@ -233,7 +233,7 @@ class SfxPlayer:
 
     - 无声卡/缺文件/未生成 SFX 时全部调用为 no-op（不中断交互）；
     - ``WORLD3D_SFX=0`` 可显式禁用；
-    - 音效 WAV 由 ``scripts/gen_sfx.py`` 生成到 ``assets/sfx/``（生成物，不入库）。
+    - 音效 WAV 由生成脚本产出到 ``assets/sfx/``（生成物，不入库；脚本已随 demo 迁往 3dworld-demos）。
     """
 
     def __init__(self, sfx_dir, names=('jump', 'pickup', 'power_up', 'land'),

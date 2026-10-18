@@ -131,7 +131,7 @@ vec3 wn = normal_mat * mat3(skin) * normals;
 | 数据 | `engine/geometry.py`：`MeshData.joints`/`weights` + `skinned` |
 | 渲染器 | `engine/renderer.py`：按 `PROGRAM_NAME` 分组选程序 |
 | 生成器 | `scripts/make_skinned_gltf.py` → `assets/skinned_snake.gltf`（8 关节 / 300 顶点 / 24.8KB） |
-| demo | `demos/skinned_creature.py` → `docs/skinned_01..03.png` |
+| demo | `examples/skinned_creature.py`（已迁往 3dworld-demos）→ `docs/skinned_01..03.png`（同迁） |
 | 测试 | `tests/test_skin.py`（8 项） |
 
 **验收（全绿）**：`tests.run_tests` / `test_engine` / `test_cores` / `test_skin` 全 `ALL_*_PASSED`；

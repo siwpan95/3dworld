@@ -23,7 +23,7 @@
 
     python scripts/verify.py                 # 全部门禁
     python scripts/verify.py --list          # 只列名字
-    python scripts/verify.py --only docs-index-fresh,readme-demo-count
+    python scripts/verify.py --only docs-index-fresh,readme-test-modules
     python scripts/verify.py --verbose       # 打印每条的证据
     python scripts/verify.py --json          # 机器可读
     python scripts/verify.py --fix           # 只重新生成生成物（docs/README.md）
@@ -103,14 +103,6 @@ def _ast_value(root, rel, name):
     raise Skip(f'{rel} 里没有 {name}（可能改成动态构造了）')
 
 
-def real_demos(root):
-    """真实可发现的 demo：与 `verify_demos.py` 同规则（examples/*.py 减 SKIP）。"""
-    skip = set(_ast_value(root, 'scripts/verify_demos.py', 'SKIP'))
-    ed = os.path.join(root, 'examples')
-    return sorted(f[:-3] for f in os.listdir(ed)
-                  if f.endswith('.py') and f not in skip)
-
-
 def real_test_modules(root):
     mods = _ast_value(root, 'scripts/run_all_tests.py', 'MODULES')
     return [(m.split('.')[-1], flag) for m, flag, _label in mods]
@@ -160,21 +152,6 @@ def _fenced(text, heading):
 
 
 # ============================================================== 门禁 ==
-
-
-@gate('readme-demo-count', 'README 里每一处示例数 == 真实可发现 demo 数')
-def g_demo_count(root, verbose):
-    n = len(real_demos(root))
-    text = _read(root, 'README.md')
-    hits = re.findall(r'(\d+)\s*个\s*(?:独立示例与工具|单文件示例与工具|单文件\s*3D\s*示例与工具|demo)',
-                      text)
-    if not hits:
-        raise Fail('README 里一处示例数都没匹配到（措辞变了？先 grep 真实措辞再改正则）')
-    bad = [(i + 1, v) for i, v in enumerate(hits) if int(v) != n]
-    if bad:
-        raise Fail(f'真实 demo 数 = {n}，但 README 有 {len(bad)} 处不一致：'
-                   + '；'.join(f'第 {i} 处写 {v}' for i, v in bad))
-    return f'{len(hits)} 处断言 == {n} 个 demo'
 
 
 @gate('readme-test-modules', 'README 的测试命令表 ↔ run_all_tests 的模块表（双向 + 目录树模块数）')
@@ -268,27 +245,9 @@ def g_core_count(root, verbose):
     return f'{len(hits)} 处断言 == {n} 个共同核'
 
 
-@gate('examples-index-pairs', 'examples/README.md 的表格 ↔ examples/*.py（双向）')
-def g_examples_index(root, verbose):
-    text = _read(root, 'examples/README.md')
-    listed = set(re.findall(r'^\|\s*`([\w.]+\.py)`', text, re.M))
-    have = {f + '.py' for f in real_demos(root)}
-    missing = sorted(have - listed)
-    ghosts = sorted(listed - set(
-        f for f in os.listdir(os.path.join(root, 'examples')) if f.endswith('.py')))
-    if missing or ghosts:
-        msg = []
-        if missing:
-            msg.append(f'有 demo 但表里没行：{missing}')
-        if ghosts:
-            msg.append(f'表里有行但文件不存在：{ghosts}')
-        raise Fail('；'.join(msg))
-    return f'{len(have)} 个 demo 与索引双向一致（表内 {len(listed)} 行）'
-
-
 @gate('doc-links', 'README/docs/examples 里的相对链接都指得到真实文件')
 def g_doc_links(root, verbose):
-    targets = ['README.md', 'examples/README.md']
+    targets = ['README.md']
     dd = os.path.join(root, 'docs')
     targets += [f'docs/{f}' for f in sorted(os.listdir(dd)) if f.endswith('.md')]
     dead, checked = [], 0
@@ -333,7 +292,7 @@ def g_docs_index(root, verbose):
 
 @gate('commands-exist', 'README/docs 里写的每条命令，目标都真的存在')
 def g_commands(root, verbose):
-    files = ['README.md', 'examples/README.md', 'docs/分发指南.md', 'docs/引擎设计.md']
+    files = ['README.md', 'docs/分发指南.md', 'docs/引擎设计.md']
     bad, n = [], 0
     for rel in files:
         if not os.path.exists(os.path.join(root, rel)):
@@ -458,38 +417,30 @@ def _ensure_import_roots(root):
         sys.path.append(root)
 
 
-@gate('scaffold-templates-valid', '脚手架模板仍能渲染 / 可解析 / 关键属性齐全')
+@gate('scaffold-templates-valid', '测试脚手架模板仍能渲染 / 可解析 / 关键属性齐全')
 def g_scaffold(root, verbose):
-    """模板会**随项目演进腐掉**（导入路径改名、`DemoApp` 钩子改名、返回类型变了）——
+    """模板会**随项目演进腐掉**（导入路径改名、返回类型变了）——
     而它腐掉时**没人会发现**，直到下一个用它的人踩坑。这条门禁把模板钉在"现状"上。
 
-    检查四项：渲染 → `ast.parse` → **真 import**（抓"导入了不存在的符号"，
-    `ast` 抓不到）→ 关键属性齐全（`TITLE/HELP/SHOTS`、`setup/render`、runner 标记）。
+    检查三项：渲染 → `ast.parse` → **真 import**（抓"导入了不存在的符号"，
+    `ast` 抓不到）→ 关键属性齐全（runner 标记）。
 
-    ⚠ "模板能跑"（`--smoke` 真开窗口）由本批**手测**过（`examples/zzprobe.py --smoke 3
-    → EXIT_OK`）；门禁只做静态 + import 校验 —— 真跑要 GL 且会破坏 <1s 预算。
+    2026-10-15 demo 剥离：demo 模板随 demo 迁往独立仓 `siwpan/3dworld-demos`；
+    本门禁只钉引擎仓的**测试模块**模板（`scripts/new_test.py`）。
     """
-    scaffold = os.path.join(root, 'scripts', 'new_demo.py')
+    scaffold = os.path.join(root, 'scripts', 'new_test.py')
     if not os.path.exists(scaffold):
-        raise Skip('scripts/new_demo.py 不存在')
+        raise Skip('scripts/new_test.py 不存在')
     N = _load_script(scaffold, 'scaffold')
-    demo = N.render_demo('zzprobe')
     test = N.render_test('zzprobe')
 
-    for label, text in (('demo', demo), ('test', test)):
-        try:
-            ast.parse(text)
-        except SyntaxError as e:
-            raise Fail(f'{label} 模板渲染后不是合法 Python：{e}')
+    try:
+        ast.parse(test)
+    except SyntaxError as e:
+        raise Fail(f'test 模板渲染后不是合法 Python：{e}')
 
     # ⚠ 断言必须**带括号**：只写 `'def render'` 的话 `def render_broken` 也算"出现过"
     # —— selfcheck 正是用这条破坏用例指出我的断言太松（宽松的"出现过"是假绿高发区）。
-    need_demo = ('TITLE', 'HELP', 'SHOTS', 'def setup(self):', 'def update(self, dt):',
-                 'def render(self):', 'DemoApp', 'world3d.platform.app',
-                 'sys.path.insert', '__main__')
-    miss = [w for w in need_demo if w not in demo]
-    if miss:
-        raise Fail(f'demo 模板缺关键片段：{miss}')
     need_test = ('def main() -> int:', 'sys.exit(main())', 'ALL_ZZPROBE_TESTS_PASSED',
                  'ALL_ZZPROBE_TESTS_FAILED')
     miss = [w for w in need_test if w not in test]
@@ -499,18 +450,16 @@ def g_scaffold(root, verbose):
     # 真 import 一次（`ast` 抓不到"import 了不存在的名字"）
     with tempfile.TemporaryDirectory() as td:
         _ensure_import_roots(root)
-        for fn, text, label in (('zzprobe_demo.py', demo, 'demo'),
-                                ('test_zzprobe.py', test, 'test')):
-            path = os.path.join(td, fn)
-            open(path, 'w', encoding='utf-8', newline='\n').write(text)
-            spec = importlib.util.spec_from_file_location(f'zz_scaffold_{label}', path)
-            mod = importlib.util.module_from_spec(spec)
-            try:
-                spec.loader.exec_module(mod)
-            except Exception as e:                      # noqa: BLE001
-                raise Fail(f'{label} 模板真 import 失败（{type(e).__name__}: {e}）'
-                           f' —— 模板引用了已不存在/已改名的符号')
-    return f'两套模板渲染 + ast + 真 import + {len(need_demo) + len(need_test)} 项关键片段全通过'
+        path = os.path.join(td, 'test_zzprobe.py')
+        open(path, 'w', encoding='utf-8', newline='\n').write(test)
+        spec = importlib.util.spec_from_file_location('zz_scaffold_test', path)
+        mod = importlib.util.module_from_spec(spec)
+        try:
+            spec.loader.exec_module(mod)
+        except Exception as e:                      # noqa: BLE001
+            raise Fail(f'test 模板真 import 失败（{type(e).__name__}: {e}）'
+                       f' —— 模板引用了已不存在/已改名的符号')
+    return f'测试模板渲染 + ast + 真 import + {len(need_test)} 项关键片段全通过'
 
 
 @gate('scaffold-kernel-valid', '内核模板：渲染 → ast → 真 import → 跑通 run_generic 的契约')
@@ -839,7 +788,7 @@ def _delete(rel):
 def _subst_first(pattern, new, label='第一处'):
     """按正则找到**盘上真实存在**的文案，把第一处替换成 ``new``。
 
-    为什么不用写死的字面量：``readme-demo-count`` 这条自检原先钉的是
+    为什么不用写死的字面量：这条自检原先（``readme-demo-count`` 时代）钉的是
     ``'**37 个独立示例与工具**'``，而 README 早已改成 ``39 个`` —— 2026-10-14
     selfcheck 实测：
       * ``_subst`` 找不到目标抛 AssertionError ⇒ 自检报 FAIL —— 但**报错的理由**
@@ -860,11 +809,6 @@ def _subst_first(pattern, new, label='第一处'):
 
 #: 每条门禁一到两个**针对性破坏**（"我把它防的那件事做出来，它会不会红"）
 BREAKS = [
-    # 用**盘上真实的第一处示例数**做注入源（原来钉死 '37 个'，README 改 39 后就失效了）
-    ('readme-demo-count', '把 README 里第一处示例数改成 99',
-     _subst_first(('README.md',
-                   r'\*\*\d+\s*个\s*独立示例与工具\*\*'),
-                  '**99 个独立示例与工具**')),
     ('readme-test-modules', '从 README 删掉一行测试命令',
      _subst('README.md', 'python -m tests.test_compat', 'python -m tests.test_removed_thing')),
     ('readme-test-counts', '把某个模块的用例数写错',
@@ -875,10 +819,8 @@ BREAKS = [
      _subst('README.md', '9 个内核 + 13 共同核', '99 个内核 + 13 共同核')),
     ('readme-core-count', '把共同核数改成 99',
      _subst('README.md', '9 个内核 + 13 共同核', '9 个内核 + 99 共同核')),
-    ('examples-index-pairs', '从 examples/README 删掉一个 demo 的行',
-     _subst('examples/README.md', '| `frame_graph.py` |', '| `removed.py` |')),
     ('doc-links', '把一个文档链接指到不存在的文件',
-     _subst('README.md', '](examples/README.md)', '](examples/NOPE.md)')),
+     _subst('README.md', '](LICENSE)', '](LICENSE_NOPE.md)')),
     ('docs-index-fresh', '往索引里塞一行假的',
      _append_line('docs/README.md', '| [`假的`](nope.md) | 假 |')),
     ('commands-exist', '把一条命令的模块名改坏',
@@ -893,9 +835,9 @@ BREAKS = [
     ('pyrefs-exist', '把 CI 里的 import 改成不存在的模块',
      _subst('.github/workflows/ci.yml', 'import world3d._cordis_locate as L',
             'import no_such_module as L')),
-    ('scaffold-templates-valid', '把模板里的关键钩子改名',
-     _subst('scripts/new_demo.py', '    def render(self):',
-            '    def render_broken(self):')),
+    ('scaffold-templates-valid', '把模板里的 runner 标记改名',
+     _subst('scripts/new_test.py', 'ALL_ZZPROBE_TESTS_PASSED',
+            'ALL_ZZPROBE_TESTS_BROKEN')),
     ('scaffold-kernel-valid', '把内核模板的 status() 改名（破坏 run_generic 的契约）',
      _subst('scripts/new_kernel.py', '    def status(self) -> str:',
             '    def status_broken(self) -> str:')),
