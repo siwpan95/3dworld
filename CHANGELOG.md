@@ -18,6 +18,41 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [未发布] — 能力增厚第三批：自研确定性工具链（WFC / L-Systems / 3D 物理 / 曲线库）
+
+「从 G://repos 选适合的内容」盘点结论：WFC、L-Systems（mc-clone 命中为误报）、
+3D 物理（本地只有 2D AABB）、曲线库（an-engine 的 curve.py 是渲染原语非样条）
+**本地均无现成实现**，故全部从零自研。四项均落 `logic/` 纯函数层，立场与既有
+模块一致：**纯标准库、零依赖、确定性、可 headless 单测**（不碰 pyglet / GL /
+全局随机状态），带不变量测试（非移植，无借鉴记账）。
+
+### 新增模块
+
+- **`world3d/logic/curves.py`**：曲线库。Bézier（De Casteljau 任意阶、n 维通用）
+  + Catmull-Rom（τ=0.5，必过所有控制点，open 端点镜像 / closed 环绕）
+  + 折线长度 / 切线。`bezier_point` / `bezier_curve` / `catmull_rom_spline` /
+  `catmull_rom_tangent_at` / `curve_length`。2D / 3D 同一套分量运算。
+- **`world3d/logic/physics3d.py`**：3D 物理原语。向量基元（加/减/点乘/叉乘/
+  归一化/距离）+ 碰撞检测（球-球、AABB-AABB、球-AABB、球-平面、射线-球、
+  射线-AABB、线段-线段最近点、胶囊-胶囊）+ 连续碰撞扫掠（球扫掠 AABB →
+  Minkowski 膨胀 + 射线-AABB 求 TOI 与法线，角点方形近似已注明）+ 单球半隐式
+  欧拉积分 + 地面反弹 + N 球世界（重力 / 地面 / 两两弹性碰撞，步进后不互相穿透）。
+- **`world3d/logic/lsystem.py`**：L-System（林氏系统）。`expand`（确定式产生式 +
+  随机式产生式，随机须注入 `random.Random(seed)` 保证复现）+ `Turtle2D`（2D 龟图：
+  F/f 画线、+/- 转向、[ ] 压栈）+ `Turtle3D`（3D 龟图：航向 + 上向量，偏航/俯仰/
+  翻滚，Rodrigues 旋转）。用于分形植物 / 科赫曲线等程序化几何。
+- **`world3d/logic/wfc.py`**：WFC（波函数坍缩）瓦片平铺模型。`Tile(name, edges)`
+  四边插槽自动派生邻接；`WFC(width, height, tiles, seed)` 观察（熵最低 + 权重随机
+  坍缩）→ AC-3 约束传播 → 矛盾整局重启；`check_adjacency` 独立核对每对相邻边插槽
+  相容。返回 `height×width` 瓦片名表，无解返回 `None`（确定性靠 seed）。
+
+### 测试与门禁
+
+- 四模块各带不变量 / golden 测试（自生成可手算复核）：`test_curves`(9) /
+  `test_physics3d`(12) / `test_lsystem`(10) / `test_wfc`(7)，共 **+38 用例**。
+- `run_all_tests.py` 注册 4 模块（28 → 32）；README 测试清单 + 目录树计数同步更新；
+  验证：verify 15/15、run_all_tests **32/32 模块 / 426 用例**、check_imports 0 失败。
+
 ## [未发布] — 能力增厚第二批：程序化生成族（地牢 / 城镇 / 元胞自动机）
 
 「从 G://repos 选适合的内容，不重复造轮子」第二批三项移植，
