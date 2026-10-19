@@ -89,13 +89,13 @@ configs/               10 棵配置树（cordis.*.yml）：
                        声明本次挂哪些服务、各带什么 config
 scripts/
   _console.py          入口脚本的 stdio 编码兜底（GBK 控制台不再因 ⚠/⊆ 崩掉而吞掉结论）
-  verify.py            机械门禁 14 条：同一事实写在两处必须相等（<1 秒，pre-commit 会跑）
+  verify.py            机械门禁 15 条：同一事实写在两处必须相等（<1 秒，pre-commit 会跑）
   docs_index.py        docs/README.md 的生成器（门禁 docs-index-fresh 核对新鲜度）
   new_test.py          脚手架：生成能开箱跑的新测试模块（模板被门禁钉住；
                        demo 脚手架已随 demo 迁往 3dworld-demos）
   new_kernel.py        脚手架：生成新玩法内核 + 配置树 + 单测，并登记三张表（--undo 可撤销）
   check_imports.py     全仓可达性门禁：world3d/ 下每个模块都 import 一遍（+ sys.path 不变量）
-  run_all_tests.py     21 个测试模块的聚合 runner（数字由 readme-test-modules 门禁钉住）
+  run_all_tests.py     22 个测试模块的聚合 runner（数字由 readme-test-modules 门禁钉住）
   migrate_p2_4.py      P2-4 的一次性迁移工具（保留以便复查改了什么）
 tests/               逻辑层无窗口单测：python -m tests.run_tests
 docs/                设计文档（渲染验证截图已随 demo 迁往 3dworld-demos）
@@ -261,9 +261,10 @@ P2「分层归位」会把它们收进 `world3d.*` 命名空间。
 ## 测试与验收
 
 ```bat
-python -m tests.run_tests           逻辑层无窗口单测（63 项）
+python -m tests.run_tests           逻辑层无窗口单测（65 项）
 python -m tests.test_cores          共同核契约（17 项，含 P1-⑤ 玩法模块）
 python -m tests.test_engine         引擎层无窗口单测（30 项，含 model uniform 作用域 + 多网格连续三帧逐字节一致）
+python -m tests.test_shaders       着色器库：注册表静态核对 + 契约核对 + 全量编译（5 项，GL 不可用记 SKIP）
 python -m tests.test_skin           蒙皮骨骼动画（8 项）
 python -m tests.test_gpu_cull       GPU 驱动渲染（7 项，含"GPU 剔除 == CPU 剔除"逐实例比对）
 python -m tests.test_p2_render      PCSS / WBOIT / 点云+EDL（7 项）
@@ -307,7 +308,7 @@ kkrieger 六幕的循环连续性与舱门/平台/灯带状态机、**镜头穿�
 **全靠手改**，而手改每次都可能漏一处。
 
 ```bat
-python scripts\verify.py              # 14 条门禁（不联网、不跑构建、不改文件）
+python scripts\verify.py              # 15 条门禁（不联网、不跑构建、不改文件）
 python scripts\verify.py --list       # 只列名字与说明
 python scripts\verify.py --verbose    # 每条的证据
 python scripts\verify.py --fix        # 重生成生成物（docs/README.md）
@@ -319,6 +320,7 @@ python scripts\verify.py --selfcheck  # 沙箱里逐条注入破坏，证明门�
 | `readme-test-modules` | README 测试命令表 ↔ `run_all_tests.MODULES`（**双向**） |
 | `readme-test-counts` | README 每行的「N 项」== 该模块声明的用例数（两种真实形态都认） |
 | `readme-config-count` / `-kernel-count` / `-core-count` | 配置树 / 内核 / 共同核计数 |
+| `cores-doc-pairs` | 契约手册总览表 ↔ `WANT_CORES`（**双向**，2026-10-19 加） |
 | `doc-links` | README / docs 里的**相对链接**都指得到真实文件 |
 | `docs-index-fresh` | `docs/README.md` == `scripts/docs_index.py` 重新生成的结果（新鲜度） |
 | `commands-exist` | 文档里写的每条 `python -m …` / `python <文件名>.py` 目标都存在（模板占位符不算） |

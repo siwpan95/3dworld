@@ -1206,6 +1206,64 @@ def test_greedy_mesh_layer_counts():
     print(f'  ok: 贪心网格化 3x3 墙块 {naive}→{merged} quad；空墙零输出')
 
 
+def test_greedy_merge_coverage():
+    """贪心合并的**覆盖不变量**：矩形并集 == True 格集合，且互不重叠。
+
+    比「矩形数对不对」更强：矩形数对但覆盖错（漏格/重格）照样能蒙混，
+    这条把「极小覆盖」的语义钉死。掩码取单格 / 满层 / 棋盘 / L 形四种形态。
+    """
+    from world3d.engine import greedy_mesh as gm
+
+    def check(mask, h, w):
+        rects = gm.merge_rects(mask, h, w)
+        cover = {}
+        for (i0, j0, i1, j1) in rects:
+            assert 0 <= i0 < i1 <= h and 0 <= j0 < j1 <= w, f'矩形越界: {(i0, j0, i1, j1)}'
+            for i in range(i0, i1):
+                for j in range(j0, j1):
+                    assert (i, j) not in cover, f'格 {(i, j)} 被两个矩形覆盖（重叠）'
+                    cover[(i, j)] = True
+        truth = {(i, j) for i in range(h) for j in range(w) if mask[i][j]}
+        assert set(cover) == truth, \
+            f'覆盖不一致：多 {sorted(set(cover) - truth)[:4]}，少 {sorted(truth - set(cover))[:4]}'
+
+    check([[True]], 1, 1)                                    # 单格 → 1 个 1x1
+    check([[True] * 4 for _ in range(3)], 3, 4)              # 满层 → 1 个 3x4
+    check([[((i + j) % 2 == 0) for j in range(5)] for i in range(5)], 5, 5)   # 棋盘
+    check([[True, True, False], [True, False, False]], 2, 3)  # L 形
+    # 确定性：同掩码两次调用逐字相同
+    m = [[((i * 7 + j * 3) % 5 < 2) for j in range(6)] for i in range(6)]
+    assert gm.merge_rects(m, 6, 6) == gm.merge_rects(m, 6, 6), '合并必须确定'
+    print('  ok: 贪心覆盖不变量（单格/满层/棋盘/L 形：并集==True 且不重叠）+ 确定性')
+
+
+def test_baked_mesh_invariants():
+    """烘焙几何不变量：三角汤整形 + 坐标有界 + **历史明暗常数**。
+
+    明暗常数（1.00 / 0.50 / 0.82 / 0.75）是 docstring 明写的「搬运时逐字未改、
+    直接决定六个内核出图效果」的负载值 —— 值得一条断言钉住，防「顺手统一一下」。
+    """
+    from world3d.engine.baked_mesh import unit_cube, unit_sphere
+
+    pos, shade = unit_cube()
+    assert len(pos) == 108 and len(shade) == 108, (len(pos), len(shade))  # 6 面 x 6 顶点 x 3
+    assert len(pos) == len(shade), 'position 与 shade 必须等长'
+    assert all(abs(c) <= 0.5 + 1e-9 for c in pos), '单位立方体坐标必须落在 [-0.5, 0.5]'
+    assert set(shade) <= {1.00, 0.50, 0.82, 0.75}, f'明暗常数被改动: {sorted(set(shade))}'
+    assert unit_cube() == (pos, shade), '几何生成必须确定'
+
+    spos, sshade = unit_sphere()
+    assert len(spos) % 3 == 0 and len(spos) == len(sshade)
+    import math as _m
+    n = len(spos) // 3
+    for k in range(n):
+        r = _m.sqrt(spos[3 * k] ** 2 + spos[3 * k + 1] ** 2 + spos[3 * k + 2] ** 2)
+        assert abs(r - 1.0) < 1e-6, f'球面第 {k} 个顶点半径 {r} 偏离单位球'
+    assert all(0.6 - 1e-9 <= s <= 1.0 + 1e-9 for s in sshade), '球面明暗应在 [0.6, 1.0]'
+    assert unit_sphere() == (spos, sshade), '球面生成必须确定'
+    print(f'  ok: 烘焙几何（立方体 108 float / 常数集钉住；球面 {n} 顶点半径=1 / 明暗 [0.6,1]）')
+
+
 def test_solver_minimal_solution():
     g = _bare_grid()
     lv = pk_level('''
@@ -1562,6 +1620,8 @@ if __name__ == '__main__':
     print('test_kid_a_doors_connected');          test_kid_a_doors_connected()
     print('test_greedy_merge_rects');             test_greedy_merge_rects()
     print('test_greedy_mesh_layer_counts');       test_greedy_mesh_layer_counts()
+    print('test_greedy_merge_coverage');           test_greedy_merge_coverage()
+    print('test_baked_mesh_invariants');           test_baked_mesh_invariants()
     print('test_solver_minimal_solution');        test_solver_minimal_solution()
     print('test_solver_unsolvable');              test_solver_unsolvable()
     print('test_generate_solvable_by_construction'); test_generate_solvable_by_construction()

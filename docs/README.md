@@ -5,7 +5,7 @@
 > 门禁 `docs-index-fresh`（`python scripts/verify.py`）会核对它是否最新，
 > 所以"新加了文档但忘了登记"会在验收里变红，而不是悄悄腐烂。
 
-共 **30 篇**，按轨道分组：
+共 **31 篇**，按轨道分组：
 
 ## P0 试点转正
 
@@ -78,6 +78,7 @@
 | [`复刻早期经典游戏 · 规划（3dworld × Cordis）`](remake_ideas.md) | 用 3dworld 已有的图形/音频/动画能力，复刻一批早期单机代表作的玩法机制。 |
 | [`Source 2 UV 对拍报告（§18.7）`](source2_survey.md) | 密度 = 1/|∇u|（world units per UV）；轴对齐 = ∇u 方向 mod 90° ∈ [0°,… |
 | [`体素实现对比：voxel_terrain.py × minecraft_style.py`](体素实现对比.md) | （邻列高度 vs 当前 y），三行判断、无邻居坐标运算； |
+| [`共同核契约手册`](共同核契约手册.md) | play_music / sfx / available |
 | [`分发指南（引擎库）`](分发指南.md) | 发行名 3dworld / 导入名 world3d；版本双轨：库用 SemVer（pyproject.toml 的 |
 | [`3dworld 架构设计 — 向 3D 动画制作方向演进`](架构设计_3D动画方向.md) | 当前 demo 已具备三维世界的全部要素（透视投影、Batch 几何、轨道相机、主循环）， |
 | [`生态库引入评估：bloodmusic / allin-engine`](生态库引入评估.md) | 一次渲染成功（渲染耗时仅约 30 秒） |

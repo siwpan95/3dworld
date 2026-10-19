@@ -75,8 +75,8 @@ class RenderCore(Protocol):
 class TerrainCore(Protocol):
     """高度场生成、网格构建、**实时编辑**（抬山/挖海）。
 
-    现有模块：``examples/terrain_flyover.height_at`` / ``examples/voxel_terrain`` /
-    ``examples/mountain`` / ``world3d.engine.physics.PhysicsWorld.ground_height``
+    现有模块：``world3d.logic.terrain`` / ``world3d.logic.voxel``（2026-10-19
+    自演示上提）/ ``world3d.engine.physics.PhysicsWorld.ground_height``
     现状：**已具备** ``height_at``；编辑/网格抽离到核心 → **待抽离**
     提供为 Cordis 服务名：``terrain``
     """
@@ -113,8 +113,9 @@ class TerrainCore(Protocol):
 class EntityCore(Protocol):
     """通用实体：位置/速度/网格引用/血量/状态机。
 
-    现有模块：散落在 ``examples/mountain.py`` 的 objects/plants（石头、树、云）
-    现状：**待抽离**（目前每个 demo 各自手写，没有统一实体管理）
+    现有模块：散落在 mountain 演示的 objects/plants（石头、树、云；演示已迁往
+    独立仓 3dworld-demos）
+    现状：**待抽离**（目前每个演示各自手写，没有统一实体管理）
     提供为 Cordis 服务名：``entity``
     """
 
@@ -201,7 +202,8 @@ class InputCore(Protocol):
 class HudCore(Protocol):
     """侧边栏、小地图、状态条、居中叠层文字。
 
-    现有模块：``world3d.engine.hud.Hud`` / ``examples/mountain._draw_overlay``
+    现有模块：``world3d.engine.hud.Hud`` / mountain 演示的 overlay（演示已迁往
+    独立仓 3dworld-demos）
     现状：**已具备**
     提供为 Cordis 服务名：``hud``
     """
@@ -382,8 +384,8 @@ class TimelineCore(Protocol):
 class ParticlesCore(Protocol):
     """GPU 粒子（法术/天气/碎屑/弹道）。
 
-    现有模块：``examples/particles_gpu.py``
-    现状：**已具备**（demo 级）；封装为可 ``provide`` 的核心 → **待抽离**
+    现有模块：``world3d.engine.particles``（GPU 渲染集成，2026-10-19 自演示上提）
+    现状：**已具备**；封装为可 ``provide`` 的核心 → **待抽离**
     提供为 Cordis 服务名：``particles``
     """
 
@@ -449,9 +451,10 @@ class RulesCore(Protocol):
 class SdfVoxelCore(Protocol):
     """光线步进墙体、体素方块。
 
-    现有模块：``examples/raymarch_sdf.py`` / ``examples/voxel_terrain.py`` /
-    ``examples/blockworld.py``
-    现状：**已具备**（examples 级）；封装为可 ``provide`` 的核心 → **待抽离**
+    现有模块：``world3d.engine.shaders`` 的 ``raymarch`` 条目（2026-10-19 自演示
+    上提）/ ``world3d.logic.voxel``（同批上提）/ blockworld 演示（已迁往独立仓
+    3dworld-demos）
+    现状：**已具备**；封装为可 ``provide`` 的核心 → **待抽离**
     提供为 Cordis 服务名：``sdf``（体素 voxel 归入此核）
     """
 
@@ -685,14 +688,9 @@ def verify(verbose: bool = True) -> dict[str, Any]:
 
     返回 ``{服务名: 'ok' / 'pending' / 'err:<reason>'}``。
     """
-    import importlib, os, sys
-    # examples/* 内部用 ``from world3d.platform.app import ...``（P2-1 起真身在 world3d/platform/app.py；
-    # 旧路径 examples/_harness.py 是薄兼容层），
-    # 必须让 examples/ 进 sys.path 才能让 những 模块被 import（否则报
-    # ModuleNotFoundError: No module named '_harness'，属路径问题非代码缺失）。
-    _examples = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'examples')
-    if os.path.isdir(_examples) and _examples not in sys.path:
-        sys.path.insert(0, _examples)
+    import importlib, sys
+    # 2026-10-19 demo 剥离：此前的 examples/ sys.path 引导块随之删除 ——
+    # 全部核心模块都是 world3d.* 包内模块，包自身可导入，无需仓库资产在路径上。
     results: dict[str, Any] = {}
     for name, meta in CORES.items():
         mod = meta['module']

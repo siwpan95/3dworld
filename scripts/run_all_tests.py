@@ -54,6 +54,7 @@ MODULES = [
     ('tests.run_tests', 'ALL_LOGIC_TESTS_PASSED', '逻辑/玩法内核'),
     ('tests.test_cores', 'ALL_CORE_TESTS_PASSED', '共同核契约'),
     ('tests.test_engine', 'ALL_ENGINE_TESTS_PASSED', '引擎层'),
+    ('tests.test_shaders', 'ALL_SHADERS_TESTS_PASSED', '着色器库'),
     ('tests.test_brickward', 'ALL_BRICKWARD_TESTS_PASSED', '砖境内核（BQM 致敬 B1/B2/B3）'),
     ('tests.test_csm', 'ALL_CSM_TESTS_PASSED', '级联阴影 CSM'),
     ('tests.test_volumetrics', 'ALL_VOLUMETRICS_TESTS_PASSED', '体积雾/光轴'),

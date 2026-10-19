@@ -245,6 +245,33 @@ def g_core_count(root, verbose):
     return f'{len(hits)} 处断言 == {n} 个共同核'
 
 
+@gate('cores-doc-pairs', '契约手册总览表 ↔ host/tree.WANT_CORES（双向）')
+def g_cores_doc(root, verbose):
+    """2026-10-19 能力复盘建议 3：手册与注册表互为镜像。
+
+    ``docs/共同核契约手册.md`` 总览表第一列是核名，``WANT_CORES`` 是权威清单 ——
+    两边必须逐项一致：加了核忘了写手册、或手册写了不存在的核，都红。
+    只扫「## 总览」到下一个「## 」之间的区段（末尾「部分具备」表的 hud/input
+    不在 WANT_CORES，属预期，不能算进比对）。
+    """
+    want = set(_ast_value(root, 'world3d/host/tree.py', 'WANT_CORES'))
+    text = _read(root, 'docs/共同核契约手册.md')
+    m = re.search(r'## 总览\n(.*?)(?=\n## )', text, re.S)
+    if not m:
+        raise Fail('契约手册里找不到「## 总览」区段')
+    listed = set(re.findall(r'^\| `(\w+)` \|', m.group(1), re.M))
+    missing = sorted(want - listed)
+    ghosts = sorted(listed - want)
+    if missing or ghosts:
+        msg = []
+        if missing:
+            msg.append(f'WANT_CORES 有但手册没列：{missing}')
+        if ghosts:
+            msg.append(f'手册列了但不在 WANT_CORES：{ghosts}')
+        raise Fail('；'.join(msg))
+    return f'{len(want)} 个核名双向一致（手册总览表 ↔ WANT_CORES）'
+
+
 @gate('doc-links', 'README/docs/examples 里的相对链接都指得到真实文件')
 def g_doc_links(root, verbose):
     targets = ['README.md']
@@ -439,10 +466,13 @@ def g_scaffold(root, verbose):
     except SyntaxError as e:
         raise Fail(f'test 模板渲染后不是合法 Python：{e}')
 
-    # ⚠ 断言必须**带括号**：只写 `'def render'` 的话 `def render_broken` 也算"出现过"
-    # —— selfcheck 正是用这条破坏用例指出我的断言太松（宽松的"出现过"是假绿高发区）。
-    need_test = ('def main() -> int:', 'sys.exit(main())', 'ALL_ZZPROBE_TESTS_PASSED',
-                 'ALL_ZZPROBE_TESTS_FAILED')
+    # ⚠ 断言必须**带括号/带引号**：只写 `'ALL_ZZPROBE_TESTS_PASSED'` 的话，
+    # 模板 **docstring 里的说明文字**（"通过时打印 `ALL_${upper}_TESTS_PASSED`"）
+    # 渲染后同样含该字符串 —— 真正的 print 语句改坏了门禁照样放行（2026-10-19
+    # selfcheck 实测抓到的假绿）。检查 print 语句本身才是钉住 runner 标记。
+    need_test = ('def main() -> int:', 'sys.exit(main())',
+                 "print('ALL_ZZPROBE_TESTS_PASSED')",
+                 "print('ALL_ZZPROBE_TESTS_FAILED')")
     miss = [w for w in need_test if w not in test]
     if miss:
         raise Fail(f'test 模板缺关键片段：{miss}')
@@ -821,6 +851,8 @@ BREAKS = [
      _subst('README.md', '9 个内核 + 13 共同核', '9 个内核 + 99 共同核')),
     ('doc-links', '把一个文档链接指到不存在的文件',
      _subst('README.md', '](LICENSE)', '](LICENSE_NOPE.md)')),
+    ('cores-doc-pairs', '把契约手册总览表里的一个核名改坏',
+     _subst('docs/共同核契约手册.md', '| `audio` |', '| `audio_x` |')),
     ('docs-index-fresh', '往索引里塞一行假的',
      _append_line('docs/README.md', '| [`假的`](nope.md) | 假 |')),
     ('commands-exist', '把一条命令的模块名改坏',
@@ -835,9 +867,19 @@ BREAKS = [
     ('pyrefs-exist', '把 CI 里的 import 改成不存在的模块',
      _subst('.github/workflows/ci.yml', 'import world3d._cordis_locate as L',
             'import no_such_module as L')),
+    # ⚠ 注入目标必须是**模板文件里真实存在的文本**：模板用 ${upper} 占位符，
+    # 渲染后才变成 ALL_ZZPROBE_TESTS_PASSED —— 打渲染后的字面量会「注入没做成」
+    # （自检报 FAIL 但理由是注入失败，且该自检从此形同装饰品）。2026-10-19
+    # demo 拆分时踩过，selfcheck 当场抓住。
+    # ⚠ 注入目标必须是**模板文件里真实存在的文本**，且要打到**唯一的**那一处：
+    # 模板用 ${upper} 占位符（渲染后才成 ALL_ZZPROBE_TESTS_PASSED），打渲染后的
+    # 字面量会「注入没做成」；而 ALL_${upper}_TESTS_PASSED 在模板里出现**两次**
+    # （docstring 说明 + print 语句），replace(...,1) 会打中 docstring 那处、
+    # 真正的 runner 标记毫发无损 → 门禁放行（假绿）。2026-10-19 两坑连踩，
+    # selfcheck 当场抓住；带引号的 print 语句才是唯一目标。
     ('scaffold-templates-valid', '把模板里的 runner 标记改名',
-     _subst('scripts/new_test.py', 'ALL_ZZPROBE_TESTS_PASSED',
-            'ALL_ZZPROBE_TESTS_BROKEN')),
+     _subst('scripts/new_test.py', "print('ALL_${upper}_TESTS_PASSED')",
+            "print('ALL_${upper}_TESTS_BROKEN')")),
     ('scaffold-kernel-valid', '把内核模板的 status() 改名（破坏 run_generic 的契约）',
      _subst('scripts/new_kernel.py', '    def status(self) -> str:',
             '    def status_broken(self) -> str:')),
