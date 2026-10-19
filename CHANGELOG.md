@@ -13,7 +13,80 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+# 更新日志
+
+本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
+格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
+
+## [未发布] — 能力增厚第二批：程序化生成族（地牢 / 城镇 / 元胞自动机）
+
+「从 G://repos 选适合的内容，不重复造轮子」第二批三项移植，
+全部落 `logic/` 纯函数层，带借鉴记账（铁律 10）与不变量测试。
+
+### 新增模块
+
+- **`world3d/logic/dungeon.py`**：地牢与洞穴生成。移植自 `procgen`
+  （MIT）：`generate_dungeon`（随机房间 + L 走廊）、`generate_dungeon_bsp`
+  （BSP 保证连通）、`generate_cave`（RogueBasin 4-5 规则 CA 洞穴 +
+  洪水填充保留最大连通块）、`to_ascii`。适配：numpy → 纯标准库
+  （`np.roll` 邻居统计改写为取模索引）；RNG 换 `random.Random(seed)`
+  （stdlib 口径，与 procgen 的 RandomState 序列不同但自一致）；
+  `randint` 半开区间语义对齐（`randrange`）；移除 `warnings.warn`
+  （改由返回值 `placed` 字段如实反映）。
+- **`world3d/logic/town.py`**：Voronoi 中世纪城镇生成。移植自 `procgen`
+  （MIT）—— 而 procgen 那份是**从零移植自 watabou 的 Medieval Fantasy
+  City Generator**（Haxe 原项目）。原版 1106 行 numpy 用量为 0（Pt/
+  Polygon/Voronoi 全手写），本仓近乎逐行继承：LCG 随机源、Bowyer-
+  Watson Delaunay + Lloyd 松弛、城墙（塔楼/城门）、Dijkstra 路网、
+  ward 权重分配、建筑递归分割。适配：去残留 numpy import、heapq
+  提至顶层、修正原版 docstring 的返回键笔误（`patches` → `wards`）。
+- **`world3d/logic/ca.py`** + **`ca_rules_data.py`**：元胞自动机引擎，
+  **141 条规则**（Life-like 63 / Complex 11 / Multi-state 9 /
+  连续 58：Gray-Scott 24 / Lenia 6 / LtL 9 / Elementary 1D 15 /
+  其他 5）。数据移植自 `cellular_automaton`（MIT）经 `an-engine`
+  转借（8 个 JSON 逐字节转 Python 字面量）；计算逻辑移植自 an-engine
+  的 `media/ca/rules/*.py`。适配：numpy → 纯标准库（邻居统计/
+  Laplacian/卷积全改写为嵌套循环）；**float32 → float64**（连续规则
+  数值与原版不同但自一致）；**随机数可注入**（原版用 `np.random`
+  全局状态 —— ForestFire/Snowflake/Hodgepodge/连续规则种子区全部
+  改走 `self.rng`，`CellularAutomaton(seed=...)` 注入）。
+
+### 移植中修复的真实缺陷
+
+- **CA 规则实例共享导致确定性失效**：`RULES` 注册表是模块级共享
+  字典，两个同规则的 Automaton 会互相覆盖 `set_rng`、共享同一条
+  随机流 —— 同 seed 交错运行也会分叉（实测复现）。修复：每个
+  Automaton 持规则的**深拷贝**再注入自己的 rng；`set_rule` 同样
+  深拷贝。`test_ca.py` 的 `test_determinism_and_isolation` 是这条
+  的回归保护（交错运行 == 单独跑）。
+- **SmoothLife 移植初版写错**：transition 函数误写为自造区间
+  sigmoid —— 原版是「双 sigmoid 乘积带通 × aliveness 混合」
+  （`birth = σ((n-b1)/s)·σ((b2-n)/s)`），已按原版修正。
+- **Snowflake 移植初版写错**：冻结判定误写为累计阈值 —— 原版是
+  「单 rand 两趟：先态 1（阈值 prob1×0.3）再 max_s（阈值 prob2，
+  无条件覆盖，态 1 档因此被遮蔽）」，已按原版忠实复刻（含遮蔽行为）。
+
+### 测试（+3 模块 / +20 用例，28 模块 388 用例）
+
+- `tests/test_dungeon.py`（6 项）：**连通性洪水填充独立验证**
+  （不信任生成器的 connections 字段 —— 防「记了连接但没挖通」）、
+  房间不重叠、洞穴单连通、确定性、ASCII 与尺寸校验。
+- `tests/test_town.py`（5 项）：ward/建筑多边形有效（≥3 顶点、
+  面积 > 0）、**坐标级确定性**（每个顶点逐位相同）、城墙/城门/
+  路网结构、bounds 包含性、ward 分配无遗漏。
+- `tests/test_ca.py`（9 项）：141 条注册表核对（含 wolfram_150
+  在原 JSON 重复导致 142→141 的去重口径，与原版一致）、GoL 经典
+  （方块静物/闪烁器周期 2）、B/S 直查、Wireworld 二极管、
+  Cyclic/Rule 90、四个连续规则值域、沙堆崩塌、**交错隔离回归**、
+  Automaton API。
+
+### 验证收口（2026-10-19 实测）
+
+- `verify.py` 15/15；`run_all_tests.py` 28 模块 / 388 用例全过；
+  `check_imports.py` 0 失败（六个新模块自动纳入可达性）。
+
 ## [未发布] — 能力增厚第一批：确定性工具链（噪声 / 回放 / 行为树）
+
 
 「从 G://repos 选适合的内容，不重复造轮子」—— 第一批三项纯移植，
 全部落 `logic/` 纯函数层，带借鉴记账（铁律 10）与逐位确定性测试。

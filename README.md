@@ -95,7 +95,7 @@ scripts/
                        demo 脚手架已随 demo 迁往 3dworld-demos）
   new_kernel.py        脚手架：生成新玩法内核 + 配置树 + 单测，并登记三张表（--undo 可撤销）
   check_imports.py     全仓可达性门禁：world3d/ 下每个模块都 import 一遍（+ sys.path 不变量）
-  run_all_tests.py     25 个测试模块的聚合 runner（数字由 readme-test-modules 门禁钉住）
+  run_all_tests.py     28 个测试模块的聚合 runner（数字由 readme-test-modules 门禁钉住）
   migrate_p2_4.py      P2-4 的一次性迁移工具（保留以便复查改了什么）
 tests/               逻辑层无窗口单测：python -m tests.run_tests
 docs/                设计文档（渲染验证截图已随 demo 迁往 3dworld-demos）
@@ -268,6 +268,9 @@ python -m tests.test_shaders       着色器库：注册表静态核对 + 契约
 python -m tests.test_noise          噪声库：golden 交叉验证（与 procgen numpy 逐位一致）+ 确定性 + 值域 + 算法性质（8 项）
 python -m tests.test_replay         回放系统：浏览面 + 确定性自检（含反向用例）（9 项）
 python -m tests.test_behavior_tree  行为树：组合/装饰/叶子语义 + 声明式构造 + 假时钟超时（10 项）
+python -m tests.test_dungeon         地牢/洞穴：连通性洪水填充验证 + 确定性 + 结构约束（6 项）
+python -m tests.test_town            Voronoi 城镇：ward/建筑多边形有效 + 坐标级确定性（5 项）
+python -m tests.test_ca              元胞自动机：141 规则注册表 + GoL 经典 + 连续规则 + 交错隔离（9 项）
 python -m tests.test_skin           蒙皮骨骼动画（8 项）
 python -m tests.test_gpu_cull       GPU 驱动渲染（7 项，含"GPU 剔除 == CPU 剔除"逐实例比对）
 python -m tests.test_p2_render      PCSS / WBOIT / 点云+EDL（7 项）
