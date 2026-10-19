@@ -8,7 +8,7 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## [未发布] — demo 剥离：引擎仓 × 演示仓拆分（2026-10-19）
+## [0.2.0] — 2026-10-19 · demo 剥离：引擎仓 × 演示仓拆分
 
 「将所有 demo 剥离，仅保留每个 demo 代表的能力」—— 39 个演示程序 + 两条主线
 演出入口 + 成片/exe/截图/验收工具全部迁往独立仓 `siwpan/3dworld-demos`；
@@ -68,7 +68,7 @@ Gitee release 全部转移。
 - `python -m build` + `twine check` 双 PASSED；wheel 157 文件 =
   world3d（含 3 个新上提模块）+ vendored cordis，examples/scripts 零泄漏
 
-## [未发布] — PyPI 首发：发行名 `3dworld` / 导入名 `world3d`（库级 SemVer 0.1.0）
+## [0.1.0] — 2026-10-15 · PyPI 首发：发行名 `3dworld` / 导入名 `world3d`
 
 
 CalVer 发行版轨道（Gitee release / exe / 成片）不变；本条为库级 SemVer 首次上 PyPI
