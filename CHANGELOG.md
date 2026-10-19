@@ -8,7 +8,60 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+# 更新日志
+
+本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
+格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
+
+## [未发布] — 能力增厚第一批：确定性工具链（噪声 / 回放 / 行为树）
+
+「从 G://repos 选适合的内容，不重复造轮子」—— 第一批三项纯移植，
+全部落 `logic/` 纯函数层，带借鉴记账（铁律 10）与逐位确定性测试。
+
+### 新增模块
+
+- **`world3d/logic/noise.py`**：噪声库（value / perlin / simplex / fBm /
+  fractal / worley / domain_warp + heightmap 网格辅助）。移植自 `procgen`
+  （MIT）：算法与 `_hash2` 整数哈希；numpy 向量化按本仓「纯标准库 + 标量」
+  立场重写，`_wrap64` 精确复刻 int64 回绕语义 —— **与 procgen 的 numpy
+  原版逐位一致**（2026-10-19 numpy 2.5.4 交叉验证，含负坐标与 1e9 级
+  大坐标）。simplex 置换表交叉参考 `mc-clone/MC2`（MIT）的
+  `random.Random(seed)` 口径（stdlib 确定性）。worley / domain_warp /
+  heightmap 为本仓自研标准算法（procgen 的 Voronoi 在 town.py 是城市
+  划区，非噪声函数）。
+- **`world3d/logic/replay.py`**：回放系统。移植自 `roleplayer`（MIT，
+  `troupe/replay.py`）：`Replay` 浏览面（timeline / narrative / filter /
+  summary / actions_of）+ 双轨记录设计。适配：移除绑定 roleplayer 的
+  `from_simulator`/`from_save`；`verify_determinism` 通用化为接收工厂
+  函数 `run_fn`（任何「同种子跑两遍应一致」的场景可用）；新增
+  `to_dict`/`from_dict`/`save_json`/`load_json` JSON 往返。
+- **`world3d/logic/behavior_tree.py`**：行为树引擎（组合 / 装饰 / 条件 /
+  动作 / 声明式构造）。移植自 `zhuangtaiji`（MIT，`core/behavior_tree.py`，
+  617 行纯标准库）—— **原始项目**（allin-engine 的决策套件即从它并入，
+  记账源头认 zhuangtaiji）。适配：`Timeout` 加可注入时钟（默认
+  `time.monotonic`），超时逻辑可无等待单测；其余逐行一致。
+
+### 测试（+3 模块 / +27 用例，25 模块 368 用例）
+
+- `tests/test_noise.py`（8 项）：**golden 交叉验证** —— `_hash2` /
+  value / perlin / fbm 与 procgen numpy 原版逐位一致（int64 回绕路径
+  含负坐标与 1e9 级大坐标）；确定性 / 值域 / simplex 置换表结构 /
+  worley 特征点语义 / 域扭曲恒等 / heightmap 行主序。
+- `tests/test_replay.py`（9 项）：浏览面 + **反向用例** —— 故意不确定的
+  run_fn 必须被 `verify_determinism` 抓住（自检不是装饰品）；JSON
+  往返 + 中文原样；对象/dict 双形态事件。
+- `tests/test_behavior_tree.py`（10 项）：Sequence/Selector 短路语义
+  （计数证明）、Parallel 阈值、八个装饰器、**假时钟超时**（不真实
+  等待验证超时路径）、Condition/Action 异常兜底、声明式构造路由、
+  reset/run 上限、黑板共享。
+
+### 验证收口（2026-10-19 实测）
+
+- `verify.py` 15/15；`run_all_tests.py` 25 模块 / 368 用例全过；
+  `check_imports.py` 0 失败（三个新模块自动纳入可达性）。
+
 ## [0.2.0] — 2026-10-19 · demo 剥离：引擎仓 × 演示仓拆分
+
 
 「将所有 demo 剥离，仅保留每个 demo 代表的能力」—— 39 个演示程序 + 两条主线
 演出入口 + 成片/exe/截图/验收工具全部迁往独立仓 `siwpan/3dworld-demos`；

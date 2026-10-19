@@ -95,7 +95,7 @@ scripts/
                        demo 脚手架已随 demo 迁往 3dworld-demos）
   new_kernel.py        脚手架：生成新玩法内核 + 配置树 + 单测，并登记三张表（--undo 可撤销）
   check_imports.py     全仓可达性门禁：world3d/ 下每个模块都 import 一遍（+ sys.path 不变量）
-  run_all_tests.py     22 个测试模块的聚合 runner（数字由 readme-test-modules 门禁钉住）
+  run_all_tests.py     25 个测试模块的聚合 runner（数字由 readme-test-modules 门禁钉住）
   migrate_p2_4.py      P2-4 的一次性迁移工具（保留以便复查改了什么）
 tests/               逻辑层无窗口单测：python -m tests.run_tests
 docs/                设计文档（渲染验证截图已随 demo 迁往 3dworld-demos）
@@ -265,6 +265,9 @@ python -m tests.run_tests           逻辑层无窗口单测（65 项）
 python -m tests.test_cores          共同核契约（17 项，含 P1-⑤ 玩法模块）
 python -m tests.test_engine         引擎层无窗口单测（30 项，含 model uniform 作用域 + 多网格连续三帧逐字节一致）
 python -m tests.test_shaders       着色器库：注册表静态核对 + 契约核对 + 全量编译（5 项，GL 不可用记 SKIP）
+python -m tests.test_noise          噪声库：golden 交叉验证（与 procgen numpy 逐位一致）+ 确定性 + 值域 + 算法性质（8 项）
+python -m tests.test_replay         回放系统：浏览面 + 确定性自检（含反向用例）（9 项）
+python -m tests.test_behavior_tree  行为树：组合/装饰/叶子语义 + 声明式构造 + 假时钟超时（10 项）
 python -m tests.test_skin           蒙皮骨骼动画（8 项）
 python -m tests.test_gpu_cull       GPU 驱动渲染（7 项，含"GPU 剔除 == CPU 剔除"逐实例比对）
 python -m tests.test_p2_render      PCSS / WBOIT / 点云+EDL（7 项）
