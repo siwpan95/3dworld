@@ -3,22 +3,16 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-# 更新日志
+## [0.3.0] — 2026-10-19 · 能力增厚三批（随本版发布）
 
-本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
-格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
+> 0.3.0 汇总自 0.2.0 以来的三次能力增厚，全部落 `logic/` 纯函数层
+> （纯标准库、零依赖、确定性、可 headless 单测）：
+> **第一批** 确定性工具链（噪声 / 回放 / 行为树）、
+> **第二批** 程序化生成族（地牢 / 城镇 / 元胞自动机）、
+> **第三批** 自研确定性工具链（WFC / L-Systems / 3D 物理 / 曲线库）。
+> 详见下方三节。
 
-# 更新日志
-
-本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
-格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
-
-# 更新日志
-
-本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
-格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
-
-## [未发布] — 能力增厚第三批：自研确定性工具链（WFC / L-Systems / 3D 物理 / 曲线库）
+## 能力增厚第三批：自研确定性工具链（WFC / L-Systems / 3D 物理 / 曲线库）（随 0.3.0 发布）
 
 「从 G://repos 选适合的内容」盘点结论：WFC、L-Systems（mc-clone 命中为误报）、
 3D 物理（本地只有 2D AABB）、曲线库（an-engine 的 curve.py 是渲染原语非样条）
@@ -53,7 +47,7 @@
 - `run_all_tests.py` 注册 4 模块（28 → 32）；README 测试清单 + 目录树计数同步更新；
   验证：verify 15/15、run_all_tests **32/32 模块 / 426 用例**、check_imports 0 失败。
 
-## [未发布] — 能力增厚第二批：程序化生成族（地牢 / 城镇 / 元胞自动机）
+## 能力增厚第二批：程序化生成族（地牢 / 城镇 / 元胞自动机）（随 0.3.0 发布）
 
 「从 G://repos 选适合的内容，不重复造轮子」第二批三项移植，
 全部落 `logic/` 纯函数层，带借鉴记账（铁律 10）与不变量测试。
@@ -120,7 +114,7 @@
 - `verify.py` 15/15；`run_all_tests.py` 28 模块 / 388 用例全过；
   `check_imports.py` 0 失败（六个新模块自动纳入可达性）。
 
-## [未发布] — 能力增厚第一批：确定性工具链（噪声 / 回放 / 行为树）
+## 能力增厚第一批：确定性工具链（噪声 / 回放 / 行为树）（随 0.3.0 发布）
 
 
 「从 G://repos 选适合的内容，不重复造轮子」—— 第一批三项纯移植，
