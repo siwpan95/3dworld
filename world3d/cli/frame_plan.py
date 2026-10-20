@@ -75,6 +75,8 @@ def show(plan, label):
         print(f'  可别名（生命周期不重叠，可共用内存）: {groups}')
     else:
         print('  可别名: （无）')
+    print(f'  峰值（上界口径）: {plan.peak_slots} 槽 / '
+          f'{plan.peak_bytes / (1024 * 1024):.1f} MiB')
 
 
 def main(argv=None) -> int:

@@ -79,6 +79,7 @@ world3d/              **唯一的顶层包**（P2-4 收口；发行名 3dworld /
     greedy_mesh.py     单层体素贪心合批（P0-1 从内核上提）
     csm.py / volumetrics.py / dof.py / motionblur.py   ← ④ 轨道的四个渲染模块
     framegraph.py      帧图：声明 → 编译期校验 → 剔除 → 拓扑排序 → 别名（P3）
+                       v2 追加：生命周期推导 / 别名组 / 跨帧槽位池 / 峰值账本
     particles.py       GPU 实例化粒子系统（2026-10-15 自 particles_gpu 演示上提；
                        逐帧动画 100% 在顶点着色器，CPU 每帧只更新标量）
   presentation/        表现层：装配窗口事件 → 逻辑层 → 渲染
@@ -309,6 +310,7 @@ python -m tests.test_volumetrics    体积雾/光轴（12 项：闭式积分可�
 python -m tests.test_dof            景深 DoF（12 项：CoC/超焦距/景深端点恒等式/散景面积均匀）
 python -m tests.test_motionblur     运动模糊（9 项：静止零运动/1÷z 律/纯旋转与深度无关/三模块共存）
 python -m tests.test_framegraph     帧图（17 项：物理顺序/剔除/直通/别名/环与死链校验）
+python -m tests.test_framegraph_v2  帧图 v2（11 项：生命周期推导/别名组/槽位池借还/峰值下降）
 python -m tests.test_compat         旧路径兼容层（6 项：install 前后不可用/同一性/不被劫持）
 python -m world3d.cli.frame_plan --all-toggles  帧图门禁：16 种效果组合的计划都必须合法且顺序正确
 python -m world3d.cli.config_boot all   9 个内核 + 13 共同核全部 headless 验收（10 棵树，逐项 OK 标记）
