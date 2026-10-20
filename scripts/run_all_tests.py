@@ -71,6 +71,8 @@ MODULES = [
     ('tests.test_dof', 'ALL_DOF_TESTS_PASSED', '景深 DoF'),
     ('tests.test_motionblur', 'ALL_MOTIONBLUR_TESTS_PASSED', '运动模糊'),
     ('tests.test_framegraph', 'ALL_FRAMEGRAPH_TESTS_PASSED', '帧图（编译期校验）'),
+    ('tests.test_terrain_lod', 'ALL_TERRAIN_LOD_TESTS_PASSED',
+     'CDLOD 地形（选层/无缝/morph/面数）'),
     ('tests.test_framegraph_v2', 'ALL_FRAMEGRAPH_V2_TESTS_PASSED',
      '帧图 v2（生命周期/别名组/槽位池/峰值）'),
     ('tests.test_compat', 'ALL_COMPAT_TESTS_PASSED', '旧路径兼容层（P2-4）'),

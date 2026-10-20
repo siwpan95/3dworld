@@ -3,6 +3,38 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [Unreleased] — CDLOD 地形 LOD（待发版）
+
+### Added
+
+- **`world3d/engine/terrain_lod.py`（CDLOD）**：把地形从"全分辨率静态网格"升级为
+  "四叉树选层 + 顶点 morph 消缝"。`geometry.heightfield()` 的顶点数随分辨率平方增长
+  （1024² ≈ 100 万顶点），视距一拉远就顶不住；CDLOD 用**同一张 `grid x grid` 模板**铺所有节点，
+  按节点包围盒到相机的距离选层，交界处把细网格顶点插值到父层格点（不需要 skirts/缝合）。
+  - `LodConfig`：`grid`（必须偶数）/`levels`/`leaf_size`/`leaf_range`/`morph_start`；
+  - `TerrainLod.select(camera, view_range)`：自顶向下细分，返回待渲染节点（含 `morph` 系数）；
+  - `height_at()` 双线性采样（与 `heightfield` 的顶点逐点一致，测试钉住）；
+  - `build_template()` 单位模板 + `build_node_mesh()` CPU 版节点网格（调试/无 shader 时用）；
+  - `MORPH_GLSL`：真渲染用的顶点着色器写法（与 CPU 侧同一口径）；
+  - `stats()` / `coverage_report()`：帧预算与"无缝无重叠"断言。
+  - 实测 256 m 见方、2 m 最细格距：全分辨率 32,768 三角 → CDLOD 5,120（15.6%），
+    且视距翻倍时三角数增长 < 2.2 倍（面积涨 4 倍）。
+- **`tests/test_terrain_lod.py`**（第 35 个测试模块，18 项，零 GL）：选层**恰好铺满、无空洞无重叠**、
+  相邻节点层差 ≤1（CDLOD 的硬前提）、morph 随距离单调且 0/1 端点正确、
+  `morph=1` 时细层交界顶点**全部落在粗层顶点上**（消缝的直接判据）、
+  模板/节点网格的顶点与三角计数、采样与 `heightfield` 一致、越界钳制、选层确定性。
+- **`geometry.MeshData.triangle_count` 修正**：索引网格此前按 `len(indices)//9` 算，
+  少算到 1/3（`heightfield` 65² 报 2730 而非 8192），连渲染统计与帧预算都跟着偏小。
+  现区分"索引网格 //3"与"非索引三角形汤 //9"。
+
+### 说明
+
+- 算法出自 CDLOD 论文（Filip Strugar, 2010）。**未取任何示例代码**：该仓 `LICENSE`
+  本轮已核为 **MIT**（Copyright (c) 2010 Filip Strugar），早前"zlib"的记载不成立；
+  实现仍为按论文公式自写，记账见 `docs/借鉴记账.md`。
+- `LodConfig.grid` 必须是偶数：morph 的前提是细层顶点能落在父层格点上，
+  奇数格的最外一条边吸不过去，会直接开裂（`__post_init__` 已拦）。
+
 ## [0.4.0] — 2026-10-20 · heightfield 高度场地形（随本版发布）
 
 ### Added

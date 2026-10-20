@@ -65,7 +65,12 @@ class MeshData:
 
     @property
     def triangle_count(self):
-        return (len(self.indices) if self.indices else len(self.positions)) // 9
+        # 索引网格：每 3 个索引一个三角；非索引三角形汤：每 9 个 float 一个三角。
+        # 旧实现一律 //9，索引网格会少算到 1/3（heightfield 65² 报 2730 而非 8192），
+        # 连渲染统计与帧预算都跟着偏小。
+        if self.indices:
+            return len(self.indices) // 3
+        return len(self.positions) // 9
 
     def aabb(self):
         pts = [(self.positions[i], self.positions[i + 1], self.positions[i + 2])
