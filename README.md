@@ -3,6 +3,13 @@
 > 仓库：<https://gitee.com/siwpan/3dworld> ｜ 许可：MIT（见 [LICENSE](LICENSE)）
 > 注：文中 `<PATH>` 为路径占位符，请替换为你本机实际的目录 / 可执行文件路径。
 
+[![PyPI](https://img.shields.io/pypi/v/3dworld)](https://pypi.org/project/3dworld/)
+[![Python](https://img.shields.io/pypi/pyversions/3dworld)](https://pypi.org/project/3dworld/)
+[![License](https://img.shields.io/pypi/l/3dworld)](https://pypi.org/project/3dworld/)
+
+**PyPI**：<https://pypi.org/project/3dworld/> ｜ **发行名 `3dworld` / 导入名 `world3d`**
+（Python 导入包名不能以数字开头，`import 3dworld` 是语法错；PEP 508 发行名则允许。）
+
 用 Python + pyglet 从零构建三维世界与**动画演出**：时间轴 / 关键帧插值 /
 层级骨骼 / 程序化场景。**本仓是引擎库**（发行名 `3dworld` / 导入名 `world3d`）；
 39 个可运行的演示程序（含成片与截图产物）已剥离至独立仓
@@ -133,16 +140,22 @@ docs/                设计文档（渲染验证截图已随 demo 迁往 3dworld
 ## 快速开始
 
 ```bat
-:: 当作**库**装进任意环境（PyPI 已发布）
+:: 从 PyPI 装进任意环境（库形态）
 pip install 3dworld
 python -c "import world3d; print(world3d.__version__)"
 world3d-info                :: 自检：版本 / 依赖 / GL 能力 / cordis / 配置树位置
+```
 
+```bat
 :: 当作项目开发（editable，依赖与元数据以 pyproject.toml 为唯一来源）
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e .
 ```
+
+> 装完拿到的 CLI：`world3d-info`（纯库自检，任何安装方式都可用）、
+> `world3d-config` / `world3d-pipeline`（需仓库的 `configs/` 配置树，非 editable 安装下用
+> 环境变量 `WORLD3D_CONFIGS` 指向）。
 
 **命名**（P1 库化定）：**发行名 `3dworld` / 导入包名 `world3d`** —— Python 的导入包名不能以
 数字开头（`import 3dworld` 是语法错，`'3dworld'.isidentifier()` 为 `False`），而 PEP 508
