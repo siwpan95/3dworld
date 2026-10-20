@@ -88,6 +88,8 @@ MODULES = [
     ('tests.test_heightfield', 'ALL_HEIGHTFIELD_TESTS_PASSED', 'heightfield 地形生成器（短剧《最后一百公里》补件）'),
     ('tests.test_sandward', 'ALL_SANDWARD_TESTS_PASSED', '沙垒：场地/巡游/碰撞/UV 密度（纯数学）'),
     ('tests.test_proctex', 'ALL_PROCTEX_TESTS_PASSED', '程序化纹理 × PBR 图集（通道打包逐像素）'),
+    ('tests.test_voxel_mesh', 'ALL_VOXEL_MESH_TESTS_PASSED',
+     '体素网格化 v2（三轴贪心合并 / 无内部面 / 逐顶点 AO / 对角翻转）'),
 ]
 
 
