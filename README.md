@@ -102,7 +102,7 @@ scripts/
                        demo 脚手架已随 demo 迁往 3dworld-demos）
   new_kernel.py        脚手架：生成新玩法内核 + 配置树 + 单测，并登记三张表（--undo 可撤销）
   check_imports.py     全仓可达性门禁：world3d/ 下每个模块都 import 一遍（+ sys.path 不变量）
-  run_all_tests.py     32 个测试模块的聚合 runner（数字由 readme-test-modules 门禁钉住）
+  run_all_tests.py     33 个测试模块的聚合 runner（数字由 readme-test-modules 门禁钉住）
   migrate_p2_4.py      P2-4 的一次性迁移工具（保留以便复查改了什么）
 tests/               逻辑层无窗口单测：python -m tests.run_tests
 docs/                设计文档（渲染验证截图已随 demo 迁往 3dworld-demos）
@@ -119,7 +119,10 @@ docs/                设计文档（渲染验证截图已随 demo 迁往 3dworld
 - **后处理**：SSAO（半分辨率半球核）→ Bloom（软膝盖阈值 + Karis + 降采样/
   上采样金字塔）→ 曝光 / ACES / 暗角 / gamma
 - **资源与场景**：glTF 2.0 / GLB 加载（sparse、动画、PBR 材质）、Node 场景图、
-  GPU 实例化（一次 draw call 画 N 个）、视锥剔除（Gribb-Hartmann + p-顶点）
+  GPU 实例化（一次 draw call 画 N 个）、视锥剔除（Gribb-Hartmann + p-顶点）、
+  场景 JSON 的程序化几何生成器（当前 11 个：2026-10-20 起含 **`heightfield`
+  高度场地形**：`hm` 二维矩阵驱动 y、可被 Validate 直接校验，与纯平面的
+  `ground_grid` 互补；路网/河流在生成 `hm` 时把走廊压平即可）
 - **交互与物理**：轨道/第一人称漫游、射线拾取（AABB 粗测 + 三角形精测）、
   AABB 碰撞 + 重力 + 沿墙滑动
 - **工程化**：性能面板（p1/jank + GPU 计时查询）、场景 JSON 序列化 + 热重载、
@@ -300,6 +303,7 @@ python -m tests.test_meshopt        meshopt 顶点/索引解码：golden 对齐�
 python -m tests.test_source2_model  vmdl_c → MeshData 转换：合成容器 + 压缩路径（5 项）
 python -m tests.test_sandward       沙垒演示场：路线/巡游/碰撞/UV 密度/切线/POM（7 项，零 GL）
 python -m tests.test_proctex        程序化纹理 × PBR 图集：通道打包逐像素（4 项，零 GL）
+python -m tests.test_heightfield    heightfield 地形生成器：XZ 高度场拓扑/范围/UV/高程线性映射/法线朝向 + validate 放行与拦截二维 hm（7 项，零 GL）
 python -m tests.test_csm            级联阴影 CSM（20 项：分割/角点/光盒/纹素吸附/GLSL 展开）
 python -m tests.test_volumetrics    体积雾/光轴（12 项：闭式积分可加性/HG 归一/抖动同式/GLSL 组合）
 python -m tests.test_dof            景深 DoF（12 项：CoC/超焦距/景深端点恒等式/散景面积均匀）

@@ -3,6 +3,29 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [Unreleased]
+
+### Added
+
+- **`world3d/engine/geometry.heightfield`**（高度场地形生成器）：XZ 平面顶点网格，
+  y 由二维 `hm` 矩阵线性映射（`y_base + hm * height`），面积加权法线自动计算、
+  UV 随行列归一。与此前只有纯平面的 `ground_grid` 互补——真实起伏地形（戈壁、
+  沙丘、山丘）有了生成器；路网/河流在生成 `hm` 时把走廊压平即可。
+  已在 `__all__` 与 `scene_build.BUILDERS` 登记。
+- **`scene_build` 校验器支持二维数值网格参数**：新增 `_GRID_PARAMS = {'hm'}`，
+  `validate()` 能放行合规的高度场、并把 ragged / 含非数字 / 单行的坏 `hm` 拦成 error。
+- **`tests/test_heightfield.py`**（第 33 个测试模块，7 项，零 GL）：钉住拓扑计数、
+  XZ 范围与 UV、`y = y_base + hm*height` 线性映射、**法线朝向**（平地全为 `+y`、
+  斜坡 `ny>0` 且向 `-z` 倾，防"法线朝下导致 PBR 只吃环境光、地形发灰"回归），
+  以及 validate 对 `hm` 的放行/拦截；已登记进 `scripts/run_all_tests.py` 与 README。
+- 来由：短剧《最后一百公里》批量出片需要真实起伏地形，本仓库此前只有纯平面
+  `ground_grid`，故补一个可被场景 JSON 直接引用并通过 `validate()` 的高度场生成器。
+
+### Changed
+
+- `.gitignore` 增加 `probes/out/`：短剧渲染探针的产物（逐帧 PNG + 成片，
+  可达数百 MB）不入库，`probes/*.py` 可随时重渲。
+
 ## [0.3.0] — 2026-10-19 · 能力增厚三批（随本版发布）
 
 > 0.3.0 汇总自 0.2.0 以来的三次能力增厚，全部落 `logic/` 纯函数层

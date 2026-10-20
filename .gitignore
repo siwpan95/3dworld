@@ -45,3 +45,6 @@ assets/sfx/*.wav
 
 # boxward 关卡编辑器导出目录（用户产物）
 levels/
+
+# 短剧渲染探针的产物（probes/*.py 可重新渲染，体积数百 MB）
+probes/out/

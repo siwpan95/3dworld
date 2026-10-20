@@ -59,6 +59,8 @@ BUILDERS = {
     'cylinder':   (geometry.cylinder,   {'radius', 'height', 'segments', 'capped', 'color'}),
     'torus':      (geometry.torus,      {'major', 'minor', 'major_segs', 'minor_segs', 'color'}),
     'ground_grid': (geometry.ground_grid, {'half', 'tile', 'color_a', 'color_b'}),
+    'heightfield': (geometry.heightfield, {'hm', 'width', 'depth', 'height',
+                                           'color', 'y_base'}),
     'lathe':      (geometry.lathe,      {'profile', 'segments', 'closed_top',
                                          'closed_bottom', 'color'}),
     'tube':       (geometry.tube,       {'points', 'radius', 'radial', 'color', 'caps'}),
@@ -74,6 +76,8 @@ _ARRAY_LEN = {'color': (3, 4), 'offset': (3,), 'center': (3,),
               'color_a': (3, 4), 'color_b': (3, 4)}
 # 嵌套数组参数的逐元素长度约定（profile 的点是 [r,y]、points 的点是 [x,y,z]）
 _NESTED_LEN = {'profile': 2, 'points': 3}
+# 二维数值网格参数（heightfield 的 hm：行主序 [rows][cols] 数字矩阵）
+_GRID_PARAMS = {'hm'}
 
 
 def _to_tuple(v):
@@ -236,6 +240,15 @@ def validate(data):
                                               for p in v))
                                 if not ok:
                                     err(kp, f'应为 ≥2 个 {el} 元点数组')
+                            elif k in _GRID_PARAMS:
+                                ok = (isinstance(v, list) and len(v) >= 2
+                                      and all(isinstance(row, list)
+                                              and len(row) >= 2
+                                              and all(_is_num(x) for x in row)
+                                              for row in v)
+                                      and len({len(row) for row in v}) == 1)
+                                if not ok:
+                                    err(kp, '应为 ≥2 行、每行等长数字的二维矩阵')
                             elif not (_is_num(v) or isinstance(v, bool)):
                                 err(kp, '参数应为数字或布尔')
                         if 'color' in md and 'color' not in allowed:

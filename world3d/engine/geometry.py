@@ -15,7 +15,7 @@ from world3d.engine.mathkit import mat4_mul, mat4_inverse, normal_matrix
 
 __all__ = [
     'MeshData', 'box', 'cube', 'sphere', 'plane', 'cylinder', 'torus',
-    'ground_grid', 'fullscreen_quad', 'merge_meshes',
+    'ground_grid', 'heightfield', 'fullscreen_quad', 'merge_meshes',
     'lathe', 'torus_knot', 'tube',
 ]
 
@@ -401,6 +401,52 @@ def ground_grid(half=10, tile=1.0, color_a=(0.50, 0.53, 0.47),
             c = color_a if (ix + iz) % 2 == 0 else color_b
             colors += list(c) + [1.0]
     return MeshData(positions, normals, uvs, colors, name='ground')
+
+
+def heightfield(hm, width=60.0, depth=60.0, height=6.0, color=(0.42, 0.36, 0.28),
+                y_base=0.0):
+    """高度场地形（XZ 平面网格，y 由高度图驱动，索引化三角形）。
+
+    ``hm`` 是行主序二维序列（``hm[row][col]``，row 对应 -z 方向），取值 0..1
+    （也接受任意 float，线性映射 ``y_base + v * height``）。分辨率 =
+    ``len(hm) x len(hm[0])`` 个顶点；建议 64~128，再大顶点数平方增长。
+
+    与 ``ground_grid``（纯平面装饰）互补：本 builder 用于真实起伏的地形
+    （戈壁、沙丘、山丘），法线按三角形面积加权自动计算。路网/河流等
+    "挖"进地形的效果在生成 ``hm`` 时直接改高度值即可（走廊压平）。
+    """
+    rows = len(hm)
+    cols = len(hm[0])
+    w, d = float(width), float(depth)
+    x0, z0 = -w / 2.0, -d / 2.0
+    sx = w / (cols - 1)
+    sz = d / (rows - 1)
+
+    positions = []
+    for r in range(rows):
+        for c in range(cols):
+            positions += [x0 + c * sx,
+                          y_base + float(hm[r][c]) * height,
+                          z0 + r * sz]
+    indices = []
+    for r in range(rows - 1):
+        for c in range(cols - 1):
+            a = r * cols + c
+            b = a + 1
+            c2 = a + cols
+            d2 = c2 + 1
+            # 两个三角形，顶点序保持从 +y 往下看为逆时针（正面朝上）
+            indices += [a, c2, b, b, c2, d2]
+
+    uvs = []
+    for r in range(rows):
+        for c in range(cols):
+            uvs += [c / (cols - 1), r / (rows - 1)]
+
+    md = MeshData(positions, uvs=uvs, indices=indices, name='heightfield')
+    md.compute_normals()
+    md.with_color(color)
+    return md
 
 
 def fullscreen_quad():
