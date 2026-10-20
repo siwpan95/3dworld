@@ -6,8 +6,8 @@
     交互事件（互动/拾取） → arousal(intensity) 上升 → 引擎状态机
     EXPLORE ⇄ TENSION 平滑过渡（3s 交叉淡化）→ 实时音频输出
 
-- 后端：siwpan/audio-generation 的 `RealtimeMusicEngine`（MIT，自研；
-  `pip install -e G:\\repos\\audio-generation` 或等价安装）；
+- 后端：siwpan/bloodmusic（原 audio-generation）的 `RealtimeMusicEngine`（MIT，自研；
+  `pip install -e G:\\repos\\bloodmusic` 或等价安装）；
   **未安装/无音频设备时静默降级**（接口保持可用），`WORLD3D_BGM=0` 显式禁用；
 - `game_state = {"intensity": 0..1}`：默认 0.1（平静）；交互事件后短暂
   0.4~0.55（引擎阈值 `intensity>0.3 → TENSION`）；
