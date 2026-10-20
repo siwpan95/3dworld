@@ -103,7 +103,7 @@ scripts/
                        demo 脚手架已随 demo 迁往 3dworld-demos）
   new_kernel.py        脚手架：生成新玩法内核 + 配置树 + 单测，并登记三张表（--undo 可撤销）
   check_imports.py     全仓可达性门禁：world3d/ 下每个模块都 import 一遍（+ sys.path 不变量）
-  run_all_tests.py     33 个测试模块的聚合 runner（数字由 readme-test-modules 门禁钉住）
+  run_all_tests.py     34 个测试模块的聚合 runner（数字由 readme-test-modules 门禁钉住）
   migrate_p2_4.py      P2-4 的一次性迁移工具（保留以便复查改了什么）
 tests/               逻辑层无窗口单测：python -m tests.run_tests
 docs/                设计文档（渲染验证截图已随 demo 迁往 3dworld-demos）
