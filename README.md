@@ -324,7 +324,7 @@ python -m tests.test_jolt_lite      刚体 GJK-EPA 穿透深度：球/盒，含�
 python -m tests.test_box2d_lite     2D 序列冲量 solver：warm start + Baumgarte 偏置 + Coulomb 摩擦 + OBB-OBB SAT 裁剪流形（6 项，零 GL）
 python -m tests.test_ozz_lite       骨架 FK / clip 采样 lerp+slerp / 加权混合 / 加法 clip / joint-mask 分层 / root motion（7 项，零 GL）
 python -m tests.test_matcache_lite  材质变体键 JSON 确定性 → 产物 define 注入 + SHA-256 摘要 → 内存 LRU + 磁盘 pickle（6 项，零 GL）
-python -m tests.test_gltf_lite      glTF 2.0 数据模型 / 节点世界矩阵 FK / 扩展矩阵检测 / 轻量 schema 校验（7 项，零 GL）
+python -m tests.test_gltf_lite      glTF 2.0 真实 loader：数据模型/FK/扩展检测/校验 + accessor→numpy 解码/primitive 装配/.glb 二进制加载/skin+animation 提取（11 项，解码核心零 GL）
 python -m world3d.cli.frame_plan --all-toggles  帧图门禁：16 种效果组合的计划都必须合法且顺序正确
 python -m world3d.cli.config_boot all   9 个内核 + 13 共同核全部 headless 验收（10 棵树，逐项 OK 标记）
 python scripts\check_imports.py          全仓可达性门禁：world3d/ 下 117 个模块逐个 import

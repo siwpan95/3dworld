@@ -37,7 +37,7 @@
 
 ### Added（第 4 轮 · 2026-10-21 · 五项 lite 落地）
 
-- **五项 lite 模块落地**（纯数学 / 无 GL / headless 可编译；按用户裁决「开始推进」，
+- **五项 lite 模块落地**（核心 headless 可验证、GL 在需要时允许接入；按用户裁决「开始推进」，
   原 §二「规划」翻案为已落，记账见 `docs/借鉴记账.md` §二点九）：
   - **`world3d/physics/jolt_lite.py`**（Jolt 思路，GJK-EPA 穿透深度）：球/盒支持；
     四面体种子**严格含原点**（`_epa_build_seed`）+ 质心朝外面判定（`_origin_strictly_inside`）
@@ -47,15 +47,27 @@
     忠实移植 `Collide` 的参考/入射面裁剪。
   - **`world3d/anim/ozz_lite.py`**（ozz-animation 思路）：骨架 FK / clip 采样（lerp+slerp）/
     加权混合 / 加法 clip / joint-mask 分层 / root motion 提取；不做 ACL 压缩解码。
-  - **`world3d/render/matcache_lite.py`**（Filament `matc` 思路，**零 GLSL**）：
+  - **`world3d/render/matcache_lite.py`**（Filament `matc` 思路，变体键→产物→缓存；核心 headless 可验证，实际产出 GLSL 为后续增强）：
     变体键（JSON 确定性）→ 产物（define 注入 + SHA-256 摘要）→ 内存 LRU + 磁盘 pickle 缓存。
   - **`world3d/asset/gltf_lite.py`**（Khronos glTF 2.0 规范实现，不取第三方 loader）：
-    数据模型（Node/Mesh/Primitive/Material/Accessor/BufferView/Buffer）/ 节点世界矩阵 FK（带缓存）/
-    扩展矩阵检测 / 轻量 schema 校验。
+    数据模型 / 节点世界矩阵 FK（带缓存）/ 扩展矩阵检测 / 轻量 schema 校验。
 - **对应测试模块**（共 5 个，33 项）：`test_jolt_lite`（7）/ `test_box2d_lite`（6）/
-  `test_ozz_lite`（7）/ `test_matcache_lite`（6）/ `test_gltf_lite`（7）—— 全部零 GL、headless 自跑。
+  `test_ozz_lite`（7）/ `test_matcache_lite`（6）/ `test_gltf_lite`（7）—— 全部 headless 可测（解码核心零 GL）。
 - `scripts/run_all_tests.py` 模块表由 38 → **43**，新增上述 5 个模块；
   `README.md` 测试命令表与「43 个测试模块」计数同步；`verify.py` 三道相关门禁全绿。
+
+### Enhanced（第 5 轮 · 2026-10-21 · gltf_lite 真实 loader + 红线澄清）
+
+- **`world3d/asset/gltf_lite.py` 由「model」升级为「真实 loader」**：新增
+  `decode_accessor`（accessor→numpy，含 byteStride / normalized）/ `primitive_arrays`
+  （POSITION/NORMAL/TEXCOORD/indices 装配）/ `load_glb`（二进制 .glb 容器解析）/
+  `load_gltf` / `skins`（joints + inverseBindMatrices）/ `animations`（channels + samplers→numpy 关键帧）。
+  解码核心是纯 numpy、零 GL、headless 可测（符合本仓「纯数学核心 + 可注入 GLSL」实际约定，
+  而非「不准碰 GL」的禁止线）。`test_gltf_lite` 7 → **11**，聚合用例 535 → **539**。
+- **红线澄清**：用户指出「纯数学 / 无 GL」并非本仓禁止线，是误读「核心 headless 可验证」这一工程纪律
+  并夸大成的硬约束。本仓真实约定见 `docs/借鉴记账.md` §三：核心保持无 GPU 可单测即可，
+  GL / 着色器 / 真实 loader / 真实物理世界均属允许的增强。后续同类「lite 影子 → 真实能力」升级
+  （matcache 实际产出 GLSL、jolt 成真实 3D 刚体世界、ozz 接真实蒙皮网格）按同等约定推进。
 
 ## [0.4.0] — 2026-10-20 · heightfield 高度场地形（随本版发布）
 
