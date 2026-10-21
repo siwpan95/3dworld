@@ -403,7 +403,15 @@ def room_node(w=6.0, d=5.0, h=2.8, name='room'):
                  'mesh': {'builder': 'plane',
                           'args': {'width': w, 'depth': d, 'segs': 1,
                                    'color': [0.70, 0.68, 0.64]}},
-                 'material': wall}]}
+                 'material': wall},
+                {'name': 'ceiling_lamp', 'translation': [0, h - 0.04, 0],
+                 'mesh': {'builder': 'plane',
+                          'args': {'width': w * 0.5, 'depth': d * 0.35,
+                                   'segs': 1,
+                                   'color': [1.0, 0.94, 0.80]}},
+                 'material': {'preset': 'neon',
+                              'base_color': [1.0, 0.94, 0.80],
+                              'emissive': [2.2, 1.9, 1.2]}}]}
 
 
 def desk_node(x=0.0, z=-1.2, name='desk', w=1.9, d=0.9, h=0.76):
@@ -647,13 +655,14 @@ def build_scene(place, tod='day', seed=244, variant=0, **kw):
     if key in ('cab', 'boxbody', 'office'):
         # 内景：环境光来自天空球，夜景会闷死 —— 提曝光 + 提环境
         if tod == 'night':
-            exposure += 0.65
+            exposure += 0.85
             env['sky_intensity'] = min(env.get('sky_intensity', 1.0) + 0.35, 1.1)
             env['ibl_intensity'] = min(env.get('ibl_intensity', 1.0) + 0.25, 1.0)
         elif tod in ('dusk', 'dawn'):
             exposure += 0.35
     scene['_exposure'] = exposure
     scene['_place'] = key
+    scene['_tod'] = tod
     scene['_has_truck'] = truck
     return scene
 
@@ -724,7 +733,7 @@ PLACE_POSES = {
     'front': ['truck_front', 'close_detail', 'low_marker'],
     'cab': ['two_shot', 'driver', 'passenger'],
     'boxbody': ['wide', 'close_crate', 'two_shot'],
-    'office': ['wide', 'desk', 'paper'],
+    'office': ['wide', 'two_shot', 'desk'],
 }
 
 

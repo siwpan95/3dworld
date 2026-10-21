@@ -36,6 +36,7 @@ for _p in (ROOT, PROBES, _HERE, os.path.join(os.path.dirname(ROOT),
 import l100_render as R                          # noqa: E402
 import l100_tts as T                             # noqa: E402
 import l100_world as W                           # noqa: E402
+import l100_cast as C                            # noqa: E402
 
 from l100_render import ffmpeg_exe               # noqa: E402
 
@@ -193,19 +194,28 @@ def build_episode(ep, renderer, tts):
             png = os.path.join(fr_dir, f'{sid}_s{j}.png')
             if not os.path.exists(png):
                 renderer.shoot(pos, tgt, fov, png)
+            # ---- 角色合成（出场名单 + 构图允许时）----
+            cast = C.cast_for(sc['blocks'], scene['_place'], pn)
+            if cast:
+                png_c = png[:-4] + '_cast.png'
+                if not os.path.exists(png_c):
+                    C.composite(png, cast, png_c, tod=scene['_tod'])
+                png = png_c
             shots.append(png)
 
         # -------- 运镜分段 --------
         per = max(dur / len(shots), MIN_SHOT)
         segs = []
+        has_cast = any('_cast' in p for p in shots)
         for j, png in enumerate(shots):
             mv = MOVES[(i * 2 + j) % len(MOVES)]
-            mp4 = os.path.join(seg_dir, f'{sid}_s{j}_f{FPS}.mp4')
+            ctag = '_c' if '_cast' in png else ''
+            mp4 = os.path.join(seg_dir, f'{sid}_s{j}{ctag}_f{FPS}.mp4')
             seg_len = per if j < len(shots) - 1 else max(dur - per * (len(shots) - 1), MIN_SHOT)
             if not os.path.exists(mp4):
                 R.kenburns(png, seg_len, mp4, size=SIZE, move=mv, fps=FPS)
             segs.append(mp4)
-        scene_mp4 = os.path.join(seg_dir, f'{sid}.mp4')
+        scene_mp4 = os.path.join(seg_dir, f'{sid}{"_c" if has_cast else ""}.mp4')
         if not os.path.exists(scene_mp4):
             R.concat_videos(segs, scene_mp4, fade=0.35)
         seg_videos.append(scene_mp4)
