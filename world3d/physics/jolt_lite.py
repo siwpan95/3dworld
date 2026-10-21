@@ -1,17 +1,20 @@
 # -*- coding: utf-8 -*-
-"""Jolt-lite：轻量 3D 刚体物理核心（纯数学 / 无 GL）。
+"""Jolt-lite：轻量 3D 刚体物理世界（真实求解，核心 headless 可测）。
 
-按 3dworld engine 层「纯数学 / 无 GL / headless 可编译校验」定位实现。
+按 3dworld engine 层「核心 headless 可验证（纯数学核心 + 可注入 GLSL）」约定实现——
+求解核心是纯 numpy、零 GL、可在无 GPU 下跑断言；GL/渲染是消费方的事。
 借鉴 **Jolt Physics**（MIT，算法档）的若干核心概念自研：
 
 * 凸体支撑函数（support mapping）→ GJK 求最近距离 / 穿透判定；
-* EPA（Expanding Polytope Algorithm）求穿透深度与法线；
-* 顺序冲量（sequential impulse）+ warm start（累积冲量）+ Baumgarte 位置修正；
+* EPA（Expanding Polytope Algorithm）求穿透深度与法线（四面体种子严格含原点 + 有向边 horizon）；
+* 解析接触流形（球-球 / 球-盒 / 盒-盒 AABB）+ **通用凸体 GJK/EPA 兜底**（胶囊 / 旋转盒 / 任意混合对）；
+* 顺序冲量（sequential impulse）+ warm start（累积冲量）+ Baumgarte 位置修正
+  **+ Coulomb 摩擦 + 回弹（restitution）**；
 * 刚体休眠（sleeping）：低动能持续若干帧后跳过积分。
 
-**不搬 Jolt 的 C++ 源码、不照搬命名/结构**，仅自研其公开算法思路。
-本模块刻意只做 headless 可行的子集（球 / 盒 / 胶囊 + 地面 + 基础求解），
-完整物理后端（约束 / 车辆 / 软体等）留待运行时层，详见 docs/借鉴记账.md §二点二。
+**不搬 Jolt 的 C++ 源码、不照搬命名/结构**，仅自研其公开算法思路。胶囊 / 旋转盒等此前走
+AABB 近似或返回 None，现已由 GJK/EPA 兜底覆盖；完整物理后端（约束 / 车辆 / 软体等）仍属运行时层，
+见 docs/借鉴记账.md。
 """
 from __future__ import annotations
 
@@ -100,16 +103,15 @@ class Capsule(Shape):
         self.hh = float(half_height)
 
     def local_support(self, d_local):
+        # 胶囊 = 线段 ⊕ 球：support = 线段端点(沿轴) + r·normalize(d)。
+        # 线段沿局部 +Y，端点 y = ±hh；球部分贡献 r·normalize(d)（含 Y 分量）。
         d = np.asarray(d_local, dtype=float)
-        y = d[1]
-        seg = self.hh if y >= 0 else -self.hh
-        # 线段端点 + 半径方向（径向分量）
-        radial = d.copy()
-        radial[1] = 0.0
-        rn = np.linalg.norm(radial)
-        if rn < _EPS:
-            return np.array([0.0, seg, 0.0])  # 纯轴向：半球不沿轴超出端点
-        return np.array([0.0, seg, 0.0]) + radial / rn * self.radius
+        n = np.linalg.norm(d)
+        if n < _EPS:
+            return np.zeros(3)
+        u = d / n
+        seg_y = self.hh if u[1] >= 0 else -self.hh
+        return np.array([0.0, seg_y, 0.0]) + self.radius * u
 
 
 # --------------------------------------------------------- 变换 / 刚体 --
@@ -128,7 +130,8 @@ class RigidBody:
     _next_id = 0
 
     def __init__(self, shape, mass=1.0, pos=(0.0, 0.0, 0.0), quat=(1.0, 0.0, 0.0, 0.0),
-                 vel=(0.0, 0.0, 0.0), ang_vel=(0.0, 0.0, 0.0), is_static=False):
+                 vel=(0.0, 0.0, 0.0), ang_vel=(0.0, 0.0, 0.0), is_static=False,
+                 friction=0.5, restitution=0.0):
         self.id = RigidBody._next_id
         RigidBody._next_id += 1
         self.shape = shape
@@ -147,6 +150,8 @@ class RigidBody:
             self.inv_mass = 1.0 / mass
             self.inv_inertia_local = self._inertia_inv(mass)
         self._mass = mass
+        self.friction = float(friction)
+        self.restitution = float(restitution)
 
     def _inertia_inv(self, mass):
         s = self.shape
@@ -223,7 +228,8 @@ def _tri_closest(p, a, b, c):
         return b, [b]
     vc = d1 * d4 - d3 * d2
     if vc <= 0 and d1 >= 0 and d3 <= 0:
-        t = d1 / (d1 - d3)
+        denom_13 = d1 - d3
+        t = 0.5 if abs(denom_13) < _EPS else d1 / denom_13
         return a + t * (b - a), [a, b]
     cp = p - c
     d5 = np.dot(ab, cp)
@@ -485,6 +491,12 @@ def epa(shape_a, shape_b, xf_a, xf_b, simplex0=None, max_iter=64):
 
 
 # ------------------------------------------------------- 世界 / 求解 --
+def _is_axis_aligned(xf):
+    """判定变换是否近似未旋转（轴对齐）。允许 w≈±1 且虚部≈0。"""
+    q = np.asarray(xf.quat, dtype=float)
+    return abs(abs(q[0]) - 1.0) < 1e-6 and np.linalg.norm(q[1:4]) < 1e-6
+
+
 def manifold(a, b):
     """解析接触流形：返回 (normal_b_to_a, point, depth) 或 None（未碰撞）。
 
@@ -527,25 +539,42 @@ def manifold(a, b):
         n, point, depth = m
         return -n, point, depth  # 翻转法线为 b->a
     if isinstance(sa, Box) and isinstance(sb, Box):
-        half_a, half_b = sa.h, sb.h
-        lo_a, hi_a = ca - half_a, ca + half_a
-        lo_b, hi_b = cb - half_b, cb + half_b
-        if np.any(hi_a <= lo_b) or np.any(hi_b <= lo_a):
-            return None
-        # 沿各轴的穿透深度，取最小为分离轴
-        pen = np.minimum(hi_a, hi_b) - np.maximum(lo_a, lo_b)
-        ax = int(np.argmin(pen))
-        n = np.zeros(3)
-        mid_a, mid_b = (lo_a + hi_a) / 2, (lo_b + hi_b) / 2
-        n[ax] = 1.0 if mid_a[ax] >= mid_b[ax] else -1.0
-        point = (np.maximum(lo_a, lo_b) + np.minimum(hi_a, hi_b)) / 2
-        return n, point, pen[ax]
-    # 胶囊等其余形体对暂走 GJK/EPA（见 epa()）
-    return None
+        # 轴对齐盒用解析 AABB 流形（稳健、单接触点）；任一方旋转则走
+        # GJK/EPA 兜底以尊重真实朝向（旋转盒）。
+        if _is_axis_aligned(a.xf) and _is_axis_aligned(b.xf):
+            half_a, half_b = sa.h, sb.h
+            lo_a, hi_a = ca - half_a, ca + half_a
+            lo_b, hi_b = cb - half_b, cb + half_b
+            if np.any(hi_a <= lo_b) or np.any(hi_b <= lo_a):
+                return None
+            # 沿各轴的穿透深度，取最小为分离轴
+            pen = np.minimum(hi_a, hi_b) - np.maximum(lo_a, lo_b)
+            ax = int(np.argmin(pen))
+            n = np.zeros(3)
+            mid_a, mid_b = (lo_a + hi_a) / 2, (lo_b + hi_b) / 2
+            n[ax] = 1.0 if mid_a[ax] >= mid_b[ax] else -1.0
+            point = (np.maximum(lo_a, lo_b) + np.minimum(hi_a, hi_b)) / 2
+            return n, point, pen[ax]
+    # 通用凸体兜底：GJK + EPA 求穿透法线/深度，覆盖胶囊 / 旋转盒 / 任意混合对。
+    # 注：EPA 对「极扁/极大 AABB 地面盒」数值条件差（Minkowski 差过度拉长）；
+    # 轴对齐巨地面盒本就走上方解析 AABB 路径，胶囊等圆润体走 EPA 仍稳健。
+    colliding, simplex = _gjk(sa, sb, a.xf, b.xf)
+    if not colliding:
+        return None
+    n, depth = epa(sa, sb, a.xf, b.xf, simplex)
+    nn = np.linalg.norm(n)
+    if nn < _EPS:
+        return None
+    n = n / nn
+    if np.dot(n, ca - cb) < 0:
+        n = -n            # 统一为 b → a
+    point = ca - n * (depth * 0.5)
+    return n, point, float(depth)
 
 
 class Contact:
-    __slots__ = ('a', 'b', 'point', 'normal', 'depth', 'pn')
+    __slots__ = ('a', 'b', 'point', 'normal', 'depth', 'pn',
+                 'pt', 'tangent', 'friction', 'restitution', 'vn0')
 
     def __init__(self, a, b, point, normal, depth):
         self.a = a
@@ -553,7 +582,12 @@ class Contact:
         self.point = np.asarray(point, dtype=float)
         self.normal = np.asarray(normal, dtype=float)  # 由 b 指向 a
         self.depth = float(depth)
-        self.pn = 0.0  # 累积法向冲量（warm start）
+        self.pn = 0.0    # 累积法向冲量（warm start）
+        self.pt = 0.0    # 累积切向（摩擦）冲量
+        self.tangent = None
+        self.friction = 0.5
+        self.restitution = 0.0
+        self.vn0 = 0.0    # 接触前法向相对速度（回弹目标）
 
 
 class World:
@@ -597,6 +631,12 @@ class World:
             n, point, depth = m
             key = (bi.id, bj.id)
             c = Contact(bi, bj, point, n, depth)
+            c.friction = (bi.friction * bj.friction) ** 0.5
+            c.restitution = max(bi.restitution, bj.restitution)
+            ra = point - bi.xf.pos
+            rb = point - bj.xf.pos
+            rv0 = (bi.vel + np.cross(bi.ang_vel, ra)) - (bj.vel + np.cross(bj.ang_vel, rb))
+            c.vn0 = float(np.dot(rv0, n))
             prev = self._contacts.get(key)
             if prev is not None:
                 c.pn = prev.pn  # warm start
@@ -652,22 +692,23 @@ class World:
         n = c.normal
         ra = c.point - a.xf.pos
         rb = c.point - b.xf.pos
+        inv_a = a.inv_inertia_world()
+        inv_b = b.inv_inertia_world()
+        # ---- 法向（含回弹 + Baumgarte 位置偏置）----
         va = a.vel + np.cross(a.ang_vel, ra)
         vb = b.vel + np.cross(b.ang_vel, rb)
         rv = va - vb
         vn = np.dot(rv, n)
-        inv_a = a.inv_inertia_world()
-        inv_b = b.inv_inertia_world()
         rn_a = np.cross(ra, n)
         rn_b = np.cross(rb, n)
-        denom = a.inv_mass + b.inv_mass \
+        denom_n = a.inv_mass + b.inv_mass \
             + np.dot(rn_a, inv_a @ rn_a) + np.dot(rn_b, inv_b @ rn_b)
-        if denom < _EPS:
+        if denom_n < _EPS:
             return
+        rest_target = -c.restitution * min(c.vn0, 0.0)
         bias = (self.baumgarte / dt) * max(0.0, c.depth - self.slop)
-        # 解出后法向速度应为 +bias（分离），故 j = (bias - vn)：
-        # 接近时 vn<0 → j>0 把球推离；偏置提供位置修正的分离速度。
-        j = (bias - vn) / denom
+        target = rest_target + bias
+        j = (target - vn) / denom_n
         j_old = c.pn
         c.pn = max(j_old + j, 0.0)
         dj = c.pn - j_old
@@ -676,6 +717,35 @@ class World:
         a.ang_vel += inv_a @ np.cross(ra, imp)
         b.vel -= b.inv_mass * imp
         b.ang_vel -= inv_b @ np.cross(rb, imp)
+        # ---- 摩擦（Coulomb：切向冲量夹紧到 ±μ·pn）----
+        if c.friction <= 0.0:
+            return
+        va = a.vel + np.cross(a.ang_vel, ra)
+        vb = b.vel + np.cross(b.ang_vel, rb)
+        rv = va - vb
+        vn = np.dot(rv, n)
+        t = rv - vn * n
+        tl = np.linalg.norm(t)
+        if tl < _EPS:
+            return
+        t = t / tl
+        rt_a = np.cross(ra, t)
+        rt_b = np.cross(rb, t)
+        denom_t = a.inv_mass + b.inv_mass \
+            + np.dot(rt_a, inv_a @ rt_a) + np.dot(rt_b, inv_b @ rt_b)
+        if denom_t < _EPS:
+            return
+        vt = np.dot(rv, t)
+        jt = -vt / denom_t
+        max_f = c.friction * c.pn
+        pt_old = c.pt
+        c.pt = np.clip(pt_old + jt, -max_f, max_f)
+        djt = c.pt - pt_old
+        imt = djt * t
+        a.vel += a.inv_mass * imt
+        a.ang_vel += inv_a @ np.cross(ra, imt)
+        b.vel -= b.inv_mass * imt
+        b.ang_vel -= inv_b @ np.cross(rb, imt)
 
     def wake(self, body):
         body.sleeping = False

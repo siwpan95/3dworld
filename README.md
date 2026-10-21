@@ -320,10 +320,10 @@ python -m tests.test_compat         旧路径兼容层（6 项：install 前后�
 python -m tests.test_voxel_mesh     体素网格化 v2：三轴贪心合并/无内部面/逐顶点 AO/对角翻转（12 项，零 GL）
 python -m tests.test_binary_greedy  体素二进制贪心网格化：uint64 位掩码 + quadtree 全覆盖合并/精确覆盖/三轴贪心对照（13 项，零 GL）
 python -m tests.test_terrain_clipmap 几何 clipmap：嵌套 ring 网格/刚性吸附/顶点位移/层数与 annulus 拓扑（15 项，零 GL）
-python -m tests.test_jolt_lite      刚体 GJK-EPA 穿透深度：球/盒，含四面体种子严格含原点 + 有向边 horizon 扩张（7 项，零 GL）
+python -m tests.test_jolt_lite      3D 刚体世界：GJK-EPA 穿透（四面体种子严格含原点 + 有向边 horizon 扩张）+ 顺序冲量 + warm start + Baumgarte + Coulomb 摩擦 + 回弹；胶囊/旋转盒经 GJK-EPA 兜底（核心零 GL，headless 可验证；GL 系消费方事）（11 项）
 python -m tests.test_box2d_lite     2D 序列冲量 solver：warm start + Baumgarte 偏置 + Coulomb 摩擦 + OBB-OBB SAT 裁剪流形（6 项，零 GL）
 python -m tests.test_ozz_lite       骨架 FK / clip 采样 lerp+slerp / 加权混合 / 加法 clip / joint-mask 分层 / root motion（7 项，零 GL）
-python -m tests.test_matcache_lite  材质变体键 JSON 确定性 → 产物 define 注入 + SHA-256 摘要 → 内存 LRU + 磁盘 pickle（6 项，零 GL）
+python -m tests.test_matcache_lite  材质变体键 JSON 确定性 → 产物 define 注入 + SHA-256 摘要 → 内存 LRU + 磁盘 pickle；变体实际编译为 GLSL 顶点/片段着色器源串（SKINNING/FOG/ALPHA_TEST/NUM_LIGHTS 驱动，可注入 GL，不调编译器）（11 项，解码核心零 GL）
 python -m tests.test_gltf_lite      glTF 2.0 真实 loader：数据模型/FK/扩展检测/校验 + accessor→numpy 解码/primitive 装配/.glb 二进制加载/skin+animation 提取（11 项，解码核心零 GL）
 python -m world3d.cli.frame_plan --all-toggles  帧图门禁：16 种效果组合的计划都必须合法且顺序正确
 python -m world3d.cli.config_boot all   9 个内核 + 13 共同核全部 headless 验收（10 棵树，逐项 OK 标记）

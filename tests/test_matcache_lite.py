@@ -14,7 +14,8 @@ import tempfile
 import numpy as np
 
 from world3d.render.matcache_lite import (
-    MaterialCache, MaterialDef, Variant, compile_variant, make_key,
+    MaterialCache, MaterialDef, Variant, compile_variant, compile_glsl,
+    GLSLProgram, make_key,
 )
 
 
@@ -88,6 +89,62 @@ def test_lru_eviction():
     # 容量 3，最多保留 3 个
     assert len(c._store) <= 3, len(c._store)
     assert len(c._store) == 3
+
+
+def _gmat():
+    return MaterialDef(
+        "lit_glsl",
+        features=("SKINNING", "FOG", "NORMAL_MAP", "ALPHA_TEST"),
+        params={"NUM_LIGHTS": 4, "BASE_COLOR": [1.0, 0.0, 0.0, 1.0]},
+    )
+
+
+def test_glsl_emits_vertex_with_skinning():
+    m = _gmat()
+    v = Variant(enabled=("SKINNING",), params={})
+    prog = compile_glsl(m, v)
+    assert isinstance(prog, GLSLProgram)
+    assert "#ifdef SKINNING" in prog.vertex
+    assert "u_jointMatrices" in prog.vertex
+    assert "gl_Position" in prog.vertex
+
+
+def test_glsl_num_lights_loop_bound():
+    m = _gmat()
+    v = Variant(enabled=(), params={"NUM_LIGHTS": 3})
+    prog = compile_glsl(m, v)
+    assert "i < 3" in prog.fragment
+    assert "u_lightPos[3]" in prog.fragment
+    assert "u_lightColor[3]" in prog.fragment
+
+
+def test_glsl_fog_and_alpha_blocks():
+    m = _gmat()
+    v = Variant(enabled=("FOG", "ALPHA_TEST"), params={})
+    prog = compile_glsl(m, v)
+    assert "#ifdef FOG" in prog.fragment
+    assert "u_fogColor" in prog.fragment
+    assert "#ifdef ALPHA_TEST" in prog.fragment
+    assert "discard" in prog.fragment
+
+
+def test_glsl_base_color_literal():
+    m = _gmat()
+    v = Variant(enabled=(), params={"BASE_COLOR": [0.0, 0.5, 1.0, 1.0]})
+    prog = compile_glsl(m, v)
+    assert "vec4(0.0, 0.5, 1.0, 1.0)" in prog.fragment
+
+
+def test_glsl_deterministic_and_cached():
+    m = _gmat()
+    v = Variant(enabled=("SKINNING", "FOG"), params={"NUM_LIGHTS": 2})
+    p1 = compile_glsl(m, v)
+    p2 = compile_glsl(m, v)
+    assert p1 == p2 and p1.digest == p2.digest
+    c = MaterialCache()
+    a = c.get_glsl(m, v)
+    b = c.get_glsl(m, v)   # 命中
+    assert a == b and c.hits == 1 and c.misses == 1, c.stats()
 
 
 def main() -> int:
