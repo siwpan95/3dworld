@@ -90,6 +90,10 @@ MODULES = [
     ('tests.test_proctex', 'ALL_PROCTEX_TESTS_PASSED', '程序化纹理 × PBR 图集（通道打包逐像素）'),
     ('tests.test_voxel_mesh', 'ALL_VOXEL_MESH_TESTS_PASSED',
      '体素网格化 v2（三轴贪心合并 / 无内部面 / 逐顶点 AO / 对角翻转）'),
+    ('tests.test_binary_greedy', 'ALL_BINARY_GREEDY_TESTS_PASSED',
+     '体素二进制贪心网格化（uint64 位掩码 + quadtree 全覆盖合并 / 精确覆盖）'),
+    ('tests.test_terrain_clipmap', 'ALL_TERRAIN_CLIPMAP_TESTS_PASSED',
+     '几何 clipmap（嵌套 ring 网格 / 刚性吸附 / 顶点位移，纯数学）'),
 ]
 
 

@@ -107,7 +107,7 @@ scripts/
                        demo 脚手架已随 demo 迁往 3dworld-demos）
   new_kernel.py        脚手架：生成新玩法内核 + 配置树 + 单测，并登记三张表（--undo 可撤销）
   check_imports.py     全仓可达性门禁：world3d/ 下每个模块都 import 一遍（+ sys.path 不变量）
-  run_all_tests.py     36 个测试模块的聚合 runner（数字由 readme-test-modules 门禁钉住）
+  run_all_tests.py     38 个测试模块的聚合 runner（数字由 readme-test-modules 门禁钉住）
   migrate_p2_4.py      P2-4 的一次性迁移工具（保留以便复查改了什么）
 tests/               逻辑层无窗口单测：python -m tests.run_tests
 docs/                设计文档（渲染验证截图已随 demo 迁往 3dworld-demos）
@@ -318,6 +318,8 @@ python -m tests.test_framegraph_v2  帧图 v2（11 项：生命周期推导/别�
 python -m tests.test_terrain_lod    CDLOD 地形（18 项：选层无缝无重叠/相邻层差≤1/morph 消缝/三角数亚线性/模板网格）
 python -m tests.test_compat         旧路径兼容层（6 项：install 前后不可用/同一性/不被劫持）
 python -m tests.test_voxel_mesh     体素网格化 v2：三轴贪心合并/无内部面/逐顶点 AO/对角翻转（12 项，零 GL）
+python -m tests.test_binary_greedy  体素二进制贪心网格化：uint64 位掩码 + quadtree 全覆盖合并/精确覆盖/三轴贪心对照（13 项，零 GL）
+python -m tests.test_terrain_clipmap 几何 clipmap：嵌套 ring 网格/刚性吸附/顶点位移/层数与 annulus 拓扑（15 项，零 GL）
 python -m world3d.cli.frame_plan --all-toggles  帧图门禁：16 种效果组合的计划都必须合法且顺序正确
 python -m world3d.cli.config_boot all   9 个内核 + 13 共同核全部 headless 验收（10 棵树，逐项 OK 标记）
 python scripts\check_imports.py          全仓可达性门禁：world3d/ 下 117 个模块逐个 import
