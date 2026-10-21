@@ -94,6 +94,16 @@ MODULES = [
      '体素二进制贪心网格化（uint64 位掩码 + quadtree 全覆盖合并 / 精确覆盖）'),
     ('tests.test_terrain_clipmap', 'ALL_TERRAIN_CLIPMAP_TESTS_PASSED',
      '几何 clipmap（嵌套 ring 网格 / 刚性吸附 / 顶点位移，纯数学）'),
+    ('tests.test_jolt_lite', 'ALL_JOLT_LITE_TESTS_PASSED',
+     '刚体 GJK-EPA 穿透深度（Jolt 思路子集，纯数学）'),
+    ('tests.test_box2d_lite', 'ALL_BOX2D_LITE_TESTS_PASSED',
+     '2D 序列冲量 solver + OBB 裁剪（Box2D-lite 思路，零 GL）'),
+    ('tests.test_ozz_lite', 'ALL_OZZ_LITE_TESTS_PASSED',
+     '骨架 FK / 采样 / 混合 / 分层 / 加法 / root motion（ozz 思路）'),
+    ('tests.test_matcache_lite', 'ALL_MATCACHE_LITE_TESTS_PASSED',
+     '材质变体键 → 产物 → 磁盘缓存（Filament matc 思路，零 GLSL）'),
+    ('tests.test_gltf_lite', 'ALL_GLTF_LITE_TESTS_PASSED',
+     'glTF 2.0 数据模型 / 节点 FK / 扩展矩阵（Khronos 规范实现）'),
 ]
 
 

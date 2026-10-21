@@ -107,7 +107,7 @@ scripts/
                        demo 脚手架已随 demo 迁往 3dworld-demos）
   new_kernel.py        脚手架：生成新玩法内核 + 配置树 + 单测，并登记三张表（--undo 可撤销）
   check_imports.py     全仓可达性门禁：world3d/ 下每个模块都 import 一遍（+ sys.path 不变量）
-  run_all_tests.py     38 个测试模块的聚合 runner（数字由 readme-test-modules 门禁钉住）
+  run_all_tests.py     43 个测试模块的聚合 runner（数字由 readme-test-modules 门禁钉住）
   migrate_p2_4.py      P2-4 的一次性迁移工具（保留以便复查改了什么）
 tests/               逻辑层无窗口单测：python -m tests.run_tests
 docs/                设计文档（渲染验证截图已随 demo 迁往 3dworld-demos）
@@ -320,6 +320,11 @@ python -m tests.test_compat         旧路径兼容层（6 项：install 前后�
 python -m tests.test_voxel_mesh     体素网格化 v2：三轴贪心合并/无内部面/逐顶点 AO/对角翻转（12 项，零 GL）
 python -m tests.test_binary_greedy  体素二进制贪心网格化：uint64 位掩码 + quadtree 全覆盖合并/精确覆盖/三轴贪心对照（13 项，零 GL）
 python -m tests.test_terrain_clipmap 几何 clipmap：嵌套 ring 网格/刚性吸附/顶点位移/层数与 annulus 拓扑（15 项，零 GL）
+python -m tests.test_jolt_lite      刚体 GJK-EPA 穿透深度：球/盒，含四面体种子严格含原点 + 有向边 horizon 扩张（7 项，零 GL）
+python -m tests.test_box2d_lite     2D 序列冲量 solver：warm start + Baumgarte 偏置 + Coulomb 摩擦 + OBB-OBB SAT 裁剪流形（6 项，零 GL）
+python -m tests.test_ozz_lite       骨架 FK / clip 采样 lerp+slerp / 加权混合 / 加法 clip / joint-mask 分层 / root motion（7 项，零 GL）
+python -m tests.test_matcache_lite  材质变体键 JSON 确定性 → 产物 define 注入 + SHA-256 摘要 → 内存 LRU + 磁盘 pickle（6 项，零 GL）
+python -m tests.test_gltf_lite      glTF 2.0 数据模型 / 节点世界矩阵 FK / 扩展矩阵检测 / 轻量 schema 校验（7 项，零 GL）
 python -m world3d.cli.frame_plan --all-toggles  帧图门禁：16 种效果组合的计划都必须合法且顺序正确
 python -m world3d.cli.config_boot all   9 个内核 + 13 共同核全部 headless 验收（10 棵树，逐项 OK 标记）
 python scripts\check_imports.py          全仓可达性门禁：world3d/ 下 117 个模块逐个 import

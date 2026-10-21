@@ -35,6 +35,28 @@
 - `LodConfig.grid` 必须是偶数：morph 的前提是细层顶点能落在父层格点上，
   奇数格的最外一条边吸不过去，会直接开裂（`__post_init__` 已拦）。
 
+### Added（第 4 轮 · 2026-10-21 · 五项 lite 落地）
+
+- **五项 lite 模块落地**（纯数学 / 无 GL / headless 可编译；按用户裁决「开始推进」，
+  原 §二「规划」翻案为已落，记账见 `docs/借鉴记账.md` §二点九）：
+  - **`world3d/physics/jolt_lite.py`**（Jolt 思路，GJK-EPA 穿透深度）：球/盒支持；
+    四面体种子**严格含原点**（`_epa_build_seed`）+ 质心朝外面判定（`_origin_strictly_inside`）
+    + 有向边 horizon 扩张（`_epa_expand`），修正此前 EPA 振荡/原点外仍判含的缺陷。
+  - **`world3d/physics/box2d_lite.py`**（Box2D-lite 思路，2D 序列冲量 solver）：
+    warm start + Baumgarte 偏置 + Coulomb 摩擦；OBB-OBB SAT + incident-edge 裁剪流形，
+    忠实移植 `Collide` 的参考/入射面裁剪。
+  - **`world3d/anim/ozz_lite.py`**（ozz-animation 思路）：骨架 FK / clip 采样（lerp+slerp）/
+    加权混合 / 加法 clip / joint-mask 分层 / root motion 提取；不做 ACL 压缩解码。
+  - **`world3d/render/matcache_lite.py`**（Filament `matc` 思路，**零 GLSL**）：
+    变体键（JSON 确定性）→ 产物（define 注入 + SHA-256 摘要）→ 内存 LRU + 磁盘 pickle 缓存。
+  - **`world3d/asset/gltf_lite.py`**（Khronos glTF 2.0 规范实现，不取第三方 loader）：
+    数据模型（Node/Mesh/Primitive/Material/Accessor/BufferView/Buffer）/ 节点世界矩阵 FK（带缓存）/
+    扩展矩阵检测 / 轻量 schema 校验。
+- **对应测试模块**（共 5 个，33 项）：`test_jolt_lite`（7）/ `test_box2d_lite`（6）/
+  `test_ozz_lite`（7）/ `test_matcache_lite`（6）/ `test_gltf_lite`（7）—— 全部零 GL、headless 自跑。
+- `scripts/run_all_tests.py` 模块表由 38 → **43**，新增上述 5 个模块；
+  `README.md` 测试命令表与「43 个测试模块」计数同步；`verify.py` 三道相关门禁全绿。
+
 ## [0.4.0] — 2026-10-20 · heightfield 高度场地形（随本版发布）
 
 ### Added
