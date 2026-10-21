@@ -186,10 +186,15 @@ class Sampler:
     """
 
     def __init__(self, times, values, interpolation='LINEAR'):
-        assert len(times) == len(values) and len(times) >= 1
-        assert all(times[i] < times[i + 1] for i in range(len(times) - 1)), \
-            'input 时间戳必须严格递增'
-        assert interpolation in INTERPOLATIONS, f'未知插值方式: {interpolation}'
+        # 用 ValueError 而非 assert：assert 在 python -O 下整段消失，
+        # 坏数据会静默流入插值（时间戳乱序时采样结果无意义且难查）。
+        if len(times) != len(values) or len(times) < 1:
+            raise ValueError(
+                f'关键帧数不匹配或为空：{len(times)} times vs {len(values)} values')
+        if not all(times[i] < times[i + 1] for i in range(len(times) - 1)):
+            raise ValueError('input 时间戳必须严格递增')
+        if interpolation not in INTERPOLATIONS:
+            raise ValueError(f'未知插值方式: {interpolation}')
         self.times = list(times)
         # 普通模式下把裸三元组规整成 Vec3：手写关键帧时 (x,y,z) 比 Vec3(...) 顺手，
         # 但插值分支要按类型走，统一进来省得调用方踩"tuple 没有 .x"的坑。
@@ -293,7 +298,8 @@ class Channel:
              'sun_intensity', 'sun_dir', 'ibl_intensity', 'sky_intensity')
 
     def __init__(self, node, prop, sampler):
-        assert prop in self.PROPS, f'未知属性: {prop}'
+        if prop not in self.PROPS:
+            raise ValueError(f'未知属性: {prop}')
         self.node = node
         self.prop = prop
         self.sampler = sampler
@@ -307,7 +313,8 @@ class Timeline:
     """时间轴：播头推进（循环）+ 全通道采样。"""
 
     def __init__(self, duration, channels):
-        assert duration > 0
+        if not duration > 0:
+            raise ValueError(f'duration 必须为正，收到 {duration!r}')
         self.duration = duration
         self.channels = list(channels)
         self.playhead = 0.0

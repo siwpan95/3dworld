@@ -5,6 +5,47 @@
 
 ## [Unreleased] — CDLOD 地形 LOD（待发版）
 
+### Fixed（《四境》纪录片压测反哺 · 2026-10-21）
+
+> 压测入口：影片项目 `tests/smoke_world3d.py`（255 → **258/258** 通过）；
+> 仓库自带测试 41/42 通过（`test_compat` 失败为「仓库根目录 + 旧式顶层包」
+> 同存导致的环境性预存问题，与本次改动无关，已用 stash A/B 证实）。
+
+- **`geometry.MeshData` 拒绝 numpy 数组（缺陷 1）**：`if normals` 对 ndarray
+  触发「truth value ambiguous」ValueError，8 个字段全有同样问题；且
+  `list(np.zeros((4,3)))` 只得到 4 个行向量，`vertex_count` 会算成 1。
+  新增 `_flat()` 归一化：ndarray 先 `ravel().tolist()`，判空一律
+  `is not None`。库内构造函数只传 list，这条路径从未被自己走过，
+  但"喂 ndarray"是最自然的用法
+- **`texproj` 两套点表示不兼容（缺陷 2）**：`fit_projection` 按元组索引
+  `p[0], p[1], p[2]`，而 `MeshData.positions` 是扁平 3N——直传必炸
+  `'float' object is not subscriptable`。新增 `_as_points()` / `_as_uvs()`
+  归一化助手，两种表示（扁平 3N/2N 与 (x,y,z)/(u,v) 元组）通用，
+  `fit_projection(mesh.positions, mesh.uvs)` 开箱可用；点数与 UV 数
+  不匹配时给出明确 ValueError（旧行为静默截断喂假解）
+- **`texproj.uv_for_faces` 无 indices 时静默产出错误 UV（缺陷 3）**：
+  4 顶点无索引网格被当成"1 三角 + 1 残余"，产出 12 个 UV 分量看着正常，
+  实际完全不是面级 UV。新增 `_face_indices()`：无 indices 按三角形汤
+  逐顶点成面，但顶点数（或有索引时的索引数）必须是 3 的倍数，否则
+  抛 ValueError；`density_report` 共用同一助手
+- **P2 `texproj.affine_to_projection(None)` 裸 AttributeError**：
+  `fit_projection` 点集退化时返回 `affine=None`，透传即炸；入口拦截，
+  返回 `(None, '输入仿射为 None（拟合未收敛）')`
+- **P2 `texproj.wrap_uv` 只支持标量**：现支持序列 / ndarray 批量
+  （逐分量环绕，返回 list）
+- **P2 轴名 / wrap 模式只认小写**：`axis_vector('X')`、`wrap_uv(u, 'REPEAT')`
+  原抛 ValueError；新增 `_norm_axis()` / `_norm_wrap()`，大小写不敏感
+  （`UvProjection` / `face_basis` / `TexWrap.gl_name` 一并受益）
+- **P2 `timeline.Timeline(duration<=0)` 裸 AssertionError**（空消息）、
+  **`Sampler` 构造三处 assert**：改为带消息的 ValueError——assert 在
+  `python -O` 下整段消失，坏数据会静默流入插值
+- **P2 `proctex.height_to_normal` 高度场过短抛裸 IndexError**：前置长度
+  校验给明确原因；2D `(size, size)` 数组在尺寸正好时自动拉平
+- **P2 `proctex.fbm` 是标量函数但文档未强调**：docstring 标注，误传
+  数组会在取模处报难懂的 TypeError
+- 另核对：`shot._norm_value` 标量分支、`csm.cascade_corners` 的
+  `0 < z0 < z1` 校验在现行代码中已有友好 ValueError，无需改动
+
 ### Added
 
 - **`world3d/engine/terrain_lod.py`（CDLOD）**：把地形从"全分辨率静态网格"升级为

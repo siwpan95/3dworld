@@ -61,7 +61,12 @@ def value_noise(u, v, cells_u=8, cells_v=None, seed=0):
 
 def fbm(u, v, octaves=4, cells=6, cells_v=None, seed=0,
         gain=0.5, lacunarity=2.0):
-    """分形布朗运动：倍频叠加，每层幅度 ×gain、频率 ×lacunarity。"""
+    """分形布朗运动：倍频叠加，每层幅度 ×gain、频率 ×lacunarity。
+
+    **标量函数**：``u`` / ``v`` 是单个采样点的坐标，返回标量高度；
+    批量采样请在调用方循环（误传数组会在取模/格点运算处报
+    ``TypeError: only 0-dimensional arrays can be converted to Python scalars``）。
+    """
     total, amp, freq = 0.0, 1.0, 1.0
     norm = 0.0
     cu = cells
@@ -80,7 +85,20 @@ def fbm(u, v, octaves=4, cells=6, cells_v=None, seed=0,
 
 # ----------------------------------------------------------------- 派生图 --
 def height_to_normal(heights, size, strength=2.0):
-    """高度场 → 切线空间法线（Sobel，边界按平铺取模）。RGBA，α=255。"""
+    """高度场 → 切线空间法线（Sobel，边界按平铺取模）。RGBA，α=255。
+
+    ``heights`` 须为扁平 ``size * size`` 长度；不足会静默 IndexError，
+    这里前置校验给明确原因。
+    """
+    need = size * size
+    # 2D (size, size) 高度场：尺寸正好时拉平（list(ndarray) 不扁平，
+    # 直接下标会按行取、最终在 math.sqrt 处炸 TypeError）
+    if hasattr(heights, "ravel") and hasattr(heights, "size"):
+        if len(heights) != need and heights.size == need:
+            heights = heights.ravel()
+    if len(heights) < need:
+        raise ValueError(
+            f'高度场长度不足：size²={need}（size={size}），收到 {len(heights)}')
     out = bytearray(size * size * 4)
     for y in range(size):
         for x in range(size):

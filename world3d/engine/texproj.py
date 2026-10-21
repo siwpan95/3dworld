@@ -60,10 +60,16 @@ _BASIS = {
 
 # ------------------------------------------------------------------ 轴向 --
 
+def _norm_axis(axis):
+    """轴名归一化：大小写不敏感（``'X'`` ≡ ``'x'``）；非字符串原样返回
+    （由调用方的存在性校验报错）。"""
+    return axis.lower() if isinstance(axis, str) else axis
+
+
 def axis_vector(axis):
-    """投影轴单位向量。"""
+    """投影轴单位向量（轴名大小写不敏感）。"""
     try:
-        return _AXIS_VEC[axis]
+        return _AXIS_VEC[_norm_axis(axis)]
     except KeyError:
         raise ValueError(f'未知投影轴 {axis!r}（可选 {AXES}）') from None
 
@@ -71,7 +77,7 @@ def axis_vector(axis):
 def face_basis(axis):
     """投影轴的标准面内基 ``(e1, e2)``；``cross(e1, e2) == 轴向量``。"""
     try:
-        return _BASIS[axis]
+        return _BASIS[_norm_axis(axis)]
     except KeyError:
         raise ValueError(f'未知投影轴 {axis!r}（可选 {AXES}）') from None
 
@@ -104,8 +110,10 @@ class UvProjection:
     __slots__ = ('axis', 'scale', 'rotation', 'offset', '_u', '_v', '_gu', '_gv')
 
     def __init__(self, axis='z', scale=(1.0, 1.0), rotation=0.0, offset=(0.0, 0.0)):
-        if axis not in _BASIS:
+        norm = _norm_axis(axis)
+        if norm not in _BASIS:
             raise ValueError(f'未知投影轴 {axis!r}（可选 {AXES}）')
+        axis = norm
         self.axis = axis
         self.scale = (float(scale[0]), float(scale[1]))
         self.rotation = float(rotation)
@@ -283,6 +291,35 @@ def _sym_eigen3(c):
     return vals, vecs
 
 
+def _as_points(points):
+    """点集归一化为 ``[(x, y, z), ...]``。
+
+    接受两种表示：
+    * ``(x, y, z)`` 元组/点列表（本模块文档契约）；
+    * **扁平 3N 序列**——``MeshData.positions`` 的原生形态
+      （``fit_projection(mesh.positions, mesh.uvs)`` 是最自然的调用方式）。
+    """
+    if not points:
+        return []
+    if isinstance(points[0], (int, float)):
+        if len(points) % 3:
+            raise ValueError(f'扁平点集长度必须是 3 的倍数，收到 {len(points)}')
+        return [tuple(points[i:i + 3]) for i in range(0, len(points), 3)]
+    return [tuple(p) for p in points]
+
+
+def _as_uvs(uvs):
+    """UV 归一化为 ``[(u, v), ...]``：接受 ``(u, v)`` 元组列表（文档契约）
+    或扁平 2N 序列（``MeshData.uvs`` 的原生形态）。"""
+    if not uvs:
+        return []
+    if isinstance(uvs[0], (int, float)):
+        if len(uvs) % 2:
+            raise ValueError(f'扁平 UV 长度必须是 2 的倍数，收到 {len(uvs)}')
+        return [tuple(uvs[i:i + 2]) for i in range(0, len(uvs), 2)]
+    return [tuple(uv) for uv in uvs]
+
+
 def fit_projection(points, uvs, planar_ratio=0.02):
     """从真实数据反解 UV 投影（最小二乘）。
 
@@ -290,11 +327,21 @@ def fit_projection(points, uvs, planar_ratio=0.02):
       仿射（数值稳、梯度严格落在平面内）；
     * 否则做全 3D 仿射（4 参数 × 2 组方程；要求点集不退化）。
 
+    ``points`` 接受 ``(x, y, z)`` 元组列表或扁平 3N 序列（如
+    ``MeshData.positions``）；``uvs`` 接受 ``(u, v)`` 元组列表或扁平 2N
+    序列（如 ``MeshData.uvs``）——``fit_projection(mesh.positions, mesh.uvs)``
+    是最自然的调用方式。两者长度必须与点数一致（不吻合多半是调用方把两套
+    数据配错了，静默截断会喂出假解）。
+
     返回 :class:`FitResult`：仿射解 + 残差 + 能否收敛为轴向投影及原因。
     """
+    points = _as_points(points)
     n = len(points)
     if n < 4:
         return FitResult(n, 'none', reason='点数不足（需 ≥4）')
+    uvs = _as_uvs(uvs)
+    if len(uvs) != n:
+        raise ValueError(f'点数与 UV 数不匹配：{n} points vs {len(uvs)} uvs')
     # 均值与协方差
     mx = my = mz = 0.0
     for p in points:
@@ -393,7 +440,12 @@ def affine_to_projection(aff, angle_tol=0.966, tol=0.02):
 
     ``angle_tol``：投影面法线与最近轴的 ``|cos|`` 下限（默认 ≈15°）；
     ``tol``：梯度方向残差 / 梯度模长 的上限（默认 2%）。
+
+    ``aff`` 为 ``None``（``fit_projection`` 在点集退化时返回）时返回
+    ``(None, 原因)`` 而不抛异常——调用方常直接透传拟合结果。
     """
+    if aff is None:
+        return None, '输入仿射为 None（拟合未收敛）'
     a, b = aff.a, aff.b
     su, sv = _len3(a), _len3(b)
     if su < 1e-12 or sv < 1e-12:
@@ -422,6 +474,30 @@ def affine_to_projection(aff, angle_tol=0.966, tol=0.02):
 
 # ------------------------------------------------------------ 几何接线 --
 
+def _face_indices(mesh):
+    """面索引三元组展开用的索引列表。
+
+    * 有 ``indices``：直接用（长度必须是 3 的倍数，否则尾部残驳；
+      静默跳过会少算面，统计与 UV 一起错）；
+    * 无 ``indices``（三角形汤）：顶点按顺序每 3 个成一面——但顶点数必须是
+      3 的倍数，否则几何本身不完整。此时**必须报错**：退化路径会把
+      "4 顶点"当成"1 三角 + 1 残余"，产出的 UV 数量看着正常，
+      实际完全不是面级 UV（压测实测的静默错误）。
+    """
+    if mesh.indices:
+        idx = list(mesh.indices)
+        if len(idx) % 3:
+            raise ValueError(
+                f'indices 长度 {len(idx)} 不是 3 的倍数（三角汤需 3 个索引一面）')
+        return idx
+    vc = mesh.vertex_count
+    if vc % 3:
+        raise ValueError(
+            f'网格没有 indices 且顶点数 {vc} 不是 3 的倍数，无法按三角形汤成面；'
+            f'请提供 indices，或补全/裁掉顶点使之为 3 的倍数')
+    return list(range(vc))
+
+
 def uv_for_faces(mesh, rules, split=True):
     """按面法线选投影，为网格生成 UV（返回**新** :class:`MeshData`）。
 
@@ -434,10 +510,14 @@ def uv_for_faces(mesh, rules, split=True):
     ``split=True``：同一顶点被**不同投影**的面引用时拆成多份（每份归一组，
     这是烘焙世界投影 UV 的标准做法——盒子一个角属于 3 张不同面）。
     ``split=False``：原地写（顶点共享、后写覆盖），仅适用于已按面拆点的网格。
+
+    无 ``indices`` 的网格按**三角形汤**逐顶点成面（顶点数须为 3 的倍数），
+    否则抛 :class:`ValueError`——退化路径会把残余顶点悄悄吞掉，
+    产出的 UV 数量看着正常，实际完全不是面级 UV。
     """
     vc = mesh.vertex_count
     pos = mesh.positions
-    idx = list(mesh.indices) if mesh.indices else list(range(vc))
+    idx = _face_indices(mesh)
 
     def resolve(normal):
         if callable(rules):
@@ -512,6 +592,17 @@ def uv_for_faces(mesh, rules, split=True):
 
 # ------------------------------------------------------------ 贴图规则 --
 
+def _norm_wrap(wrap):
+    """环绕模式归一化：字符串大小写不敏感（``'REPEAT'`` ≡ ``'repeat'``）；
+    非字符串（如 :class:`TexWrap` 枚举值本就是小写字符串）原样返回。"""
+    if isinstance(wrap, str):
+        w = wrap.lower()
+        if w not in (TexWrap.REPEAT, TexWrap.CLAMP, TexWrap.MIRROR):
+            raise ValueError(f'未知 wrap 模式 {wrap!r}')
+        return w
+    return wrap
+
+
 class TexWrap:
     """采样环绕规则（值即 GL 采样器语义；字符串便于直接映射）。"""
 
@@ -524,11 +615,18 @@ class TexWrap:
 
     @classmethod
     def gl_name(cls, wrap):
-        return cls.GL_NAMES[wrap]
+        return cls.GL_NAMES[_norm_wrap(wrap)]
 
 
 def wrap_uv(u, wrap=TexWrap.REPEAT):
-    """单分量环绕（CPU 端口径校验/软件采样用；GPU 交给采样器）。"""
+    """单分量环绕（CPU 端口径校验/软件采样用；GPU 交给采样器）。
+
+    ``wrap`` 大小写不敏感。``u`` 也可以是序列 / numpy 数组——逐分量环绕，
+    返回 ``list``（批量 wrap 一批 UV 时不必在调用方写循环）。
+    """
+    wrap = _norm_wrap(wrap)
+    if not isinstance(u, (str, bytes)) and hasattr(u, '__iter__'):
+        return [wrap_uv(x, wrap) for x in u]
     if wrap == TexWrap.REPEAT:
         return u - math.floor(u)
     if wrap == TexWrap.CLAMP:
@@ -669,7 +767,7 @@ def density_report(mesh, uvs=None, bins=None, outlier_factor=3.0):
     if not uvs:
         raise ValueError('网格没有 UV，也没有传入 uvs')
     pos = mesh.positions
-    idx = list(mesh.indices) if mesh.indices else list(range(mesh.vertex_count))
+    idx = _face_indices(mesh)
     ratios, outliers = [], []
     faces = 0
     for t in range(0, len(idx) - 2, 3):

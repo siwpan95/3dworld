@@ -20,6 +20,24 @@ __all__ = [
 ]
 
 
+def _flat(seq):
+    """顶点属性输入归一化为**扁平 list**。
+
+    * ``None`` 原样返回（蒙皮字段用 None 区分"非蒙皮"与"空蒙皮"）；
+    * numpy 数组（或任何有 ``ravel`` 的类）先拉平——``list(np.zeros((4, 3)))``
+      只会得到 4 个行向量，``vertex_count`` 随之算成 1，是"喂 ndarray"
+      （最自然的用法）里最坑的一步；
+    * 其余（list/tuple/迭代器）按原语义 ``list()``。
+
+    注意扁平约定不变：``positions`` 是 ``[x, y, z, ...]`` 而非点元组列表。
+    """
+    if seq is None:
+        return None
+    if hasattr(seq, "ravel"):
+        return seq.ravel().tolist()
+    return list(seq)
+
+
 class MeshData:
     """与 API 无关的网格数据。
 
@@ -32,6 +50,9 @@ class MeshData:
         tangents:  扁平 [tx,ty,tz, ...]（可为空，``compute_tangents`` 补）
         joints:    蒙皮关节索引，每顶点 4 个（扁平 [i0,i1,i2,i3, ...]；非蒙皮为 None）
         weights:   蒙皮权重，每顶点 4 个（与 joints 同序；非蒙皮为 None）
+
+    所有序列入参（含 numpy 数组）都会归一化为上面的**扁平 list**；
+    布局约定即文档所示——``positions`` 是 ``[x, y, z, ...]`` 而非点元组列表。
     """
 
     __slots__ = ('positions', 'normals', 'uvs', 'colors', 'indices', 'tangents',
@@ -39,16 +60,19 @@ class MeshData:
 
     def __init__(self, positions, normals=None, uvs=None, colors=None,
                  indices=None, tangents=None, name='', joints=None, weights=None):
-        self.positions = list(positions)
-        self.normals = list(normals) if normals else []
-        self.uvs = list(uvs) if uvs else []
-        self.colors = list(colors) if colors else []
-        self.indices = list(indices) if indices else []
-        self.tangents = list(tangents) if tangents else []
+        # 全部走 _flat()：numpy 数组先拉平（list(ndarray) 不扁平，会算错
+        # vertex_count），None 判断用 is not None（ndarray 真值有歧义）。
+        self.positions = _flat(positions)
+        self.normals = _flat(normals) if normals is not None else []
+        self.uvs = _flat(uvs) if uvs is not None else []
+        self.colors = _flat(colors) if colors is not None else []
+        self.indices = _flat(indices) if indices is not None else []
+        self.tangents = _flat(tangents) if tangents is not None else []
         # 蒙皮（P2-3）：joints/weights 各为"每顶点 4 个"的扁平数组；非蒙皮网格为 None。
         # 用 None 而非 [] 以区分"非蒙皮"与"空蒙皮"，且保证 __slots__ 之外的旧代码零改动。
-        self.joints = list(joints) if joints else None
-        self.weights = list(weights) if weights else None
+        # 消费方一律按真值判断，传入空 list 与 None 行为一致。
+        self.joints = _flat(joints) if joints is not None else None
+        self.weights = _flat(weights) if weights is not None else None
         self.name = name
 
     @property
