@@ -272,7 +272,9 @@ def test_animation_material_channels():
     assert abs(s['glow'] - 0.5) < 1e-9
     try:
         Channel('n', 'bogus', Sampler([0.0], [Vec3(0, 0, 0)]))
-    except AssertionError:
+    except (AssertionError, ValueError):
+        # timeline 的属性校验已从 assert 改为 raise ValueError（python -O 下
+        # assert 会整段消失），两种都算"正确拒绝"
         pass
     else:
         raise AssertionError('未知属性应被拒绝')
