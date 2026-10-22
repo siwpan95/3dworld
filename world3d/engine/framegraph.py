@@ -205,17 +205,122 @@ class Pass:
         return f'<Pass {self.name} R{list(self.reads)} W{list(self.writes)}>'
 
 
+# ------------------------------------------------------------ 屏障计划 --
+#: 相邻两次访问之间的冒险类型。（前一次访问, 本次访问）→ 冒险名
+HAZARDS = {
+    ('write', 'read'): 'RAW',    # 真依赖：写完才能读（最常见）
+    ('read', 'write'): 'WAR',    # 反依赖：读完才能覆盖（别名复用时尤其致命）
+    ('write', 'write'): 'WAW',   # 输出依赖：两次写入必须保序
+    ('read', 'read'): None,      # 只读并发：无需屏障
+}
+
+#: 冒险 → 建议的 GL 内存屏障位（**只是数据**，本模块不调用任何 GL）
+GL_BARRIER_BITS = {
+    'RAW': 'GL_TEXTURE_UPDATE_BARRIER_BIT|GL_SHADER_IMAGE_ACCESS_BARRIER_BIT',
+    'WAR': 'GL_TEXTURE_UPDATE_BARRIER_BIT|GL_SHADER_IMAGE_ACCESS_BARRIER_BIT',
+    'WAW': 'GL_SHADER_IMAGE_ACCESS_BARRIER_BIT|GL_FRAMEBUFFER_BARRIER_BIT',
+}
+
+
+class Barrier:
+    """一处需要在 `pass_name` **执行前**插入的屏障。
+
+    本模块只把它算出来（编译期），**不发射 GL** —— 发射是渲染消费方的事，
+    这样"编译期算出来的信息能交给执行端"（P3-b 的结论）才算真正落地。
+
+    ``storage`` 是**物理存储**键：别名组内的资源共享同一块存储，所以按键追踪
+    才能自动抓到"A 用完、B 复用同一槽位"的 WAR 冒险 —— 这正是手写 barrier
+    最容易漏的一类。
+    """
+
+    __slots__ = ('pass_name', 'pass_index', 'resource', 'storage',
+                 'prev_kind', 'kind', 'hazard', 'prev_pass')
+
+    def __init__(self, pass_name, pass_index, resource, storage,
+                 prev_kind, kind, hazard, prev_pass=None):
+        self.pass_name = pass_name
+        self.pass_index = int(pass_index)
+        self.resource = resource
+        self.storage = storage
+        self.prev_kind = prev_kind
+        self.kind = kind
+        self.hazard = hazard
+        self.prev_pass = prev_pass
+
+    @property
+    def gl_bits(self):
+        """建议的 GL 屏障位（数据，非调用）。"""
+        return GL_BARRIER_BITS.get(self.hazard)
+
+    def as_dict(self):
+        return {'pass': self.pass_name, 'index': self.pass_index,
+                'resource': self.resource, 'storage': self.storage,
+                'prev': self.prev_kind, 'next': self.kind,
+                'hazard': self.hazard, 'prev_pass': self.prev_pass,
+                'gl_bits': self.gl_bits}
+
+    def __repr__(self):
+        return (f'<Barrier {self.hazard} {self.resource} '
+                f'{self.prev_kind}->{self.kind} @ {self.pass_name}#{self.pass_index}>')
+
+
+def derive_barriers(plan):
+    """从已编译的 `FramePlan` 推导**自动屏障计划**（编译期、零 GL）。
+
+    沿执行序行走，对每块**物理存储**（= 别名组，未别名则是资源自身）记录上一次
+    访问的类型；相邻两次访问构成 RAW / WAR / WAW 冒险时，在后一个 pass 之前
+    插一条屏障。只读→只读不插。
+
+    返回 `Barrier` 列表，按 ``(pass_index, resource)`` 稳定排序（**确定性**：
+    同图多次编译结果逐条相同，可直接进断言）。
+
+    边界：每块存储的**首次**访问不插屏障（跨帧/外部资源的"获取"由消费方负责）；
+    pass 同时读写同一资源按 write 计（读改写）。
+    """
+    order = list(plan.order)
+    resolved = plan.resolved
+    alias_group = getattr(plan, 'alias_group', {}) or {}
+    last = {}          # storage -> (pass_index, kind, pass_name, resource)
+    out = []
+    for i, name in enumerate(order):
+        acc = resolved.get(name) or {}
+        reads = tuple(acc.get('reads', ()))
+        writes = tuple(acc.get('writes', ()))
+        # 一次访问一条记录；同时读写按 write 计（读改写）
+        seen = []
+        for r in writes:
+            seen.append((r, 'write'))
+        for r in reads:
+            if r not in writes:
+                seen.append((r, 'read'))
+        for resource, kind in seen:
+            storage = alias_group.get(resource, resource)
+            prev = last.get(storage)
+            if prev is not None:
+                pi, pkind, pname, _pres = prev
+                hazard = HAZARDS.get((pkind, kind))
+                if hazard:
+                    out.append(Barrier(name, i, resource, storage,
+                                       pkind, kind, hazard, pname))
+            last[storage] = (i, kind, name, resource)
+    # 稳定排序：先按 pass 序，再按资源名（保证逐条可比、可快照断言）
+    out.sort(key=lambda b: (b.pass_index, b.resource, b.hazard))
+    return out
+
+
 class FramePlan:
     """`compile()` 的产物：一条**可执行**的帧计划。"""
 
     __slots__ = ('order', 'culled', 'aliases', 'lifetimes', 'resources',
                  'resolved', 'outputs', 'alias_group', 'peak_slots', 'peak_bytes',
-                 'pool_slot', 'pool_leases', 'width', 'height', 'samples')
+                 'pool_slot', 'pool_leases', 'width', 'height', 'samples',
+                 'barriers')
 
     def __init__(self, order, culled, aliases, lifetimes, resources,
                  resolved=None, outputs=(), alias_group=None,
                  peak_slots=0, peak_bytes=0, pool_slot=None, pool_leases=(),
-                 width=DEFAULT_WIDTH, height=DEFAULT_HEIGHT, samples=1):
+                 width=DEFAULT_WIDTH, height=DEFAULT_HEIGHT, samples=1,
+                 barriers=()):
         self.order = list(order)                # pass 名字，按执行顺序
         self.culled = list(culled)              # 被剔除的 pass 名
         self.aliases = [tuple(a) for a in aliases]   # [(资源 A, 资源 B)]：可共用内存
@@ -238,6 +343,13 @@ class FramePlan:
         self.width = int(width)
         self.height = int(height)
         self.samples = int(samples)
+        #: **自动屏障计划**：编译期推导出的"每个 pass 前该插哪些屏障"。
+        #: 不发射 GL —— 只把结论交给执行端（见 `derive_barriers` / `Barrier`）。
+        self.barriers = list(barriers or ())
+
+    def barriers_of(self, pass_name):
+        """该 pass **执行前**要插的屏障列表。"""
+        return [b for b in self.barriers if b.pass_name == pass_name]
 
     def reads_of(self, pass_name):
         """该 pass 执行时**实际**要读的资源名（已按直通重定向解析过）。"""
@@ -469,7 +581,7 @@ class FrameGraph:
         peak_slots, peak_bytes = self._peak(lifetimes)
         pool_slot, leases = self._assign_slots(groups)
 
-        return FramePlan([p.name for p in ordered],
+        plan = FramePlan([p.name for p in ordered],
                          [p.name for p in self.passes if p.name not in alive],
                          aliases, lifetimes,
                          {k: v for k, v in self.resources.items()},
@@ -481,6 +593,9 @@ class FrameGraph:
                          pool_slot=pool_slot, pool_leases=leases,
                          width=self.width, height=self.height,
                          samples=self.samples)
+        # ⑥ 自动屏障（编译期推导；依赖上面已算好的 resolved / alias_group）
+        plan.barriers = derive_barriers(plan)
+        return plan
 
     # ------------------------------------------------------ 资源账本（v2）--
     def release_plan(self, plan) -> int:

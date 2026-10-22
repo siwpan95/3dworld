@@ -107,7 +107,7 @@ scripts/
                        demo 脚手架已随 demo 迁往 3dworld-demos）
   new_kernel.py        脚手架：生成新玩法内核 + 配置树 + 单测，并登记三张表（--undo 可撤销）
   check_imports.py     全仓可达性门禁：world3d/ 下每个模块都 import 一遍（+ sys.path 不变量）
-  run_all_tests.py     43 个测试模块的聚合 runner（数字由 readme-test-modules 门禁钉住）
+  run_all_tests.py     45 个测试模块的聚合 runner（数字由 readme-test-modules 门禁钉住）
   migrate_p2_4.py      P2-4 的一次性迁移工具（保留以便复查改了什么）
 tests/               逻辑层无窗口单测：python -m tests.run_tests
 docs/                设计文档（渲染验证截图已随 demo 迁往 3dworld-demos）
@@ -314,20 +314,22 @@ python -m tests.test_volumetrics    体积雾/光轴（12 项：闭式积分可�
 python -m tests.test_dof            景深 DoF（12 项：CoC/超焦距/景深端点恒等式/散景面积均匀）
 python -m tests.test_motionblur     运动模糊（9 项：静止零运动/1÷z 律/纯旋转与深度无关/三模块共存）
 python -m tests.test_framegraph     帧图（17 项：物理顺序/剔除/直通/别名/环与死链校验）
-python -m tests.test_framegraph_v2  帧图 v2（11 项：生命周期推导/别名组/槽位池借还/峰值下降）
+python -m tests.test_framegraph_v2  帧图 v2（17 项：生命周期推导/别名组/槽位池借还/峰值下降/自动屏障计划 RAW·WAR 推导与确定性）
 python -m tests.test_terrain_lod    CDLOD 地形（18 项：选层无缝无重叠/相邻层差≤1/morph 消缝/三角数亚线性/模板网格）
 python -m tests.test_compat         旧路径兼容层（6 项：install 前后不可用/同一性/不被劫持）
 python -m tests.test_voxel_mesh     体素网格化 v2：三轴贪心合并/无内部面/逐顶点 AO/对角翻转（12 项，零 GL）
 python -m tests.test_binary_greedy  体素二进制贪心网格化：uint64 位掩码 + quadtree 全覆盖合并/精确覆盖/三轴贪心对照（13 项，零 GL）
 python -m tests.test_terrain_clipmap 几何 clipmap：嵌套 ring 网格/刚性吸附/顶点位移/层数与 annulus 拓扑（15 项，零 GL）
-python -m tests.test_jolt_lite      3D 刚体世界：GJK-EPA 穿透（四面体种子严格含原点 + 有向边 horizon 扩张）+ 顺序冲量 + warm start + Baumgarte + Coulomb 摩擦 + 回弹；胶囊/旋转盒经 GJK-EPA 兜底（核心零 GL，headless 可验证；GL 系消费方事）（11 项）
+python -m tests.test_jolt_lite      3D 刚体世界：GJK-EPA 穿透（四面体种子严格含原点 + 有向边 horizon 扩张）+ 顺序冲量 + warm start + Baumgarte + Coulomb 摩擦 + 回弹；胶囊/旋转盒经 GJK-EPA 兜底；**sweep-and-prune 宽相 + 岛管理 + 按 body id 定序遍历（确定性）**（核心零 GL，headless 可验证；GL 系消费方事）（17 项）
 python -m tests.test_box2d_lite     2D 序列冲量 solver：warm start + Baumgarte 偏置 + Coulomb 摩擦 + OBB-OBB SAT 裁剪流形（6 项，零 GL）
 python -m tests.test_ozz_lite       骨架 FK / clip 采样 lerp+slerp / 加权混合 / 加法 clip / joint-mask 分层 / root motion / 真实蒙皮网格回放（构建骨架+clip+蒙皮矩阵+线性蒙皮，消费 gltf_lite）（12 项，零 GL）
 python -m tests.test_matcache_lite  材质变体键 JSON 确定性 → 产物 define 注入 + SHA-256 摘要 → 内存 LRU + 磁盘 pickle；变体实际编译为 GLSL 顶点/片段着色器源串（SKINNING/FOG/ALPHA_TEST/NUM_LIGHTS 驱动，可注入 GL，不调编译器）（11 项，解码核心零 GL）
 python -m tests.test_gltf_lite      glTF 2.0 真实 loader：数据模型/FK/扩展检测/校验 + accessor→numpy 解码/primitive 装配/.glb 二进制加载/skin+animation 提取（11 项，解码核心零 GL）
+python -m tests.test_rid           RID 不透明句柄表：代际失效/槽位复用/跨表拒绝/悬垂句柄可断言/free 幂等（11 项，零 GL）
+python -m tests.test_reflect       反射注册表（一物多用）：一份属性元数据同时驱动序列化 / 编辑器检视 / 脚本绑定 / 范围与枚举校验 + 继承链展开（11 项，零 GL）
 python -m world3d.cli.frame_plan --all-toggles  帧图门禁：16 种效果组合的计划都必须合法且顺序正确
 python -m world3d.cli.config_boot all   9 个内核 + 13 共同核全部 headless 验收（10 棵树，逐项 OK 标记）
-python scripts\check_imports.py          全仓可达性门禁：world3d/ 下 117 个模块逐个 import
+python scripts\check_imports.py          全仓可达性门禁：world3d/ 下 159 个模块逐个 import
                                         （单测只覆盖被引用的模块，这个是「改漏」的唯一防线）
 ```
 

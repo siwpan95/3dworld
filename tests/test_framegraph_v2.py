@@ -26,9 +26,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from world3d.cli import frame_plan as fp                          # noqa: E402
-from world3d.engine.framegraph import (FrameGraph, FrameGraphError,  # noqa: E402
-                                        SlotPool, estimate_bytes,
-                                        resolve_size, standard_3d_plan)
+from world3d.engine.framegraph import (Barrier, FrameGraph, FrameGraphError,  # noqa: E402
+                                        SlotPool, derive_barriers,
+                                        estimate_bytes, resolve_size,
+                                        standard_3d_plan)
 
 
 def _expect_error(fn, label, needles=()):
@@ -275,6 +276,94 @@ def test_all_sixteen_effect_combinations_still_pass():
     print(f'  ok: {len(combos)} 种效果组合全部合法、顺序正确，且每种的峰值账本非空')
 
 
+# --------------------------------------------------- 自动屏障计划（v2+）--
+def test_barriers_are_derived_for_raw_hazards():
+    """写→读（RAW）必须插屏障：标准计划里 scene_pass 读 depth/shadow 即典型。"""
+    plan = standard_3d_plan().compile()
+    kinds = {(b.resource, b.hazard) for b in plan.barriers}
+    assert ('distance', 'RAW') in kinds, sorted(kinds)
+    assert ('shadow', 'RAW') in kinds, sorted(kinds)
+    for b in plan.barriers:
+        assert b.hazard in ('RAW', 'WAR', 'WAW'), b
+    print(f'  ok: 标准计划推导 {len(plan.barriers)} 条屏障，RAW 依赖全部覆盖')
+
+
+def test_barriers_catch_alias_reuse_war_hazard():
+    """**关键**：别名复用产生的 WAR 冒险必须被抓到。
+
+    `hdr` 与 `hdr_dof` 共用同一物理槽位；按资源名追踪会漏（hdr_dof 此前从未
+    被访问过），按**物理存储（别名组）**追踪才抓得到 —— 这是手写 barrier 最
+    容易漏的一类。
+    """
+    plan = standard_3d_plan().compile()
+    war = [b for b in plan.barriers if b.hazard == 'WAR']
+    assert war, '别名复用应至少产生一条 WAR 屏障'
+    # 每条 WAR 的 storage 应是别名组键（组内资源共享存储）
+    for b in war:
+        assert b.storage == plan.alias_group.get(b.resource, b.resource)
+        assert plan.alias_group.get(b.resource) is not None, \
+            f'{b.resource} 的 WAR 应来自别名复用'
+    print(f'  ok: 抓到 {len(war)} 条别名复用 WAR 冒险：'
+          f'{[b.resource for b in war]}')
+
+
+def test_read_after_read_needs_no_barrier():
+    plan = standard_3d_plan().compile()
+    # 只读→只读不构成冒险：任何屏障都不该是 read->read
+    for b in plan.barriers:
+        assert not (b.prev_kind == 'read' and b.kind == 'read'), b
+    # 构造：两个 pass 都只读同一外部资源 ⇒ 零屏障
+    g = FrameGraph()
+    g.external('lut')
+    g.resource('out')
+    g.add('a', reads=('lut',), writes=('out',))
+    g.add('b', reads=('lut', 'out'), writes=())
+    g.set_output('out')
+    p = g.compile()
+    lut_barriers = [b for b in p.barriers if b.resource == 'lut']
+    assert lut_barriers == [], f'lut 只读两次不该有屏障：{lut_barriers}'
+    print('  ok: 只读→只读不插屏障（无假阳性）')
+
+
+def test_barriers_are_deterministic_and_stable():
+    """确定性：同图重复编译、重复推导，逐条相同（可进快照断言）。"""
+    g = standard_3d_plan()
+    a = [b.as_dict() for b in g.compile().barriers]
+    b = [b.as_dict() for b in g.compile().barriers]
+    assert a == b, '同一张图两次编译的屏障计划必须逐条相同'
+    plan = g.compile()
+    assert [x.as_dict() for x in derive_barriers(plan)] == a, '重推必须与编内一致'
+    # 排序稳定：按 (pass_index, resource)
+    idx = [x['index'] for x in a]
+    assert idx == sorted(idx), '屏障应按执行序排列'
+    print('  ok: 屏障计划确定性 + 按执行序稳定排序')
+
+
+def test_barriers_of_returns_only_that_pass():
+    plan = standard_3d_plan().compile()
+    total = 0
+    for name in plan.order:
+        bs = plan.barriers_of(name)
+        for b in bs:
+            assert b.pass_name == name
+        total += len(bs)
+    assert total == len(plan.barriers), '每个 pass 的屏障之和应等于总数'
+    print(f'  ok: barriers_of 按 pass 切分完整（合计 {total} 条）')
+
+
+def test_barrier_exposes_gl_bits_without_calling_gl():
+    """屏障给出建议的 GL 位（**只是数据**），本模块不调用任何 GL。"""
+    plan = standard_3d_plan().compile()
+    assert plan.barriers
+    for b in plan.barriers:
+        assert isinstance(b, Barrier)
+        assert b.gl_bits and 'GL_' in b.gl_bits, b.hazard
+    # 未冒险的组合为 None
+    from world3d.engine.framegraph import HAZARDS
+    assert HAZARDS[('read', 'read')] is None
+    print('  ok: 屏障自带 GL 位建议（数据），且 read→read 判为无冒险')
+
+
 # --------------------------------------------------------------- runner --
 def main() -> int:
     tests = [
@@ -297,6 +386,19 @@ def main() -> int:
          test_reading_an_unwritten_resource_names_both_sides),
         ('test_all_sixteen_effect_combinations_still_pass',
          test_all_sixteen_effect_combinations_still_pass),
+        # ---- 自动屏障计划（v2+）----
+        ('test_barriers_are_derived_for_raw_hazards',
+         test_barriers_are_derived_for_raw_hazards),
+        ('test_barriers_catch_alias_reuse_war_hazard',
+         test_barriers_catch_alias_reuse_war_hazard),
+        ('test_read_after_read_needs_no_barrier',
+         test_read_after_read_needs_no_barrier),
+        ('test_barriers_are_deterministic_and_stable',
+         test_barriers_are_deterministic_and_stable),
+        ('test_barriers_of_returns_only_that_pass',
+         test_barriers_of_returns_only_that_pass),
+        ('test_barrier_exposes_gl_bits_without_calling_gl',
+         test_barrier_exposes_gl_bits_without_calling_gl),
     ]
     failed = []
     for name, fn in tests:

@@ -104,6 +104,10 @@ MODULES = [
      '材质变体键 → 产物 → 磁盘缓存（Filament matc 思路，零 GLSL）'),
     ('tests.test_gltf_lite', 'ALL_GLTF_LITE_TESTS_PASSED',
      'glTF 2.0 数据模型 / 节点 FK / 扩展矩阵（Khronos 规范实现）'),
+    ('tests.test_rid', 'ALL_RID_TESTS_PASSED',
+     'RID 不透明句柄表 / 代际失效 / 槽位复用（Godot RID 思路，零 GL）'),
+    ('tests.test_reflect', 'ALL_REFLECT_TESTS_PASSED',
+     '反射注册表一物多用：序列化 / 检视 / 脚本绑定 / 校验（ClassDB 思路）'),
 ]
 
 

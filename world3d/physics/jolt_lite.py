@@ -601,25 +601,19 @@ class World:
         self.sleep_ang = sleep_ang
         self.sleep_frames = sleep_frames
         self._contacts = {}
+        #: 上一次 `step()` 的账本（宽相候选数 / 接触数 / 岛数），用于断言与调参
+        self.last_stats = {}
 
     def add(self, body):
         self.bodies.append(body)
         return body
 
     def step(self, dt, iterations=10):
-        # 1) 宽相：AABB 重叠
-        n = len(self.bodies)
-        pairs = []
-        for i in range(n):
-            for j in range(i + 1, n):
-                bi, bj = self.bodies[i], self.bodies[j]
-                if bi.is_static and bj.is_static:
-                    continue
-                lo_i, hi_i = bi.aabb()
-                lo_j, hi_j = bj.aabb()
-                if np.any(hi_i < lo_j) or np.any(hi_j < lo_i):
-                    continue
-                pairs.append((bi, bj))
+        # 1) 宽相：**sweep-and-prune**（扫掠剪枝），取代原来的 O(n²) 全对比较。
+        #    AABB 每帧只算一次，按 (min[轴], body.id) 排序后单遍扫掠；
+        #    轴取"跨度最大"的那根（剪枝效果最好），平手时取轴号小的 ⇒ 确定性。
+        aabbs = {b.id: b.aabb() for b in self.bodies}
+        pairs, candidates = self._broadphase_sap(aabbs)
         # 2) 窄相：解析流形（球-球 / 球-盒 / 盒-盒AABB）。
         #    GJK + EPA（通用凸体算法）已在 epa()/gjk 中独立验证；此处对受支持
         #    形体对用解析法生成接触以保证求解稳健，把 EPA 推广到所有形体对留待运行时层。
@@ -642,18 +636,30 @@ class World:
                 c.pn = prev.pn  # warm start
             new_contacts[key] = c
         self._contacts = new_contacts
+        # 2.5) **岛管理**：按接触关系把刚体并成连通块，逐岛求解。
+        #      岛序 = 岛内最小 body id，岛内接触按 (id_a, id_b) 排序 —— 遍历序
+        #      由 id 决定而非容器顺序 ⇒ 打乱 world.bodies 结果仍然逐位相同。
+        islands = self._build_islands(new_contacts)
+        self.last_stats = {
+            'bodies': len(self.bodies),
+            'broadphase_candidates': candidates,
+            'narrow_pairs': len(pairs),
+            'contacts': len(new_contacts),
+            'islands': len(islands),
+        }
         # 3) 积分速度（重力）
         for b in self.bodies:
             if b.is_static or b.sleeping:
                 continue
             b.vel += self.gravity * dt
-        # 4) 求解速度约束（顺序冲量 + warm start）
-        contacts = list(new_contacts.values())
-        for c in contacts:
-            self._apply_impulse(c, c.pn)  # warm start：预施加上一帧累积冲量
+        # 4) 求解速度约束（顺序冲量 + warm start），逐个岛、岛内定序
+        for island in islands:
+            for c in island:
+                self._apply_impulse(c, c.pn)  # warm start：预施加上一帧累积冲量
         for _ in range(iterations):
-            for c in contacts:
-                self._solve_velocity(c, dt)
+            for island in islands:
+                for c in island:
+                    self._solve_velocity(c, dt)
         # 5) 积分位置 + 休眠
         for b in self.bodies:
             if b.is_static or b.sleeping:
@@ -673,6 +679,100 @@ class World:
                     b.ang_vel = np.zeros(3)
             else:
                 b._sleep_frames = 0
+
+    # ------------------------------------------------------ 宽相（SAP）--
+    def _broadphase_sap(self, aabbs):
+        """sweep-and-prune 宽相：返回 `(pairs, compared)`。
+
+        `pairs`：真正 AABB 重叠的刚体对，按 `(id_a, id_b)` 升序（id_a < id_b）；
+        `compared`：实际做过 AABB 比较的次数（用于证明"不是 O(n²)"）。
+
+        扫掠轴取跨度最大的一根 ⇒ 剪枝最强；跨度平手取轴号小的 ⇒ 确定性。
+        纯 Python 实现，无哈希/集合参与遍历序，结果与容器顺序无关。
+        """
+        bodies = [b for b in self.bodies if not b.is_static]
+        statics = [b for b in self.bodies if b.is_static]
+        if not bodies:
+            return [], 0
+        # 参与扫掠的 = 动态体 + 静态体（静态之间不配对）
+        items = [(b, aabbs[b.id]) for b in (bodies + statics)]
+
+        # 扫掠轴：取所有 AABB 合并后跨度最大的轴
+        lo_all = np.min([lo for _b, (lo, _hi) in items], axis=0)
+        hi_all = np.max([hi for _b, (_lo, hi) in items], axis=0)
+        axis = int(np.argmax(hi_all - lo_all))
+
+        items.sort(key=lambda it: (it[1][0][axis], it[0].id))
+        pairs = []
+        compared = 0
+        active = []      # [(body, aabb)]：hi 仍可能与后续相交的
+        for b, (lo, hi) in items:
+            # 剔除所有 hi < 当前 lo 的（它们在扫掠轴上不可能再相交）
+            active = [it for it in active if not (it[1][1][axis] < lo[axis])]
+            for ob, (olo, ohi) in active:
+                compared += 1
+                if np.any(hi < olo) or np.any(ohi < lo):
+                    continue
+                if b.is_static and ob.is_static:
+                    continue
+                a, bb = (b, ob) if b.id < ob.id else (ob, b)
+                pairs.append((a, bb))
+            active.append((b, (lo, hi)))
+        pairs.sort(key=lambda p: (p[0].id, p[1].id))
+        return pairs, compared
+
+    # -------------------------------------------------------- 岛管理 ----
+    def _build_islands(self, contacts):
+        """按接触关系把刚体并成连通块（岛）。
+
+        返回 `[[Contact, ...], ...]`：岛与岛之间按"岛内最小 body id"升序，
+        岛内接触按 `(id_a, id_b)` 升序。静态体不入岛（它是"锚"，不传递岛序）。
+
+        作用：① 逐岛求解让互不相连的堆叠互不干扰（迭代次数不再被最大岛绑架）；
+        ② 岛序 + 岛内序都由 **body id** 决定 ⇒ 容器顺序无关 ⇒ 可确定性断言。
+        """
+        parent = {}
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]      # 路径压缩
+                x = parent[x]
+            return x
+
+        def union(x, y):
+            rx, ry = find(x), find(y)
+            if rx == ry:
+                return
+            if rx < ry:
+                parent[ry] = rx
+            else:
+                parent[rx] = ry
+
+        # **静态体不入岛**：它是"锚"，不传导连通性 —— 否则两摞互不相连的球
+        # 会因为共用同一块地面被并成一个岛，岛就失去隔离意义了。
+        for c in contacts.values():
+            for b in (c.a, c.b):
+                if not b.is_static:
+                    parent.setdefault(b.id, b.id)
+        for c in contacts.values():
+            dyn = [b.id for b in (c.a, c.b) if not b.is_static]
+            if len(dyn) == 2:
+                union(dyn[0], dyn[1])
+
+        groups = {}
+        for key in sorted(contacts.keys()):
+            c = contacts[key]
+            dyn = [b.id for b in (c.a, c.b) if not b.is_static]
+            if not dyn:
+                continue                     # 静态-静态：不参与求解，也不成岛
+            # 岛的代表元取岛内最小 id（并查集始终挂到更小的根上）
+            root = min(find(i) for i in dyn)
+            groups.setdefault(root, []).append(c)
+        # 岛序：岛内最小 body id；岛内接触已按 key 升序
+        ordered = []
+        for root in sorted(groups.keys()):
+            ordered.append(groups[root])
+        return ordered
 
     def _apply_impulse(self, c, mag):
         if mag <= 0.0:
