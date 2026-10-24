@@ -107,6 +107,42 @@ def test_check_adjacency_rejects_bad():
     print('  ok: check_adjacency 拒绝非法 / 接受合法（自检）')
 
 
+def _road_tiles():
+    """8 块「道路」瓦片：边插槽 'g'(草)/'r'(路)，四向**不对称**。
+
+    这组瓦片是方向键错位 bug 的照妖镜：E/W 与 N/S 相容集互不相同，
+    传播方向用错相容键就会步步矛盾（旧实现 5 个 seed × 50 次重启全败）。
+    """
+    return [W.Tile('empty', ('g', 'g', 'g', 'g')),
+            W.Tile('ns', ('r', 'g', 'r', 'g')),
+            W.Tile('ew', ('g', 'r', 'g', 'r')),
+            W.Tile('ne', ('r', 'r', 'g', 'g')),
+            W.Tile('es', ('g', 'r', 'r', 'g')),
+            W.Tile('sw', ('g', 'g', 'r', 'r')),
+            W.Tile('wn', ('r', 'g', 'g', 'r')),
+            W.Tile('cross', ('r', 'r', 'r', 'r'))]
+
+
+def test_solve_asymmetric_edges():
+    """不对称边瓦片组（道路）：多 seed 必解出且邻接合法。
+
+    曾因 ``_DIRS`` 的相容键错位（右/左/上三个方向用错 comp 索引），
+    这组瓦片永远解不出来 —— 对称边瓦片（上面所有用例）测不出该 bug。
+    """
+    tiles = _road_tiles()
+    weights = {'empty': 0.6, 'ns': 1.8, 'ew': 1.8, 'ne': 1.5, 'es': 1.5,
+               'sw': 1.5, 'wn': 1.5, 'cross': 0.8}
+    for seed in (0, 1, 7, 42, 20261024):
+        for size in ((8, 8), (16, 12)):
+            w = W.WFC(size[0], size[1], tiles, weights, seed=seed)
+            grid = w.solve()
+            assert grid is not None, \
+                f'道路瓦片 {size[0]}x{size[1]} seed={seed} 应可解（方向键错位?）'
+            assert W.check_adjacency(grid, tiles), \
+                f'{size[0]}x{size[1]} seed={seed} 邻接不合法'
+    print('  ok: 不对称边道路瓦片组 多seed/多尺寸 全解 + 邻接合法')
+
+
 def main() -> int:
     tests = [
         test_solve_trivial,
@@ -116,6 +152,7 @@ def main() -> int:
         test_solve_unsolvable,
         test_solve_row_alternation,
         test_check_adjacency_rejects_bad,
+        test_solve_asymmetric_edges,
     ]
     failed = []
     for t in tests:
