@@ -329,7 +329,7 @@ python -m tests.test_rid           RID 不透明句柄表：代际失效/槽位�
 python -m tests.test_reflect       反射注册表（一物多用）：一份属性元数据同时驱动序列化 / 编辑器检视 / 脚本绑定 / 范围与枚举校验 + 继承链展开（11 项，零 GL）
 python -m world3d.cli.frame_plan --all-toggles  帧图门禁：16 种效果组合的计划都必须合法且顺序正确
 python -m world3d.cli.config_boot all   9 个内核 + 13 共同核全部 headless 验收（10 棵树，逐项 OK 标记）
-python scripts\check_imports.py          全仓可达性门禁：world3d/ 下 159 个模块逐个 import
+python scripts\check_imports.py          全仓可达性门禁：world3d/ 下 160 个模块逐个 import
                                         （单测只覆盖被引用的模块，这个是「改漏」的唯一防线）
 ```
 
