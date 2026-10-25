@@ -32,6 +32,8 @@ FUSION_SEGMENTS = (
     ('terrain_flyover_48s', 48.0,  'ambient'),
     ('water_waves_40s',     40.0,  'fluid'),
     ('boids_45s',           45.0,  'playful'),
+    ('wardfall_48s',        48.0,  'band'),        # 诺德城邦：主城壮阔
+    ('wardfall_nordic_60s', 60.0,  'eerie'),       # 巨龙绕城：诡谲神秘
     ('particles_gpu_30s',   30.0,  'sparkle'),
     ('shadow_map_30s',      30.0,  'tense'),
     ('solar_system_60s',    60.0,  'ambient'),
@@ -285,3 +287,75 @@ def build_fusion_ost(path, kkrieger_wav='assets/kkrieger_ost_150s.wav',
         w.setframerate(RATE)
         w.writeframes(pcm.tobytes())
     return path, n_total / RATE
+
+
+# ---------------------------------------------------------------- 单 demo 多情绪 --
+def build_mood_ost(segments, path=None, rate=RATE):
+    """把一串 ``(mood, dur)`` 渲染成一段**连续**的多情绪 OST WAV（无 xfade，
+    段间做 0.4s 渐入渐出避免硬切）。返回 ``(路径, 秒数)``。
+
+    供单个 demo 自己复用融合系统的情绪段做"多段情绪剪辑"——例如 Wardfall：
+    冬境(ambient) → 巨龙(eerie) → 城邦(band) → 盛夏(ambient)。段总时长必须等于
+    ``sum(dur)``，乐谱建立在同一 Am 调性与 120BPM 网格上，换乐器/密度/音区换情绪。
+    """
+    if path is None:
+        path = os.path.join('assets', 'wardfall_mood_ost_60s.wav')
+    total = sum(d for _, d in segments)
+    n_total = int(round(total * rate))
+    pcm = array('h', [0] * n_total)
+    fade = int(0.4 * rate)
+    cursor = 0
+    for idx, (mood, dur) in enumerate(segments):
+        tr = Track(dur, rate)
+        _section(tr, mood, dur, seed=idx * 7 + 3)
+        ns = tr.n
+        for i in range(min(fade, ns)):        # 段首尾渐变，避免情绪硬切
+            tr.buf[i] *= i / fade
+            tr.buf[ns - 1 - i] *= i / fade
+        peak = max(abs(x) for x in tr.buf) or 1.0
+        gain = 0.85 / max(1.0, peak)
+        end = min(n_total, cursor + ns)
+        j = 0
+        for i in range(max(0, cursor), end):
+            pcm[i] = max(-32767, min(32767, pcm[i] + int(tr.buf[j] * gain * 32767)))
+            j += 1
+        cursor += ns
+    peak = max(max(pcm), -min(pcm)) or 1
+    if peak > 30000:
+        g = 30000.0 / peak
+        for i in range(n_total):
+            pcm[i] = int(pcm[i] * g)
+    import wave as _w
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with _w.open(path, 'wb') as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(pcm.tobytes())
+    return path, n_total / rate
+
+
+def ensure_wardfall_ost(duration=60.0, path=None):
+    """Wardfall 专用多段情绪配乐（复用融合系统情绪段）：
+
+        ambient(冬境飘雪) → eerie(巨龙绕城) → band(城邦壮阔) → ambient(盛夏安宁)
+
+    有缓存直接用，缺失时现场渲染。``duration`` 决定整段 / 各情绪段时长（按比例切分）。
+    """
+    if path is None:
+        path = os.path.join('assets', f'wardfall_mood_ost_{int(duration)}s.wav')
+    if os.path.exists(path):
+        return path
+    plan = [
+        ('ambient', duration * 0.22),
+        ('eerie',   duration * 0.22),
+        ('band',    duration * 0.24),
+        ('ambient', duration * 0.32),
+    ]
+    print('[audio] rendering Wardfall multi-mood OST (one-time) ...', flush=True)
+    t0 = os.times()[4]
+    out, sec = build_mood_ost(plan, path=path, rate=RATE)
+    print(f'[audio] Wardfall OST ready: {out} ({sec:.0f}s, '
+          f'{os.path.getsize(out) / 1048576:.1f}MB, '
+          f'{os.times()[4] - t0:.1f}s)', flush=True)
+    return out
