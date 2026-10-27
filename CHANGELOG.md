@@ -3,7 +3,7 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## [Unreleased]
+## [0.6.0] — 2026-10-27
 
 ### Added（roguelike 视野投射 · 2026-10-27）
 
