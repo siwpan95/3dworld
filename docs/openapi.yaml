@@ -1,0 +1,982 @@
+# =============================================================================
+# 3dworld Scene API — OpenAPI v3 规范
+# -----------------------------------------------------------------------------
+# 由对仓库源码的静态分析生成（2026-10-27），事实来源：
+#   * world3d/engine/scene_build.py   —— BUILDERS 注册表 / MATERIAL_FIELDS / validate()
+#   * world3d/engine/geometry.py      —— 各生成器签名与默认值
+#   * world3d/engine/material.py      —— Material 字段 / ALPHA_MODES / PRESETS
+#   * world3d/engine/env.py           —— LightEnvironment 参数
+#   * scripts/scene_build.py          —— CLI（--validate / --dry-run）
+#   * docs/LLM场景生成工作流.md        —— 三步工作流与 JSON 参考
+#
+# 重要说明：3dworld 是**进程内引擎库 + 本地 CLI**，没有网络服务。
+# 本规范把「场景 JSON 契约」按 OpenAPI 3.0 建模，使 LLM 生成端、文档站与
+# Mock 工具能以标准方式消费接口定义；各 path 对应的是**本地离线操作**
+# （Python 调用点 / CLI 命令），不是 HTTP 端点。接入真实 HTTP 服务时，
+# 本文件可直接作为路由契约使用。
+# =============================================================================
+openapi: 3.0.3
+info:
+  title: 3dworld Scene API
+  version: 0.2.0
+  description: |
+    **3dworld**（PyPI 发行名 `3dworld`，导入包名 `world3d`）是 Python + pyglet
+    的程序化三维世界引擎。本规范描述其对外数据契约 —— **场景 JSON**（Scene
+    Document）—— 以及围绕它的校验 / 试构建 / 渲染操作。
+
+    核心理念（零外部素材 + 一切程序化）：
+
+    * 场景 JSON 里**不存顶点**，只存「生成器名 + 参数 + 材质 + 变换」；
+      几何在构建时由 `world3d.engine.geometry` 现算。
+    * **LLM 只负责写数据**，合法性由本地校验器把关（每个 `mesh` 都会实际
+      试构建，未知生成器 / 未知参数 / 数组形状错误 → 立即报错，挡住幻觉参数）。
+    * 双端分离：生成端（LLM / 人）只需懂生成器清单与 JSON 格式；
+      执行端（引擎）负责校验、构建与渲染。
+
+    坐标与单位约定：**Y 轴向上**，地面在 `y=0`，长度单位为抽象"世界单位"。
+  contact:
+    name: siwpan
+    url: https://gitee.com/siwpan/3dworld
+  license:
+    name: MIT
+    url: https://gitee.com/siwpan/3dworld/blob/master/LICENSE
+externalDocs:
+  description: LLM 场景生成工作流（JSON 参考 + Prompt 模板）
+  url: https://gitee.com/siwpan/3dworld/blob/master/docs/LLM%E5%9C%BA%E6%99%AF%E7%94%9F%E6%88%90%E5%B7%A5%E4%BD%9C%E6%B5%81.md
+servers:
+  - url: local://world3d
+    description: 进程内调用（无网络服务）；path 操作映射到 Python API / 本地 CLI
+
+tags:
+  - name: scenes
+    description: 场景文档的校验、试构建与渲染
+  - name: registry
+    description: 静态注册表（生成器 / 材质预设），供生成端拉取可用清单
+
+paths:
+  /scenes/validate:
+    post:
+      tags: [scenes]
+      operationId: validateScene
+      summary: 校验场景 JSON（结构 + 语义 + 可构建性）
+      description: |
+        纯 CPU、无窗口可跑，适合 AI / CI 流水线。等价入口：
+
+        * Python：`world3d.engine.scene_build.validate(data)` → `[(level, path, message), ...]`
+        * CLI：`python scripts/scene_build.py <file.json> --validate`
+
+        校验分三级：`error`（必须修）/ `warning`（可疑但不致命）/ `stats`（统计项）。
+        校验过程中每个 `mesh` 会**实际试构建**，因此参数拼写错误、数组形状错误
+        都会被抓住；错误路径用类 JSONPath 记（如 `$.root.children[3].mesh.args.radius`）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SceneDocument'
+            examples:
+              moonlitAltar:
+                $ref: '#/components/examples/MoonlitAltar'
+              minimal:
+                $ref: '#/components/examples/MinimalScene'
+      responses:
+        '200':
+          description: 校验完成（无论通过与否，报告都返回 200；是否通过看 `ok` 字段）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationReport'
+              examples:
+                passed:
+                  $ref: '#/components/examples/ValidationPassed'
+                withIssues:
+                  $ref: '#/components/examples/ValidationWithIssues'
+        '400':
+          $ref: '#/components/responses/BadJson'
+  /scenes/build:
+    post:
+      tags: [scenes]
+      operationId: buildScene
+      summary: 试构建场景（CPU 侧统计顶点数）
+      description: |
+        在校验通过的前提下对全部 `mesh` 做 CPU 构建，返回顶点统计。
+        等价入口：
+
+        * Python：`world3d.engine.scene_build.build_meshdata(mesh_def)`（逐节点）
+        * CLI：`python scripts/scene_build.py <file.json> --dry-run`
+          （输出 `[dry-run] CPU build OK, total vertices = N`）
+
+        完整构建成可渲染的 `Scene`（`build_scene(data, program)`）需要 GL
+        上下文，见 `/scenes/render`。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SceneDocument'
+            examples:
+              moonlitAltar:
+                $ref: '#/components/examples/MoonlitAltar'
+      parameters:
+        - name: mode
+          in: query
+          required: false
+          description: |
+            `dry-run`（默认）：校验 + CPU 构建全部网格；`validate`：只校验。
+          schema:
+            type: string
+            enum: [dry-run, validate]
+            default: dry-run
+      responses:
+        '200':
+          description: 构建完成
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildReport'
+              example:
+                ok: true
+                total_vertices: 152340
+                stats:
+                  nodes: 21
+                  meshes: 18
+                  vertices: 152340
+                  triangles: 149820
+                message: 'CPU build OK, total vertices = 152340'
+        '400':
+          $ref: '#/components/responses/BadJson'
+        '422':
+          description: 场景校验未通过（存在 error 级问题），拒绝构建
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationReport'
+  /scenes/render:
+    post:
+      tags: [scenes]
+      operationId: renderScene
+      summary: 渲染场景（交互式查看器 / 离线截图，需 GL 上下文）
+      description: |
+        把校验通过的场景交给引擎渲染。等价入口：
+
+        * 交互式（热重载）：`python examples/scene_viewer.py --file <file.json>`
+          —— 改 JSON 保存即自动重载；**含错误的 JSON 会被拒绝并保留旧场景**。
+        * 编程接口：`world3d.engine.scene_build.build_scene(data, program)`
+          （`program` 是已编译的 PBR 着色器程序）。
+
+        本操作在本地引擎内执行，不产生网络响应；此处以 `200` 返回渲染产物
+        （PNG 截图或实时画面的句柄）建模。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SceneDocument'
+      responses:
+        '200':
+          description: 渲染成功，返回 PNG 截图
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '422':
+          $ref: '#/components/responses/InvalidScene'
+  /builders:
+    get:
+      tags: [registry]
+      operationId: listBuilders
+      summary: 列出全部几何生成器
+      description: |
+        静态注册表（源码 `world3d/engine/scene_build.BUILDERS`），共 10 个。
+        生成端（LLM）在写场景前应拉取本清单以确定 `mesh.builder` 可选值
+        与各自允许的 `args` 参数（多余参数会被校验器直接拒绝）。
+      responses:
+        '200':
+          description: 生成器清单
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BuilderInfo'
+              example:
+                - name: box
+                  allowed_args: [sx, sy, sz, offset, color]
+                  summary: 盒体（尺寸 + 中心偏移）
+                - name: lathe
+                  allowed_args: [profile, segments, closed_top, closed_bottom, color]
+                  summary: 车削体：2D 轮廓 [r,y] 绕 Y 轴旋转（花瓶/柱/塔）
+  /material-presets:
+    get:
+      tags: [registry]
+      operationId: listMaterialPresets
+      summary: 列出全部 PBR 材质预设
+      description: |
+        静态注册表（源码 `world3d/engine/material.PRESETS`），共 10 个。
+        数值取自 glTF 官方材质示例 / Filament 实测表；`preset` 之外的字段
+        为覆盖项（覆盖预设的同名字段）。
+      responses:
+        '200':
+          description: 材质预设清单
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PresetInfo'
+              example:
+                - name: gold
+                  base_color: [1.0, 0.766, 0.336]
+                  metallic: 1.0
+                  roughness: 0.25
+                - name: neon
+                  base_color: [0.05, 0.05, 0.05]
+                  metallic: 0.0
+                  roughness: 0.4
+                  emissive: [0.0, 1.6, 2.2]
+
+components:
+  responses:
+    BadJson:
+      description: 请求体不是合法 JSON 或顶层不是 JSON 对象
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationReport'
+          example:
+            ok: false
+            errors: 1
+            warnings: 0
+            issues:
+              - level: error
+                path: $
+                message: 顶层必须是 JSON 对象
+    InvalidScene:
+      description: 场景校验未通过，含错误的 JSON 会被拒绝并保留旧场景（热重载行为）
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationReport'
+
+  schemas:
+    # ------------------------------------------------------------ 基础类型 --
+    Vec3:
+      type: array
+      description: 三维向量 [x, y, z]（Y 轴向上，地面 y=0）
+      items: { type: number, format: double }
+      minItems: 3
+      maxItems: 3
+      example: [4.0, 1.6, 0.0]
+    Quat:
+      type: array
+      description: 四元数 [x, y, z, w]；模长偏离 1 超过 1e-3 会收到 warning
+      items: { type: number, format: double }
+      minItems: 4
+      maxItems: 4
+      default: [0, 0, 0, 1]
+      example: [0, 0, 0, 1]
+    ColorRGB:
+      description: RGB(A) 顶点色 / 颜色，线性空间，取值 0~1；允许 3 或 4 元（A 可选）
+      type: array
+      items: { type: number, format: double }
+      minItems: 3
+      maxItems: 4
+      example: [0.78, 0.77, 0.74]
+    NonNegativeInt:
+      type: integer
+      format: int32
+      minimum: 0
+
+    # ------------------------------------------------------------ 场景文档 --
+    SceneDocument:
+      type: object
+      description: |
+        场景文档顶层结构。只存「结构与参数」，不存几何顶点 —— 几何按
+        `mesh.builder` 在构建时由程序化生成器现算。
+      required: [root]
+      properties:
+        name:
+          type: string
+          description: 场景名（省略时引擎用 "scene"）
+          example: 月夜祭坛
+        environment:
+          $ref: '#/components/schemas/Environment'
+        root:
+          $ref: '#/components/schemas/Node'
+
+    Node:
+      type: object
+      description: |
+        场景节点（递归结构）：TRS 变换 + 可选网格 + 可选材质 + 子节点数组
+        （层级变换，父节点带动子节点）。节点名建议唯一 —— 重复名会收到
+        warning（`find()` 会歧义）。
+      properties:
+        name:
+          type: string
+          description: 节点名；省略时用 "node"。非空字符串。
+          default: node
+          example: column_0
+        translation:
+          allOf: [{ $ref: '#/components/schemas/Vec3' }]
+          default: [0, 0, 0]
+        rotation:
+          allOf: [{ $ref: '#/components/schemas/Quat' }]
+          default: [0, 0, 0, 1]
+        scale:
+          allOf: [{ $ref: '#/components/schemas/Vec3' }]
+          default: [1, 1, 1]
+        mesh:
+          $ref: '#/components/schemas/MeshDef'
+        material:
+          $ref: '#/components/schemas/MaterialDef'
+        user_data:
+          type: object
+          description: 任意键值对（随节点透传，引擎不解释）
+          additionalProperties: true
+        children:
+          type: array
+          description: 子节点数组（递归）
+          items:
+            $ref: '#/components/schemas/Node'
+
+    # ------------------------------------------------------------ 光照环境 --
+    Environment:
+      type: object
+      description: |
+        光照环境（`LightEnvironment` 参数）。省略时使用默认白昼
+        （太阳方向 (0.45, 0.75, 0.35)、暖白阳光、蓝天穹）。
+        所有颜色为线性空间 RGB。
+      properties:
+        sun_dir:
+          allOf: [{ $ref: '#/components/schemas/Vec3' }]
+          description: 太阳方向向量
+          default: [0.45, 0.75, 0.35]
+        sun_color:
+          allOf: [{ $ref: '#/components/schemas/ColorRGB' }]
+          description: 太阳颜色
+          default: [1.0, 0.94, 0.86]
+        sun_intensity:
+          type: number
+          format: double
+          description: 太阳强度倍率
+          default: 1.0
+        sky_zenith:
+          allOf: [{ $ref: '#/components/schemas/ColorRGB' }]
+          description: 天穹天顶色（程序化 IBL 烘焙输入）
+          default: [0.24, 0.44, 0.78]
+        sky_horizon:
+          allOf: [{ $ref: '#/components/schemas/ColorRGB' }]
+          description: 天穹地平线色
+          default: [0.62, 0.76, 0.90]
+        sky_ground:
+          allOf: [{ $ref: '#/components/schemas/ColorRGB' }]
+          description: 天穹地面色
+          default: [0.16, 0.15, 0.14]
+        ibl_intensity:
+          type: number
+          format: double
+          description: IBL（辐照度图 / GGX 预过滤 / BRDF LUT）强度倍率
+          default: 1.0
+        sky_intensity:
+          type: number
+          format: double
+          description: 天穹背景强度倍率
+          default: 1.0
+
+    # ------------------------------------------------------------ 网格定义 --
+    MeshDef:
+      description: |
+        网格定义：`builder`（生成器名）+ `args`（该生成器允许的参数，
+        **多余参数会被校验器报 error**）+ 可选 `color`（顶点色，PBR 下建议
+        优先用 material）。省略 `mesh` = 纯结构节点（仅变换，用于层级分组）。
+        旧格式的字符串 `mesh`（如 `"cube"`）会收到 warning：无参数、无法重建。
+      oneOf:
+        - $ref: '#/components/schemas/BoxMesh'
+        - $ref: '#/components/schemas/CubeMesh'
+        - $ref: '#/components/schemas/SphereMesh'
+        - $ref: '#/components/schemas/PlaneMesh'
+        - $ref: '#/components/schemas/CylinderMesh'
+        - $ref: '#/components/schemas/TorusMesh'
+        - $ref: '#/components/schemas/GroundGridMesh'
+        - $ref: '#/components/schemas/LatheMesh'
+        - $ref: '#/components/schemas/TubeMesh'
+        - $ref: '#/components/schemas/TorusKnotMesh'
+      discriminator:
+        propertyName: builder
+        mapping:
+          box: '#/components/schemas/BoxMesh'
+          cube: '#/components/schemas/CubeMesh'
+          sphere: '#/components/schemas/SphereMesh'
+          plane: '#/components/schemas/PlaneMesh'
+          cylinder: '#/components/schemas/CylinderMesh'
+          torus: '#/components/schemas/TorusMesh'
+          ground_grid: '#/components/schemas/GroundGridMesh'
+          lathe: '#/components/schemas/LatheMesh'
+          tube: '#/components/schemas/TubeMesh'
+          torus_knot: '#/components/schemas/TorusKnotMesh'
+
+    BoxMesh:
+      type: object
+      description: 盒体（尺寸 + 中心偏移）。等价源码：`geometry.box(sx, sy, sz, offset, color)`
+      required: [builder]
+      properties:
+        builder:
+          type: string
+          enum: [box]
+        args:
+          $ref: '#/components/schemas/BoxArgs'
+        color:
+          $ref: '#/components/schemas/ColorRGB'
+    BoxArgs:
+      type: object
+      description: box 生成器参数（其余参数会被拒绝）
+      required: [sx, sy, sz]
+      properties:
+        sx: { type: number, description: X 方向尺寸, example: 1.0 }
+        sy: { type: number, description: Y 方向尺寸, example: 1.0 }
+        sz: { type: number, description: Z 方向尺寸, example: 1.0 }
+        offset:
+          allOf: [{ $ref: '#/components/schemas/Vec3' }]
+          description: 中心偏移
+          default: [0, 0, 0]
+
+    CubeMesh:
+      type: object
+      description: 立方体。等价源码：`geometry.cube(center, size, color)`
+      required: [builder]
+      properties:
+        builder:
+          type: string
+          enum: [cube]
+        args:
+          $ref: '#/components/schemas/CubeArgs'
+        color:
+          $ref: '#/components/schemas/ColorRGB'
+    CubeArgs:
+      type: object
+      properties:
+        center:
+          allOf: [{ $ref: '#/components/schemas/Vec3' }]
+          description: 中心点
+          default: [0, 0, 0]
+        size:
+          type: number
+          description: 边长
+          default: 1.0
+          example: 1.0
+
+    SphereMesh:
+      type: object
+      description: UV 球。等价源码：`geometry.sphere(radius, segments, rings, color)`
+      required: [builder]
+      properties:
+        builder:
+          type: string
+          enum: [sphere]
+        args:
+          $ref: '#/components/schemas/SphereArgs'
+        color:
+          $ref: '#/components/schemas/ColorRGB'
+    SphereArgs:
+      type: object
+      properties:
+        radius: { type: number, default: 1.0, description: 半径, example: 1.0 }
+        segments:
+          type: integer
+          minimum: 3
+          default: 24
+          description: 经度分段数
+        rings:
+          type: integer
+          minimum: 2
+          default: 16
+          description: 纬度分段数
+
+    PlaneMesh:
+      type: object
+      description: 水平面（XZ 平面，可选抬升）。等价源码：`geometry.plane(width, depth, segs, color, y)`
+      required: [builder]
+      properties:
+        builder:
+          type: string
+          enum: [plane]
+        args:
+          $ref: '#/components/schemas/PlaneArgs'
+        color:
+          $ref: '#/components/schemas/ColorRGB'
+    PlaneArgs:
+      type: object
+      properties:
+        width: { type: number, default: 1.0, description: X 方向宽度, example: 8.0 }
+        depth: { type: number, default: 1.0, description: Z 方向深度, example: 8.0 }
+        segs:
+          type: integer
+          minimum: 1
+          default: 1
+          description: 细分段数
+        y:
+          type: number
+          default: 0.0
+          description: 平面高度（Y 坐标）
+
+    CylinderMesh:
+      type: object
+      description: 圆柱（可带盖）。等价源码：`geometry.cylinder(radius, height, segments, capped, color)`
+      required: [builder]
+      properties:
+        builder:
+          type: string
+          enum: [cylinder]
+        args:
+          $ref: '#/components/schemas/CylinderArgs'
+        color:
+          $ref: '#/components/schemas/ColorRGB'
+    CylinderArgs:
+      type: object
+      properties:
+        radius: { type: number, default: 0.5, description: 半径, example: 6.6 }
+        height: { type: number, default: 1.0, description: 高度（沿 Y 轴）, example: 0.5 }
+        segments:
+          type: integer
+          minimum: 3
+          default: 24
+          description: 圆周分段数（高精度台座可用 64）
+        capped:
+          type: boolean
+          default: true
+          description: 是否封盖
+
+    TorusMesh:
+      type: object
+      description: 圆环（XZ 平面内）。等价源码：`geometry.torus(major, minor, major_segs, minor_segs, color)`
+      required: [builder]
+      properties:
+        builder:
+          type: string
+          enum: [torus]
+        args:
+          $ref: '#/components/schemas/TorusArgs'
+        color:
+          $ref: '#/components/schemas/ColorRGB'
+    TorusArgs:
+      type: object
+      properties:
+        major: { type: number, default: 1.0, description: 主环半径, example: 2.0 }
+        minor: { type: number, default: 0.3, description: 管半径, example: 0.3 }
+        major_segs: { type: integer, minimum: 3, default: 32, description: 主环分段 }
+        minor_segs: { type: integer, minimum: 3, default: 16, description: 管截面分段 }
+
+    GroundGridMesh:
+      type: object
+      description: |
+        棋盘格地面（y=0）。常作场景的"地面"节点。
+        等价源码：`geometry.ground_grid(half, tile, color_a, color_b)`
+      required: [builder]
+      properties:
+        builder:
+          type: string
+          enum: [ground_grid]
+        args:
+          $ref: '#/components/schemas/GroundGridArgs'
+    GroundGridArgs:
+      type: object
+      properties:
+        half:
+          type: integer
+          minimum: 1
+          default: 10
+          description: 半径格数（总边长 = 2*half*tile）
+          example: 28
+        tile:
+          type: number
+          default: 1.0
+          description: 单格边长
+          example: 2.0
+        color_a:
+          allOf: [{ $ref: '#/components/schemas/ColorRGB' }]
+          description: 棋盘格颜色 A
+          default: [0.50, 0.53, 0.47]
+        color_b:
+          allOf: [{ $ref: '#/components/schemas/ColorRGB' }]
+          description: 棋盘格颜色 B
+          default: [0.42, 0.45, 0.39]
+
+    LatheMesh:
+      type: object
+      description: |
+        车削体：2D 轮廓绕 Y 轴旋转（花瓶 / 立柱 / 塔）。
+        等价源码：`geometry.lathe(profile, segments, closed_top, closed_bottom, color)`
+      required: [builder]
+      properties:
+        builder:
+          type: string
+          enum: [lathe]
+        args:
+          $ref: '#/components/schemas/LatheArgs'
+        color:
+          $ref: '#/components/schemas/ColorRGB'
+    LatheArgs:
+      type: object
+      required: [profile]
+      properties:
+        profile:
+          type: array
+          description: |
+            2D 轮廓点数组，每点为 `[r, y]`（半径 + 高度），**至少 2 个点**；
+            首尾 r=0 可自然封口。月夜祭坛的石柱即用此生成器。
+          items:
+            type: array
+            items: { type: number }
+            minItems: 2
+            maxItems: 2
+          minItems: 2
+          example: [[0, 0], [0.46, 0], [0.42, 0.18], [0.36, 3.6], [0.46, 3.85], [0.46, 4.1], [0, 4.1]]
+        segments:
+          type: integer
+          minimum: 3
+          default: 24
+          description: 旋转分段数
+          example: 20
+        closed_top:
+          type: boolean
+          default: false
+          description: 封顶
+        closed_bottom:
+          type: boolean
+          default: false
+          description: 封底
+
+    TubeMesh:
+      type: object
+      description: |
+        管扫掠：沿 3D 折线扫出等截面圆管（拱门 / 线缆 / 轨道）。
+        等价源码：`geometry.tube(points, radius, radial, color, caps)`
+      required: [builder]
+      properties:
+        builder:
+          type: string
+          enum: [tube]
+        args:
+          $ref: '#/components/schemas/TubeArgs'
+        color:
+          $ref: '#/components/schemas/ColorRGB'
+    TubeArgs:
+      type: object
+      required: [points]
+      properties:
+        points:
+          type: array
+          description: 3D 折线点数组，每点为 `[x, y, z]`，**至少 2 个点**
+          items:
+            $ref: '#/components/schemas/Vec3'
+          minItems: 2
+          example: [[-3, 0, 0], [0, 2.5, 0], [3, 0, 0]]
+        radius:
+          type: number
+          default: 0.1
+          description: 管半径
+          example: 0.15
+        radial:
+          type: integer
+          minimum: 3
+          default: 8
+          description: 管截面分段数
+        caps:
+          type: boolean
+          default: true
+          description: 两端封口
+
+    TorusKnotMesh:
+      type: object
+      description: |
+        环面结（数学结，p-q 结型）。kkrieger 圣殿的反应堆核心即此形态。
+        等价源码：`geometry.torus_knot(p, q, major, tube_r, tubular, radial, color)`
+      required: [builder]
+      properties:
+        builder:
+          type: string
+          enum: [torus_knot]
+        args:
+          $ref: '#/components/schemas/TorusKnotArgs'
+        color:
+          $ref: '#/components/schemas/ColorRGB'
+    TorusKnotArgs:
+      type: object
+      properties:
+        p:
+          type: integer
+          minimum: 1
+          default: 2
+          description: 环绕轴的圈数
+        q:
+          type: integer
+          minimum: 1
+          default: 3
+          description: 穿过环面的圈数
+        major:
+          type: number
+          default: 1.0
+          description: 主半径
+          example: 1.6
+        tube_r:
+          type: number
+          default: 0.22
+          description: 管半径
+        tubular:
+          type: integer
+          minimum: 8
+          default: 96
+          description: 沿结曲线的分段
+        radial:
+          type: integer
+          minimum: 3
+          default: 10
+          description: 管截面分段
+
+    # ------------------------------------------------------------ 材质 --
+    MaterialDef:
+      type: object
+      description: |
+        PBR 材质（金属-粗糙度工作流，对齐 glTF 2.0）。`preset` 从预设表取
+        基准（数值取自 glTF 官方示例 / Filament 实测表），其余字段为**覆盖项**
+        （覆盖预设的同名字段）；省略 `preset` 则从白模起。
+        注意：`roughness` 会**平方后**才进 GGX 公式（感知重映射）。
+        未知字段会被校验器报 error。
+      properties:
+        preset:
+          type: string
+          enum: [gold, copper, steel, iron, plastic_red, rubber, ceramic,
+                 marble, emerald_light, neon]
+          description: 预设名（PRESETS 键）
+        name:
+          type: string
+          description: 材质名（可选）
+        base_color:
+          allOf: [{ $ref: '#/components/schemas/ColorRGB' }]
+          description: 介电体=漫反射色；金属=F0（高光色）。线性空间。
+        metallic:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          description: 0=介电体（F0 固定 0.04），1=金属（无漫反射）。越界 warning。
+        roughness:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          description: 0=镜面，1=完全粗糙（平方后进 GGX）。越界 warning。
+        emissive:
+          allOf: [{ $ref: '#/components/schemas/ColorRGB' }]
+          description: 自发光色（可 >1 实现 HDR 发光，如 neon 预设 [0.0, 1.6, 2.2]）
+        alpha:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          default: 1.0
+          description: 不透明度。越界 warning。
+        alpha_mode:
+          type: string
+          enum: [OPAQUE, MASK, BLEND]
+          default: OPAQUE
+          description: alpha 模式（与 glTF 对齐；文档示例中常见 OPAQUE / BLEND）
+        alpha_cutoff:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          default: 0.5
+          description: MASK 模式的裁切阈值
+        double_sided:
+          type: boolean
+          default: false
+          description: 双面渲染
+
+    # ------------------------------------------------------------ 校验报告 --
+    ValidationIssue:
+      type: object
+      description: 单条校验结果；`path` 为类 JSONPath 定位（如 `$.root.children[3].mesh.args.radius`）
+      required: [level, path, message]
+      properties:
+        level:
+          type: string
+          enum: [error, warning]
+          description: error=必须修；warning=可疑但不致命（如四元数未归一化、节点重名）
+        path:
+          type: string
+          description: 问题定位路径
+          example: $.root.children[3].mesh.builder
+        message:
+          type: string
+          description: 人读消息；error 会给出可用值清单（如可用生成器 / 预设）
+          example: "未知生成器 'boxes'，可用: ['box', 'cube', ...]"
+    SceneStats:
+      type: object
+      description: 校验过程中实际试构建得到的统计
+      properties:
+        nodes: { type: integer, description: 节点总数 }
+        meshes: { type: integer, description: 成功构建的网格数 }
+        vertices: { type: integer, description: 顶点总数 }
+        triangles: { type: integer, description: 三角形总数 }
+    ValidationReport:
+      type: object
+      required: [ok, errors, warnings, issues]
+      properties:
+        ok:
+          type: boolean
+          description: errors == 0 即通过
+        errors:
+          type: integer
+          minimum: 0
+        warnings:
+          type: integer
+          minimum: 0
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationIssue'
+        stats:
+          $ref: '#/components/schemas/SceneStats'
+        message:
+          type: string
+          description: CLI 风格的摘要行（如 `[validate] 2 error(s), 1 warning(s)`）
+    BuildReport:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        total_vertices:
+          type: integer
+          minimum: 0
+          description: 全部网格 CPU 构建后的顶点总数（dry-run 输出）
+        stats:
+          $ref: '#/components/schemas/SceneStats'
+        message:
+          type: string
+          example: 'CPU build OK, total vertices = 152340'
+
+    # ------------------------------------------------------------ 注册表 --
+    BuilderInfo:
+      type: object
+      description: 单个生成器的注册表条目（源码 BUILDERS）
+      required: [name, allowed_args]
+      properties:
+        name:
+          type: string
+          enum: [box, cube, sphere, plane, cylinder, torus, ground_grid,
+                 lathe, tube, torus_knot]
+        allowed_args:
+          type: array
+          items: { type: string }
+          description: 该生成器允许的 args 参数名（多余参数校验报错）
+        summary:
+          type: string
+    PresetInfo:
+      type: object
+      description: 单个材质预设（源码 PRESETS）
+      required: [name, base_color, metallic, roughness]
+      properties:
+        name:
+          type: string
+          enum: [gold, copper, steel, iron, plastic_red, rubber, ceramic,
+                 marble, emerald_light, neon]
+        base_color: { $ref: '#/components/schemas/ColorRGB' }
+        metallic: { type: number }
+        roughness: { type: number }
+        emissive: { $ref: '#/components/schemas/ColorRGB' }
+
+  # -------------------------------------------------------------- 示例 --
+  examples:
+    MinimalScene:
+      summary: 最小合法场景（1 个节点 + 1 个网格）
+      value:
+        name: hello-cube
+        root:
+          name: root
+          children:
+            - name: box_0
+              translation: [0, 0.5, 0]
+              mesh:
+                builder: box
+                args: { sx: 1, sy: 1, sz: 1 }
+              material: { preset: gold }
+    MoonlitAltar:
+      summary: 月夜祭坛（docs/llm_scene_demo.json 节选：环境 + 台座 + 石柱 + 地面）
+      value:
+        name: 月夜祭坛
+        environment:
+          sun_dir: [0.30, 0.62, -0.72]
+          sun_color: [0.62, 0.72, 1.00]
+          sun_intensity: 0.85
+          sky_zenith: [0.05, 0.08, 0.18]
+          sky_horizon: [0.16, 0.20, 0.34]
+          sky_ground: [0.03, 0.035, 0.05]
+          ibl_intensity: 0.70
+          sky_intensity: 0.80
+        root:
+          name: root
+          children:
+            - name: ground
+              mesh:
+                builder: ground_grid
+                args:
+                  half: 28
+                  tile: 2.0
+                  color_a: [0.30, 0.32, 0.38]
+                  color_b: [0.22, 0.24, 0.30]
+              material:
+                preset: marble
+                base_color: [0.35, 0.37, 0.42]
+                roughness: 0.92
+                metallic: 0.0
+            - name: step_0
+              translation: [0, 0.25, 0]
+              mesh:
+                builder: cylinder
+                args: { radius: 6.6, height: 0.5, segments: 64 }
+              material: { preset: marble, base_color: [0.52, 0.54, 0.58], roughness: 0.80 }
+            - name: column_0
+              translation: [4.0, 1.6, 0]
+              mesh:
+                builder: lathe
+                args:
+                  profile: [[0, 0], [0.46, 0], [0.42, 0.18], [0.36, 3.6], [0.46, 3.85], [0.46, 4.1], [0, 4.1]]
+                  segments: 20
+              material: { preset: marble, base_color: [0.62, 0.63, 0.66], roughness: 0.55 }
+            - name: altar_knot
+              translation: [0, 4.2, 0]
+              rotation: [0, 0, 0, 1]
+              mesh:
+                builder: torus_knot
+                args: { p: 2, q: 3, major: 1.2, tube_r: 0.18 }
+              material: { preset: neon }
+    ValidationPassed:
+      summary: 校验通过
+      value:
+        ok: true
+        errors: 0
+        warnings: 0
+        issues: []
+        stats: { nodes: 4, meshes: 4, vertices: 15234, triangles: 14988 }
+        message: '[validate] 0 error(s), 0 warning(s)'
+    ValidationWithIssues:
+      summary: 校验发现 error + warning（LLM 幻觉参数被拦下）
+      value:
+        ok: false
+        errors: 2
+        warnings: 1
+        issues:
+          - level: error
+            path: $.root.children[2].mesh.builder
+            message: "未知生成器 'boxes'，可用: ['box', 'cube', 'cylinder', 'ground_grid', 'lathe', 'plane', 'sphere', 'torus', 'torus_knot', 'tube']"
+          - level: error
+            path: $.root.children[3].mesh.args.radiusx
+            message: "生成器 'sphere' 不接受该参数"
+          - level: warning
+            path: $.root.children[1].rotation
+            message: 四元数模长 1.0206 != 1（建议归一化）
+        stats: { nodes: 4, meshes: 2, vertices: 912, triangles: 880 }
+        message: '[validate] 2 error(s), 1 warning(s)'
