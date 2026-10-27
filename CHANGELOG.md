@@ -3,7 +3,20 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## [Unreleased] — CDLOD 地形 LOD（待发版）
+## [0.5.0] — 2026-10-27
+
+### Added（GPU 计算调度核心 · 2026-10-27）
+
+- **`engine/compute.py` — compute shader / SSBO / barrier 通用调度层**：把
+  `gpu_cull` 首创的 compute 支持实践抽成可复用模块（gpu_cull 专用路径不动）。
+  `detect()` 三道检查（版本串 + GL 入口 + **试编译最小 compute**——真实窗口
+  上下文报 3.3 而驱动实际支持 430 是常态，规范不保证只能试）；`ComputeBuffer`
+  零拷贝 SSBO（numpy/bytes/ctypes 直传，upload/download，**同一块 buffer 可
+  compute 写、顶点属性读**——GPU 模拟 + GPU 绘制零回读的关键）；`ComputeShader`
+  统一转译 pyglet 的 `ShaderException`（继承 `BaseException` 的坑）+ 按类型
+  分派 uniform + `local_size` 源码解析 + `groups_for(n)` 线程组换算。
+  `tests/test_compute.py` 黄金判据：GPU 逐元素运算与 CPU 参照逐位一致、
+  `gl_GlobalInvocationID` 映射 0..n-1、SSBO 往返逐位一致。
 
 ### Added（据《开源游戏引擎源码架构调研》落地四项 · 2026-10-23）
 
