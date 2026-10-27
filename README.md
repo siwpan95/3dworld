@@ -295,7 +295,7 @@ python -m tests.test_ca              元胞自动机：141 规则注册表 + GoL
 python -m tests.test_curves           曲线库：Bézier 任意阶 + Catmull-Rom 过控制点 + 长度/切线（9 项，零 GL）
 python -m tests.test_physics3d        3D 物理：向量/碰撞/扫掠 TOI/单球积分/多球世界（12 项，零 GL）
 python -m tests.test_lsystem          L-Systems：重写（确定/随机）+ 2D/3D 龟图（10 项，零 GL）
-python -m tests.test_wfc              WFC 波函数坍缩：瓦片平铺求解 + 邻接不变量 + 矛盾处理（7 项，零 GL）
+python -m tests.test_wfc              WFC 波函数坍缩：瓦片平铺求解 + 邻接不变量 + 矛盾处理（8 项，零 GL）
 python -m tests.test_skin           蒙皮骨骼动画（8 项）
 python -m tests.test_gpu_cull       GPU 驱动渲染（7 项，含"GPU 剔除 == CPU 剔除"逐实例比对）
 python -m tests.test_p2_render      PCSS / WBOIT / 点云+EDL（7 项）
