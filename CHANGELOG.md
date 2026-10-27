@@ -3,6 +3,17 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [Unreleased]
+
+### Added（roguelike 视野投射 · 2026-10-27）
+
+- **`logic/fov.py` — recursive shadowcasting 视野投射 + 光照衰减**（纯标准库）：
+  `compute_fov(opaque, origin, radius)` 八象限递归扫描（回调式遮挡语义，
+  返回可见格→平方距离映射）；`visible_through` 单点射线判定（AI 视线查询）；
+  `light_level` 火把衰减曲线。算法思想来自 RogueBasin 经典（公共领域方法论），
+  实现为本仓风格。tests/test_fov.py 8/8：遮挡不变量、门缝透光、拐角不泄露、
+  对称性、确定性。首个消费者：演示仓 `examples/brogueward.py`《渊境》。
+
 ## [0.5.0] — 2026-10-27
 
 ### Added（GPU 计算调度核心 · 2026-10-27）
