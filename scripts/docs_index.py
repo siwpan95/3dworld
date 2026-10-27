@@ -48,10 +48,24 @@ TRACKS = (
     ('④ 引擎渲染扩展', ('4-', '4_')),
     ('BQM 机制致敬线（并行轨道）', ('BQM',)),
     ('规划与总览', ('5_', '补完计划', '引擎设计')),
+    ('图示（架构图 / 数据流图）', ('3dworld_architecture', '3dworld_dataflow')),
     ('专题笔记与指南', ()),          # 兜底：剩下的都进这里
 )
 
 SUMMARY_LIMIT = 58
+
+#: 图示（SVG）没有 markdown 标题/正文，单独给「标题 + 摘要」映射，避免被当成散文抓错。
+#: 新增图示时在这里登记一行即可，门禁会核对它确实进索引、链接也指得到。
+SVG_META = {
+    '3dworld_architecture.svg': (
+        '系统分层架构图',
+        'host→games→core→engine→logic→runtime 的分层与向下依赖方向',
+    ),
+    '3dworld_dataflow.svg': (
+        '核心数据流图',
+        '配置树驱动挂载 / 逐帧主循环 / 场景数据来源三路汇聚',
+    ),
+}
 
 
 def _title(text):
@@ -93,7 +107,8 @@ def _summary(text):
             if s.startswith('# '):
                 started = True
             continue
-        if not s or s.startswith(('#', '>', '|', '*', '-', '=', '·', '+')):
+        # `!` 跳过图片嵌入（如 `![分层架构]`），否则会被当成摘要正文抓进来。
+        if not s or s.startswith(('#', '>', '|', '*', '-', '=', '·', '+', '!')):
             continue
         if re.fullmatch(r'[-=_*`\s]+', s):          # 分隔线兜底
             continue
@@ -119,10 +134,14 @@ def collect():
     order = {label: i for i, (label, _p) in enumerate(TRACKS)}
     rows = []
     for fn in sorted(os.listdir(DOCS)):
-        if not fn.endswith('.md') or fn == 'README.md':
+        if fn == 'README.md':
             continue
-        text = open(os.path.join(DOCS, fn), encoding='utf-8').read()
-        rows.append((_track(fn), fn, _title(text) or fn[:-3], _summary(text)))
+        if fn.endswith('.md'):
+            text = open(os.path.join(DOCS, fn), encoding='utf-8').read()
+            rows.append((_track(fn), fn, _title(text) or fn[:-3], _summary(text)))
+        elif fn.endswith('.svg'):
+            title, summary = SVG_META.get(fn, (fn[:-4], '图示'))
+            rows.append((_track(fn), fn, title, summary))
     rows.sort(key=lambda r: (order.get(r[0], 99), r[1]))
     return rows
 
@@ -141,7 +160,7 @@ def build_index() -> str:
         '> 门禁 `docs-index-fresh`（`python scripts/verify.py`）会核对它是否最新，',
         '> 所以"新加了文档但忘了登记"会在验收里变红，而不是悄悄腐烂。',
         '',
-        f'共 **{len(rows)} 篇**，按轨道分组：',
+        f'共 **{len(rows)} 个文档/图示**，按轨道分组：',
         '',
     ]
     for label, _prefixes in TRACKS:

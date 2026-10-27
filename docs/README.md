@@ -5,7 +5,7 @@
 > 门禁 `docs-index-fresh`（`python scripts/verify.py`）会核对它是否最新，
 > 所以"新加了文档但忘了登记"会在验收里变红，而不是悄悄腐烂。
 
-共 **34 篇**，按轨道分组：
+共 **36 个文档/图示**，按轨道分组：
 
 ## P0 试点转正
 
@@ -65,11 +65,18 @@
 | [`3dworld 核心引擎（engine/）设计与技术要点`](引擎设计.md) | 铁律：依赖只允许向下（games → core → engine），内核对之间、游戏之间不得互相 import； |
 | [`3dworld 补完计划（Plan · 待 review 放行）`](补完计划.md) | GPL-3.0（Blender / Easy3D / GEngine）、无许可（univ）禁止任何形式的代码搬运； |
 
+## 图示（架构图 / 数据流图）
+
+| 文档 | 讲什么 |
+|------|--------|
+| [`系统分层架构图`](3dworld_architecture.svg) | host→games→core→engine→logic→runtime 的分层与向下依赖方向 |
+| [`核心数据流图`](3dworld_dataflow.svg) | 配置树驱动挂载 / 逐帧主循环 / 场景数据来源三路汇聚 |
+
 ## 专题笔记与指南
 
 | 文档 | 讲什么 |
 |------|--------|
-| [`3dworld · 架构与设计文档`](3dworld_架构与设计文档.md) | !分层架构 |
+| [`3dworld · 架构与设计文档`](3dworld_架构与设计文档.md) | 依赖铁律：只允许向下 games → core → engine → pyglet/GL；presentation … |
 | [`LLM 场景生成工作流`](LLM场景生成工作流.md) | 只存「生成器名 + 参数 + 材质 + 变换」——几何在构建时由 world3d.engine.geometry 现… |
 | [`P4 机械门禁与文档站 设计说明（P4 收口 = 全部路线完成）`](P4_机械门禁与文档站_design_note.md) | 本轮改造里，同一件事被手改过 5~7 次，每一次都可能漏一处： |
 | [`P5-d：让 CI 真跑 —— 本机网络实测 / GitHub 镜像逐步操作 / 通了之后做什么`](P5-d_CI_运行与GitHub镜像.md) | CI 定义已经就绪但一次都没跑过（本仓只有 Gitee remote，而 workflow 只有 GitHub 执行… |
