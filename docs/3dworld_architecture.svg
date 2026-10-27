@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="820" viewBox="0 0 1080 820" font-family="'Segoe UI','Helvetica Neue',Arial,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fbfcfe"/>
+      <stop offset="1" stop-color="#eef1f6"/>
+    </linearGradient>
+    <marker id="arr" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1080" height="820" fill="url(#page)"/>
+
+  <!-- Title -->
+  <text x="32" y="40" font-size="22" font-weight="700" fill="#0f172a">3dworld · 系统分层架构图</text>
+  <text x="32" y="58" font-size="12" fill="#64748b">纯 Python + pyglet 2.x / OpenGL 程序化 3D 场景·动画引擎 (导入包 world3d / 发行名 3dworld v0.6.0)</text>
+
+  <!-- Dependency arrow -->
+  <line x1="14" y1="74" x2="14" y2="788" stroke="#94a3b8" stroke-width="2" marker-end="url(#arr)"/>
+  <text x="11" y="430" font-size="11" fill="#64748b" transform="rotate(-90 11 430)" text-anchor="middle">依赖方向：只允许向下</text>
+
+  <!-- ===================== host/cli band ===================== -->
+  <g>
+    <rect x="32" y="72" width="1024" height="100" rx="10" fill="#f3e8ff" stroke="#7c3aed" stroke-width="1.5"/>
+    <rect x="32" y="72" width="6" height="100" rx="3" fill="#7c3aed"/>
+    <text x="52" y="94" font-size="14" font-weight="700" fill="#6d28d9">宿主 / CLI 层  (host · cli) — 引导与验收</text>
+    <text x="52" y="113" font-size="11.5" fill="#334155">• host/tree.py — 配置树挂载 mount_tree / load_tree / await_ready (cordis.yml → 服务图，依赖图自动排序)</text>
+    <text x="52" y="130" font-size="11.5" fill="#334155">• host/registry.py — SERVICES 短名表 (24 项: 13 共同核 + 11 内核服务)，封闭白名单，bind() 合成 _3dwsrv 宿主模块</text>
+    <text x="52" y="147" font-size="11.5" fill="#334155">• host/pipeline.py — 场景校验流水线 checker→loader→reporter (Cordis fiber 可逆副作用)  ·  cli/config_boot.py headless 验收  ·  cli/frame_plan.py 帧图门禁</text>
+    <text x="52" y="164" font-size="11.5" fill="#334155">• Cordis v4.0.0 (vendored vendor/cordis/src) — 服务图 / 依赖注入 / inject 自动排序 / 可逆副作用 (ctx.effect)</text>
+  </g>
+
+  <!-- ===================== games band ===================== -->
+  <g>
+    <rect x="32" y="182" width="1024" height="82" rx="10" fill="#ecfeff" stroke="#0891b2" stroke-width="1.5"/>
+    <rect x="32" y="182" width="6" height="82" rx="3" fill="#0891b2"/>
+    <text x="52" y="204" font-size="14" font-weight="700" fill="#0e7490">玩法内核层  games/&lt;name&gt;/kernel.py — 9 个 Cordis 内核 (业务编排)</text>
+    <text x="52" y="224" font-size="11.5" fill="#334155">void(星阑) · tower_defense(戍卫之路) · godhand(神之手) · fps(迷堡枪影,+maze) · puzzle(归仓,+grid)</text>
+    <text x="52" y="242" font-size="11.5" fill="#334155">storm(弹潮) · hall(静馆) · pulse(落音) · brickward(砖境, BQM 机制致敬)</text>
+    <text x="52" y="259" font-size="11.5" fill="#334155">每个内核声明 inject=[render, rules, economy, entity, ...]，按依赖图自动挂载；内核之间禁止横向 import</text>
+  </g>
+
+  <!-- ===================== core band ===================== -->
+  <g>
+    <rect x="32" y="276" width="1024" height="96" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.5"/>
+    <rect x="32" y="276" width="6" height="96" rx="3" fill="#16a34a"/>
+    <text x="52" y="298" font-size="14" font-weight="700" fill="#15803d">共同核 / 子系统层  core/*_core.py + contracts.py — 15 个共享服务</text>
+    <text x="52" y="318" font-size="11.5" fill="#334155">render · terrain · entity · input · hud · pathing · economy · audio · timeline · particles · rules · sdf · inventory · skills · loot</text>
+    <text x="52" y="336" font-size="11.5" fill="#334155">contracts.py — 15 个 @runtime_checkable Protocol 契约 = 插件 ABI (单一事实来源，不依赖 Cordis/GL 即可 import)</text>
+    <text x="52" y="354" font-size="11.5" fill="#334155">渲染核 (render_core) 提供 GL 资源原语 (compile_program / upload_mesh / release) + 句柄记账 + 可逆回滚，headless 下仅记账</text>
+    <text x="52" y="371" font-size="11.5" fill="#334155">实现: core/*_core.py 继承 cordis.Service；内核通过 ctx.&lt;service&gt; 取服务实例</text>
+  </g>
+
+  <!-- ===================== engine band ===================== -->
+  <g>
+    <rect x="32" y="384" width="1024" height="214" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+    <rect x="32" y="384" width="6" height="214" rx="3" fill="#2563eb"/>
+    <text x="52" y="406" font-size="14" font-weight="700" fill="#1d4ed8">引擎层  engine/* — 零业务依赖的可复用渲染/场景/音频/物理引擎</text>
+    <text x="52" y="426" font-size="11.5" fill="#334155">渲染管线: renderer(MRT 几何 pass) · scene(Node 场景图) · mesh · material · shaders · targets · postfx(SSAO/Bloom/ACES/暗角/gamma)</text>
+    <text x="52" y="444" font-size="11.5" fill="#334155">进阶渲染: csm(级联阴影) · volumetrics(体积雾) · dof(景深) · motionblur · oit(WBOIT) · pointcloud(EDL) · gpu_cull · compute · framegraph · terrain_lod · terrain_clipmap</text>
+    <text x="52" y="462" font-size="11.5" fill="#334155">资产/场景: gltf · asset/gltf_lite · geometry · proctex(程序化 PBR) · serialize(JSON 热重载)</text>
+    <text x="52" y="480" font-size="11.5" fill="#334155">交互/物理: camera(Orbit/Fly) · frustum(视锥剔除) · picking(射线) · physics(AABB+重力) · rid(不透明句柄表)</text>
+    <text x="52" y="498" font-size="11.5" fill="#334155">时间/动画: timeline · animation · skeleton · skin(蒙皮骨骼) · ozz_lite · shot(关键帧编排)</text>
+    <text x="52" y="516" font-size="11.5" fill="#334155">音频/工具/平台: audio · adaptive_music · mathkit · perf · fsm · orchestration · reflect · hud · fonts</text>
+    <text x="52" y="534" font-size="11.5" fill="#334155">平台/表现: platform/app.py(DemoApp 窗口/CLI/主循环) · presentation/*(WorldApp 48s 演出 / KKApp 150s 漫游 / world_renderer)</text>
+    <text x="52" y="552" font-size="11.5" fill="#334155">导入器: importers/source2 (VPK / KV3 v5 / LZ4 block / meshopt / vmdl→MeshData)</text>
+    <text x="52" y="578" font-size="10.5" fill="#64748b">依赖分层: app → renderer → postfx/mesh/scene → 纯数学层 (mathkit/timeline/frustum/texproj 可无窗口单测)</text>
+  </g>
+
+  <!-- ===================== logic band ===================== -->
+  <g>
+    <rect x="32" y="610" width="1024" height="96" rx="10" fill="#fffbeb" stroke="#d97706" stroke-width="1.5"/>
+    <rect x="32" y="610" width="6" height="96" rx="3" fill="#d97706"/>
+    <text x="52" y="632" font-size="14" font-weight="700" fill="#b45309">逻辑层  logic/* — 纯函数 / 无 GL / 可 headless 单测 (被 presentation 消费)</text>
+    <text x="52" y="652" font-size="11.5" fill="#334155">程序化生成: terrain · voxel · waves · blocks · wfc · ca · lsystem · noise · curves · dungeon · town</text>
+    <text x="52" y="670" font-size="11.5" fill="#334155">行为/AI: boids(群集) · behavior_tree · physics3d · fov(视野投射)</text>
+    <text x="52" y="688" font-size="11.5" fill="#334155">演出/音频: choreography(48s 五幕) · kkrieger(150s 六幕) · fusion_audio · kkrieger_audio · nordic_* · liminall_* · kid_a · sandward</text>
+    <text x="52" y="705" font-size="10.5" fill="#64748b">animation/camera/playback 已改为 engine 的兼容再导出层；依赖方向 presentation → logic → core，反向禁止</text>
+  </g>
+
+  <!-- ===================== runtime band ===================== -->
+  <g>
+    <rect x="32" y="718" width="1024" height="62" rx="10" fill="#f1f5f9" stroke="#475569" stroke-width="1.5"/>
+    <rect x="32" y="718" width="6" height="62" rx="3" fill="#475569"/>
+    <text x="52" y="740" font-size="14" font-weight="700" fill="#334155">平台 / 运行时</text>
+    <text x="52" y="760" font-size="11.5" fill="#334155">pyglet 2.1.16 (窗口 / 事件循环 / GL / 数学 Mat4) · OpenGL GPU · PyYAML + watchdog (Cordis 硬依赖) · Python ≥3.11</text>
+  </g>
+</svg>

@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3dworld · 架构与设计文档</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:#f4f6fa; color:#0f172a;
+    font-family:'Segoe UI','Helvetica Neue',Arial,'PingFang SC','Microsoft YaHei',sans-serif;
+    line-height:1.6; }
+  .wrap { max-width:1180px; margin:0 auto; padding:32px 28px 80px; }
+  header { border-bottom:3px solid #2563eb; padding-bottom:14px; margin-bottom:24px; }
+  h1 { font-size:26px; margin:0 0 6px; }
+  h2 { font-size:21px; margin:38px 0 12px; padding-left:10px; border-left:5px solid #2563eb; }
+  h3 { font-size:16px; margin:22px 0 8px; color:#1d4ed8; }
+  p, li { font-size:14.5px; }
+  code { background:#eef2ff; padding:1px 6px; border-radius:4px; font-size:13px; color:#4338ca; }
+  table { border-collapse:collapse; width:100%; margin:12px 0; font-size:13.5px; }
+  th, td { border:1px solid #dbe2ea; padding:7px 10px; text-align:left; vertical-align:top; }
+  th { background:#eef2f7; font-weight:700; }
+  .meta td:first-child { white-space:nowrap; font-weight:700; background:#f8fafc; width:140px; }
+  .svgcard { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:14px;
+    margin:14px 0 22px; box-shadow:0 1px 3px rgba(15,23,42,.06); overflow-x:auto; }
+  .svgcard svg { width:100%; height:auto; min-width:760px; }
+  .note { background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:12px 16px; font-size:13.5px; }
+  .lead { color:#475569; }
+  a { color:#2563eb; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>3dworld · 架构与设计文档</h1>
+  <p class="lead">分析对象：<code>D:\projects\repos\3dworld</code>（导入包 <code>world3d</code>，发行名 <code>3dworld</code>，v0.6.0）。
+  纯 Python + pyglet 2.x / OpenGL 的「程序化优先、确定性、可 headless 验证」3D 场景·动画引擎（零外部素材）。</p>
+</header>
+
+<h2>0. 项目速览</h2>
+<table class="meta">
+  <tr><td>定位</td><td>引擎<strong>库</strong>（演示程序 39 个已剥离至独立仓 <code>siwpan/3dworld-demos</code>）</td></tr>
+  <tr><td>导入/发行名</td><td><code>import world3d</code> / pip 包 <code>3dworld</code>（Python 包名不能以数字开头）</td></tr>
+  <tr><td>技术栈</td><td>Python ≥3.11 · pyglet 2.1.16 · OpenGL (GLSL 330 core) · vendored Cordis v4.0.0</td></tr>
+  <tr><td>运行时依赖</td><td><code>pyglet</code>、<code>PyYAML≥6,&lt;7</code>、<code>watchdog≥4,&lt;7</code>（Cordis 硬依赖）</td></tr>
+  <tr><td>规模</td><td><code>world3d/</code> 下 <strong>162 个 .py</strong>；9 个玩法内核；15 个共同核服务；10 棵配置树</td></tr>
+  <tr><td>治理</td><td>机械门禁 <code>verify.py</code>(15 条) + <code>check_imports.py</code>；pre-commit + GitHub Actions CI（win + ubuntu EGL）</td></tr>
+</table>
+<p><strong>一句话架构</strong>：用 <strong>Cordis 服务图</strong>把「配置树 (<code>configs/*.yml</code>)」所描述的共同核 + 玩法内核<strong>声明式挂载</strong>；内核通过 <code>ctx.&lt;service&gt;</code> 消费 15 个共同核（渲染/地形/实体/经济/规则/音频/时间轴/粒子/SDF…），引擎层 (<code>engine/</code>) 提供零业务依赖的可复用渲染与场景能力，逻辑层 (<code>logic/</code>) 提供纯函数、可 headless 单测的程序化生成与行为算法。</p>
+
+<h2>1. 系统分层架构</h2>
+<div class="svgcard">
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="820" viewBox="0 0 1080 820" font-family="'Segoe UI','Helvetica Neue',Arial,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fbfcfe"/><stop offset="1" stop-color="#eef1f6"/></linearGradient>
+    <marker id="arr" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#94a3b8"/></marker>
+  </defs>
+  <rect x="0" y="0" width="1080" height="820" fill="url(#page)"/>
+  <text x="32" y="40" font-size="22" font-weight="700" fill="#0f172a">3dworld · 系统分层架构图</text>
+  <text x="32" y="58" font-size="12" fill="#64748b">纯 Python + pyglet 2.x / OpenGL 程序化 3D 场景·动画引擎 (导入包 world3d / 发行名 3dworld v0.6.0)</text>
+  <line x1="14" y1="74" x2="14" y2="788" stroke="#94a3b8" stroke-width="2" marker-end="url(#arr)"/>
+  <text x="11" y="430" font-size="11" fill="#64748b" transform="rotate(-90 11 430)" text-anchor="middle">依赖方向：只允许向下</text>
+  <g>
+    <rect x="32" y="72" width="1024" height="100" rx="10" fill="#f3e8ff" stroke="#7c3aed" stroke-width="1.5"/>
+    <rect x="32" y="72" width="6" height="100" rx="3" fill="#7c3aed"/>
+    <text x="52" y="94" font-size="14" font-weight="700" fill="#6d28d9">宿主 / CLI 层  (host · cli) — 引导与验收</text>
+    <text x="52" y="113" font-size="11.5" fill="#334155">• host/tree.py — 配置树挂载 mount_tree / load_tree / await_ready (cordis.yml → 服务图，依赖图自动排序)</text>
+    <text x="52" y="130" font-size="11.5" fill="#334155">• host/registry.py — SERVICES 短名表 (24 项: 13 共同核 + 11 内核服务)，封闭白名单，bind() 合成 _3dwsrv 宿主模块</text>
+    <text x="52" y="147" font-size="11.5" fill="#334155">• host/pipeline.py — 场景校验流水线 checker→loader→reporter (Cordis fiber 可逆副作用)  ·  cli/config_boot.py headless 验收  ·  cli/frame_plan.py 帧图门禁</text>
+    <text x="52" y="164" font-size="11.5" fill="#334155">• Cordis v4.0.0 (vendored vendor/cordis/src) — 服务图 / 依赖注入 / inject 自动排序 / 可逆副作用 (ctx.effect)</text>
+  </g>
+  <g>
+    <rect x="32" y="182" width="1024" height="82" rx="10" fill="#ecfeff" stroke="#0891b2" stroke-width="1.5"/>
+    <rect x="32" y="182" width="6" height="82" rx="3" fill="#0891b2"/>
+    <text x="52" y="204" font-size="14" font-weight="700" fill="#0e7490">玩法内核层  games/&lt;name&gt;/kernel.py — 9 个 Cordis 内核 (业务编排)</text>
+    <text x="52" y="224" font-size="11.5" fill="#334155">void(星阑) · tower_defense(戍卫之路) · godhand(神之手) · fps(迷堡枪影,+maze) · puzzle(归仓,+grid)</text>
+    <text x="52" y="242" font-size="11.5" fill="#334155">storm(弹潮) · hall(静馆) · pulse(落音) · brickward(砖境, BQM 机制致敬)</text>
+    <text x="52" y="259" font-size="11.5" fill="#334155">每个内核声明 inject=[render, rules, economy, entity, ...]，按依赖图自动挂载；内核之间禁止横向 import</text>
+  </g>
+  <g>
+    <rect x="32" y="276" width="1024" height="96" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.5"/>
+    <rect x="32" y="276" width="6" height="96" rx="3" fill="#16a34a"/>
+    <text x="52" y="298" font-size="14" font-weight="700" fill="#15803d">共同核 / 子系统层  core/*_core.py + contracts.py — 15 个共享服务</text>
+    <text x="52" y="318" font-size="11.5" fill="#334155">render · terrain · entity · input · hud · pathing · economy · audio · timeline · particles · rules · sdf · inventory · skills · loot</text>
+    <text x="52" y="336" font-size="11.5" fill="#334155">contracts.py — 15 个 @runtime_checkable Protocol 契约 = 插件 ABI (单一事实来源，不依赖 Cordis/GL 即可 import)</text>
+    <text x="52" y="354" font-size="11.5" fill="#334155">渲染核 (render_core) 提供 GL 资源原语 (compile_program / upload_mesh / release) + 句柄记账 + 可逆回滚，headless 下仅记账</text>
+    <text x="52" y="371" font-size="11.5" fill="#334155">实现: core/*_core.py 继承 cordis.Service；内核通过 ctx.&lt;service&gt; 取服务实例</text>
+  </g>
+  <g>
+    <rect x="32" y="384" width="1024" height="214" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+    <rect x="32" y="384" width="6" height="214" rx="3" fill="#2563eb"/>
+    <text x="52" y="406" font-size="14" font-weight="700" fill="#1d4ed8">引擎层  engine/* — 零业务依赖的可复用渲染/场景/音频/物理引擎</text>
+    <text x="52" y="426" font-size="11.5" fill="#334155">渲染管线: renderer(MRT 几何 pass) · scene(Node 场景图) · mesh · material · shaders · targets · postfx(SSAO/Bloom/ACES/暗角/gamma)</text>
+    <text x="52" y="444" font-size="11.5" fill="#334155">进阶渲染: csm(级联阴影) · volumetrics(体积雾) · dof(景深) · motionblur · oit(WBOIT) · pointcloud(EDL) · gpu_cull · compute · framegraph · terrain_lod · terrain_clipmap</text>
+    <text x="52" y="462" font-size="11.5" fill="#334155">资产/场景: gltf · asset/gltf_lite · geometry · proctex(程序化 PBR) · serialize(JSON 热重载)</text>
+    <text x="52" y="480" font-size="11.5" fill="#334155">交互/物理: camera(Orbit/Fly) · frustum(视锥剔除) · picking(射线) · physics(AABB+重力) · rid(不透明句柄表)</text>
+    <text x="52" y="498" font-size="11.5" fill="#334155">时间/动画: timeline · animation · skeleton · skin(蒙皮骨骼) · ozz_lite · shot(关键帧编排)</text>
+    <text x="52" y="516" font-size="11.5" fill="#334155">音频/工具/平台: audio · adaptive_music · mathkit · perf · fsm · orchestration · reflect · hud · fonts</text>
+    <text x="52" y="534" font-size="11.5" fill="#334155">平台/表现: platform/app.py(DemoApp 窗口/CLI/主循环) · presentation/*(WorldApp 48s 演出 / KKApp 150s 漫游 / world_renderer)</text>
+    <text x="52" y="552" font-size="11.5" fill="#334155">导入器: importers/source2 (VPK / KV3 v5 / LZ4 block / meshopt / vmdl→MeshData)</text>
+    <text x="52" y="578" font-size="10.5" fill="#64748b">依赖分层: app → renderer → postfx/mesh/scene → 纯数学层 (mathkit/timeline/frustum/texproj 可无窗口单测)</text>
+  </g>
+  <g>
+    <rect x="32" y="610" width="1024" height="96" rx="10" fill="#fffbeb" stroke="#d97706" stroke-width="1.5"/>
+    <rect x="32" y="610" width="6" height="96" rx="3" fill="#d97706"/>
+    <text x="52" y="632" font-size="14" font-weight="700" fill="#b45309">逻辑层  logic/* — 纯函数 / 无 GL / 可 headless 单测 (被 presentation 消费)</text>
+    <text x="52" y="652" font-size="11.5" fill="#334155">程序化生成: terrain · voxel · waves · blocks · wfc · ca · lsystem · noise · curves · dungeon · town</text>
+    <text x="52" y="670" font-size="11.5" fill="#334155">行为/AI: boids(群集) · behavior_tree · physics3d · fov(视野投射)</text>
+    <text x="52" y="688" font-size="11.5" fill="#334155">演出/音频: choreography(48s 五幕) · kkrieger(150s 六幕) · fusion_audio · kkrieger_audio · nordic_* · liminall_* · kid_a · sandward</text>
+    <text x="52" y="705" font-size="10.5" fill="#64748b">animation/camera/playback 已改为 engine 的兼容再导出层；依赖方向 presentation → logic → core，反向禁止</text>
+  </g>
+  <g>
+    <rect x="32" y="718" width="1024" height="62" rx="10" fill="#f1f5f9" stroke="#475569" stroke-width="1.5"/>
+    <rect x="32" y="718" width="6" height="62" rx="3" fill="#475569"/>
+    <text x="52" y="740" font-size="14" font-weight="700" fill="#334155">平台 / 运行时</text>
+    <text x="52" y="760" font-size="11.5" fill="#334155">pyglet 2.1.16 (窗口 / 事件循环 / GL / 数学 Mat4) · OpenGL GPU · PyYAML + watchdog (Cordis 硬依赖) · Python ≥3.11</text>
+  </g>
+</svg>
+</div>
+
+<p class="note"><strong>依赖铁律</strong>：只允许向下 <code>games → core → engine → pyglet/GL</code>；<code>presentation → logic → core</code>，反向禁止；内核之间、游戏之间<strong>不得横向 import</strong>（共享件一律上提）。</p>
+
+<h3>1.1 宿主 / CLI 层（host · cli）</h3>
+<ul>
+  <li><code>host/tree.py</code> — 配置树挂载统一入口：<code>load_tree</code>(Cordis Loader + drain 子插件)、<code>await_ready</code>(等 want 服务可达且 <code>render.live_count()&gt;0</code>)、<code>mount_tree</code>(一键 Context→挂树→等就绪)。demo 与 headless 验证<strong>走同一条</strong>挂载路径。</li>
+  <li><code>host/registry.py</code> — <code>SERVICES</code> 短名表（24 项：13 共同核 + 11 内核服务，<code>fps/maze</code>、<code>puzzle/grid</code> 同模块双服务）。封闭白名单；<code>bind(name)</code> 为每个短名合成 <code>_3dwsrv.&lt;name&gt;</code> 宿主模块。</li>
+  <li><code>host/pipeline.py</code> — 场景校验流水线（Cordis fiber 可逆副作用）：<code>SceneCheckService → LoaderService(inject scene_check) → ReporterService(inject scene)</code>。</li>
+  <li><code>cli/config_boot.py</code> — 9 内核 + 13 共同核 headless 验收；<code>cli/frame_plan.py</code> — 帧图门禁（16 种效果组合）。</li>
+  <li><strong>Cordis v4.0.0</strong>（vendored <code>vendor/cordis/src</code>）：<code>Context</code> / <code>Loader</code> / <code>Service</code> / <code>inject</code> 依赖图自动排序 / <code>ctx.effect</code> 可逆副作用。</li>
+</ul>
+<p class="note"><strong>安全点</strong>：<code>.yml</code> 的 <code>name</code> 会被 Cordis <code>importlib.import_module</code> 直接导入（≈执行代码）。<code>_validate_entry_names</code> 强制白名单（<code>_3dwsrv.</code> / <code>core.</code> / <code>games.</code> 前缀），把「评审绕过」钉死。</p>
+
+<h3>1.2 玩法内核层（games/&lt;name&gt;/kernel.py）</h3>
+<p>9 个 Cordis 内核，是<strong>业务编排</strong>所在：<code>void</code>(星阑) · <code>tower_defense</code>(戍卫之路) · <code>godhand</code>(神之手) · <code>fps</code>(迷堡枪影,+maze) · <code>puzzle</code>(归仓,+grid) · <code>storm</code>(弹潮) · <code>hall</code>(静馆) · <code>pulse</code>(落音) · <code>brickward</code>(砖境, BQM 机制致敬)。每个内核只声明 <code>inject = ['render','rules','economy','entity', …]</code>，由 Cordis 按依赖图<strong>自动排序挂载</strong>，内核之间零耦合。</p>
+
+<h3>1.3 共同核 / 子系统层（core/*_core.py + contracts.py）</h3>
+<p><strong>15 个共享服务</strong>（<code>CORES</code> 表）：<code>render · terrain · entity · input · hud · pathing · economy · audio · timeline · particles · rules · sdf · inventory · skills · loot</code>。</p>
+<ul>
+  <li><code>core/contracts.py</code> — 15 个 <code>@runtime_checkable</code> <strong>Protocol 契约 = 插件 ABI</strong>（单一事实来源）。只 <code>import typing</code>，<strong>无 Cordis / 无 GL 也能 import</strong>；<code>verify()</code> 核对每个契约声明的「现有模块」真能 import。</li>
+  <li><code>core/render_core.py</code> — 渲染共同核 <code>RenderService</code>：只提供 GL 资源<strong>原语</strong>（<code>compile_program</code> / <code>upload_mesh</code> / <code>release</code>）与绘制入口，<strong>不持有游戏状态</strong>；headless 下仅做句柄记账与回滚语义，<code>live_count()</code> 供 <code>await_ready</code> 判定就绪。</li>
+  <li>其余核：地形高度场编辑、实体注册表、A*+编队寻路、KV 经济、程序化音频、时间轴/关键帧、GPU 粒子数值步进、SDF/体素、背包/技能/掉落、波次/胜负规则。</li>
+</ul>
+
+<h3>1.4 引擎层（engine/*）</h3>
+<ul>
+  <li><strong>渲染管线</strong>：<code>renderer</code>(MRT 几何 pass) · <code>scene</code>(Node 场景图) · <code>mesh</code> · <code>material</code>(PBR 金属-粗糙度) · <code>shaders</code>(GLSL 330) · <code>targets</code>(MRT/Mip) · <code>postfx</code>(SSAO + Bloom + 合成：曝光/ACES/暗角/gamma)。</li>
+  <li><strong>进阶渲染</strong>：<code>csm</code> · <code>volumetrics</code> · <code>dof</code> · <code>motionblur</code> · <code>oit</code>(WBOIT) · <code>pointcloud</code>(EDL) · <code>gpu_cull</code>(compute 剔除+LOD+命令生成) · <code>compute</code> · <code>framegraph</code> · <code>terrain_lod</code>(CDLOD) · <code>terrain_clipmap</code>。</li>
+  <li><strong>资产/场景</strong>：<code>gltf</code> · <code>asset/gltf_lite</code> · <code>geometry</code> · <code>proctex</code> · <code>serialize</code>(JSON 热重载)。</li>
+  <li><strong>交互/物理</strong>：<code>camera</code> · <code>frustum</code> · <code>picking</code> · <code>physics</code> · <code>rid</code>。</li>
+  <li><strong>时间/动画</strong>：<code>timeline</code> · <code>animation</code> · <code>skeleton</code> · <code>skin</code> · <code>ozz_lite</code> · <code>shot</code>。</li>
+  <li><strong>音频/工具/平台</strong>：<code>audio</code> · <code>adaptive_music</code> · <code>mathkit</code> · <code>perf</code> · <code>fsm</code> · <code>orchestration</code> · <code>reflect</code> · <code>hud</code> · <code>fonts</code>。</li>
+  <li><strong>平台/表现</strong>：<code>platform/app.py</code>(<code>DemoApp</code>) · <code>presentation/*</code>(<code>WorldApp</code> 48s 演出 / <code>KKApp</code> 150s 漫游 / <code>world_renderer</code>)。</li>
+  <li><strong>导入器</strong>：<code>importers/source2</code>(VPK / KV3 v5 / LZ4 / meshopt / vmdl→MeshData)。</li>
+</ul>
+<p><code>engine/__init__.py</code> 用 <code>_safe</code> 延迟导入保证「无 GL 上下文也能 import engine」；公共面由 <code>__all__</code> 收口，<code>world3d/__init__.py</code> 再转发。</p>
+
+<h3>1.5 逻辑层（logic/*）</h3>
+<p><strong>纯函数 / 无 GL / 可 headless 单测</strong>，被 <code>presentation</code> 消费（依赖方向 <code>presentation → logic → core</code>）。</p>
+<ul>
+  <li>程序化生成：<code>terrain</code> · <code>voxel</code> · <code>waves</code> · <code>blocks</code> · <code>wfc</code> · <code>ca</code> · <code>lsystem</code> · <code>noise</code> · <code>curves</code> · <code>dungeon</code> · <code>town</code></li>
+  <li>行为/AI：<code>boids</code> · <code>behavior_tree</code> · <code>physics3d</code> · <code>fov</code></li>
+  <li>演出/音频：<code>choreography</code> · <code>kkrieger</code> · <code>fusion_audio</code> · <code>kkrieger_audio</code> · <code>nordic_*</code> · <code>liminall_*</code> · <code>kid_a</code> · <code>sandward</code></li>
+  <li>兼容再导出层：<code>animation</code> / <code>camera</code> / <code>playback</code> 已改为 <code>engine</code> 同名件的转发层（旧测试全绿）。</li>
+</ul>
+
+<h2>2. 核心模块关系（谁消费谁）</h2>
+<pre style="background:#0f172a;color:#e2e8f0;padding:16px 18px;border-radius:10px;overflow-x:auto;font-size:13px;"><code>configs/cordis.&lt;name&gt;.yml
+        │ (name 短名 → host.registry.bind → _3dwsrv.&lt;name&gt; 宿主模块)
+        ▼
+host.tree.load_tree ──▶ Cordis Loader (inject 依赖图自动排序)
+        │
+        ▼
+games/&lt;name&gt;/kernel.py  (Service, inject=[render, rules, economy, entity, ...])
+        │  消费 ↓ 通过 ctx.&lt;service&gt;
+        ├──────────────▶ core/*_core.py   (15 共同核；render_core 管 GL 资源原语)
+        │                        │ 调用 ↓
+        │                        ▼
+        │                  engine/*  (renderer/scene/mesh/shaders/postfx/...)
+        │                        │ 依赖 ↓
+        │                        ▼
+        │                  pyglet / OpenGL
+        └──────────────▶ logic/*  (纯函数：程序化生成 / 行为 / 演出，经 presentation 接入)</code></pre>
+<ul>
+  <li><strong>内核不直接碰 GL</strong>——所有 GPU 资源经 <code>ctx.render</code>（<code>RenderService</code>）的 <code>compile_program</code>/<code>upload_mesh</code>/<code>release</code> 原语创建与回收，句柄记入 <code>live_count()</code>。</li>
+  <li><strong>内核不改变引擎</strong>——<code>engine/</code> 是通用件；同一份 <code>Renderer</code> / <code>Scene</code> 被 9 个内核共用。</li>
+  <li><strong>确定性</strong>：<code>void</code> 内核价格/事件冲击由 <code>(seed, station, good)</code> 派生相位，同种子同世界，录制与验收可锁定（<code>test_noise</code> 还做 golden 交叉验证）。</li>
+</ul>
+
+<h2>3. 核心数据流</h2>
+<div class="svgcard">
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="620" viewBox="0 0 1080 620" font-family="'Segoe UI','Helvetica Neue',Arial,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <linearGradient id="page2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fbfcfe"/><stop offset="1" stop-color="#eef1f6"/></linearGradient>
+    <marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#64748b"/></marker>
+    <style>
+      .box { fill:#ffffff; stroke-width:1.5; rx:9; }
+      .h   { font-size:12.5px; font-weight:700; }
+      .t   { font-size:11px; fill:#334155; }
+      .tl  { font-size:13.5px; font-weight:700; }
+    </style>
+  </defs>
+  <rect x="0" y="0" width="1080" height="620" fill="url(#page2)"/>
+  <text x="32" y="34" font-size="22" font-weight="700" fill="#0f172a">3dworld · 核心数据流图</text>
+
+  <text x="32" y="64" class="tl" fill="#6d28d9">① 配置驱动挂载 (host.tree + Cordis) — 接线只有这一份，demo 与 headless 验证共用</text>
+  <rect x="40"  y="78"  width="180" height="62" class="box" stroke="#7c3aed"/>
+  <text x="52"  y="98"  class="h" fill="#6d28d9">cordis.&lt;name&gt;.yml</text>
+  <text x="52"  y="114" class="t">声明本次挂哪些服务</text><text x="52"  y="128" class="t">(name + config)</text>
+  <line x1="220" y1="109" x2="240" y2="109" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="242" y="78"  width="194" height="62" class="box" stroke="#7c3aed"/>
+  <text x="254" y="98"  class="h" fill="#6d28d9">host.tree.load_tree</text>
+  <text x="254" y="114" class="t">yaml.safe_load → 白名单</text><text x="254" y="128" class="t">_validate_entry_names</text>
+  <line x1="436" y1="109" x2="456" y2="109" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="458" y="78"  width="190" height="62" class="box" stroke="#7c3aed"/>
+  <text x="470" y="98"  class="h" fill="#6d28d9">registry.bind(短名)</text>
+  <text x="470" y="114" class="t">→ _3dwsrv.&lt;name&gt;</text><text x="470" y="128" class="t">封闭表解析实现类</text>
+  <line x1="648" y1="109" x2="668" y2="109" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="670" y="78"  width="190" height="62" class="box" stroke="#7c3aed"/>
+  <text x="682" y="98"  class="h" fill="#6d28d9">Cordis Loader</text>
+  <text x="682" y="114" class="t">inject 依赖图自动排序</text><text x="682" y="128" class="t">构造 Service 实例</text>
+  <line x1="860" y1="109" x2="880" y2="109" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="882" y="78"  width="160" height="62" class="box" stroke="#7c3aed"/>
+  <text x="894" y="98"  class="h" fill="#6d28d9">Service 初始化</text>
+  <text x="894" y="114" class="t">__init__ provide</text><text x="894" y="128" class="t">__cordis_init__ 取GL</text>
+  <line x1="962" y1="140" x2="962" y2="166" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="300" y="168" width="480" height="46" class="box" stroke="#16a34a"/>
+  <text x="312" y="188" class="h" fill="#15803d">await_ready()</text>
+  <text x="312" y="206" class="t">等待 want 中服务全部可达 且 render.live_count()&gt;0 → 返回 ctx，ctx.render / ctx.rules / ctx.economy / ctx.entity 立即可用</text>
+
+  <text x="32" y="250" class="tl" fill="#1d4ed8">② 每帧运行时循环 (EngineApp._tick → update → render)</text>
+  <rect x="40"  y="266" width="200" height="56" class="box" stroke="#2563eb"/>
+  <text x="52"  y="286" class="h" fill="#1d4ed8">EngineApp._tick(dt)</text>
+  <text x="52"  y="302" class="t">累加 self.time，未暂停则推进</text><text x="52"  y="317" class="t">调用 update(dt)</text>
+  <line x1="240" y1="294" x2="266" y2="294" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="268" y="266" width="236" height="56" class="box" stroke="#2563eb"/>
+  <text x="280" y="286" class="h" fill="#1d4ed8">kernel.update(dt)</text>
+  <text x="280" y="302" class="t">消费 ctx.economy/rules/</text><text x="280" y="317" class="t">entity/render 推进游戏状态</text>
+  <line x1="504" y1="294" x2="530" y2="294" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="532" y="266" width="240" height="56" class="box" stroke="#2563eb"/>
+  <text x="544" y="286" class="h" fill="#1d4ed8">engine.Renderer</text>
+  <text x="544" y="302" class="t">天空 pass → MRT 几何 pass</text><text x="544" y="317" class="t">(不透明 → 半透明排序)</text>
+  <line x1="772" y1="294" x2="798" y2="294" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="800" y="266" width="240" height="56" class="box" stroke="#2563eb"/>
+  <text x="812" y="286" class="h" fill="#1d4ed8">后处理 → 屏幕</text>
+  <text x="812" y="302" class="t">SSAO → Bloom → 合成</text><text x="812" y="317" class="t">(曝光 / ACES / gamma)</text>
+  <line x1="920" y1="322" x2="920" y2="346" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="600" y="348" width="440" height="44" class="box" stroke="#2563eb"/>
+  <text x="612" y="367" class="h" fill="#1d4ed8">HUD 叠层 · 截图(capture) · 音频同步 · 性能面板</text>
+  <text x="612" y="384" class="t">渲染帧间隔采样 (perf.cpu) — 回到 _tick 进入下一帧</text>
+  <path d="M600,370 C 480,372 300,360 200,322" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+
+  <text x="32" y="440" class="tl" fill="#0e7490">③ 场景数据来源 (JSON 场景 → Node 场景图 → Renderer)</text>
+  <rect x="40"  y="456" width="210" height="56" class="box" stroke="#0891b2"/>
+  <text x="52"  y="476" class="h" fill="#0e7490">场景 JSON</text>
+  <text x="52"  y="492" class="t">LLM 生成 / 手写 /</text><text x="52"  y="507" class="t">llm_scene_demo.json</text>
+  <line x1="250" y1="484" x2="276" y2="484" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="278" y="456" width="206" height="56" class="box" stroke="#0891b2"/>
+  <text x="290" y="476" class="h" fill="#0e7490">scene_build.validate</text>
+  <text x="290" y="492" class="t">纯 CPU 校验</text><text x="290" y="507" class="t">(无窗口可跑，挡住幻觉参数)</text>
+  <line x1="484" y1="484" x2="510" y2="484" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="512" y="456" width="212" height="56" class="box" stroke="#0891b2"/>
+  <text x="524" y="476" class="h" fill="#0e7490">build_meshdata / material</text>
+  <text x="524" y="492" class="t">生成器(builder) → MeshData</text><text x="524" y="507" class="t">材质 preset + 覆盖字段</text>
+  <line x1="724" y1="484" x2="750" y2="484" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="752" y="456" width="288" height="56" class="box" stroke="#0891b2"/>
+  <text x="764" y="476" class="h" fill="#0e7490">Scene (Node TRS 场景图)</text>
+  <text x="764" y="492" class="t">脏标记 + 视锥剔除收集</text><text x="764" y="507" class="t">→ Renderer 消费 (见 ②)</text>
+
+  <text x="32" y="556" class="t" fill="#64748b">铁律：依赖只允许向下 (games → core → engine → pyglet/GL)；内核之间、游戏之间禁止横向 import；共享件一律上提 (如 unit_cube/unit_sphere → engine.baked_mesh)。</text>
+  <text x="32" y="576" class="t" fill="#64748b">演示程序 (39 个) 已迁至独立仓 siwpan/3dworld-demos；本仓为引擎库 (engine/core/host/cli/games + vendored cordis)，configs/ 与 assets/ 属仓库资产不随 wheel 分发。</text>
+</svg>
+</div>
+
+<h3>3.1 配置驱动挂载（启动，boot）</h3>
+<ol>
+  <li><code>configs/cordis.&lt;name&gt;.yml</code> 声明「本次挂哪些服务 + 各自 config」。</li>
+  <li><code>host.tree.load_tree</code>：<code>yaml.safe_load</code> → <code>_resolve_service_names</code>(短名经 <code>registry.bind</code> 换成 <code>_3dwsrv.&lt;name&gt;</code>) → <code>_validate_entry_names</code>(白名单) → <code>loader.root.update(data)</code>。</li>
+  <li>Cordis <code>Loader</code> 按 <code>inject</code> 依赖图<strong>自动排序</strong>构造各 <code>Service</code>。</li>
+  <li>每个 <code>Service.__cordis_init__</code> 取 GL 句柄 / 生成实体 / 用 <code>ctx.effect(...)</code> 登记可逆副作用。</li>
+  <li><code>await_ready(want)</code> 等 <code>want</code> 中服务全部可达且 <code>render.live_count()&gt;0</code>，返回 <code>ctx</code>。</li>
+</ol>
+<p class="note"><strong>「demo 怎么挂的 = 验证怎么挂的」</strong>：examples 与 <code>cli/config_boot</code> 共用 <code>mount_tree</code> 与同一组 <code>WANT_*</code> 列表，<strong>不存在两套接线</strong>。</p>
+
+<h3>3.2 每帧运行时循环</h3>
+<p><code>EngineApp._tick(dt)</code> → 累加 <code>self.time</code> → <code>update(dt)</code>（内核经 <code>ctx.economy/rules/entity/render</code> 推进游戏状态）→ <code>render()</code>（<code>engine.Renderer</code> 跑：天空 pass → MRT 几何 pass 不透明→半透明排序 → SSAO → Bloom → 合成曝光/ACES/gamma → 屏幕）→ HUD 叠层 / 截图 <code>capture</code> / 音频同步 / <code>perf</code> 采样 → 回到下一帧。</p>
+<p><code>platform/app.py</code> 的 <code>DemoApp</code> 与 <code>engine/app.py</code> 的 <code>EngineApp</code> 是同一骨架的两份：前者供独立演示仓、后者是引擎库内统一入口，均统一命令行（<code>--smoke/--shot/--bench/--size/--flag</code>）。</p>
+
+<h3>3.3 场景数据来源</h3>
+<p>场景 JSON（LLM 生成 / 手写）→ <code>engine.scene_build.validate</code>（<strong>纯 CPU 校验</strong>，无窗口可跑，挡住 LLM 幻觉参数）→ <code>build_meshdata</code> / <code>build_material</code>（生成器 <code>builder</code> → <code>MeshData</code>）→ <code>Scene</code>（Node TRS 场景图，脏标记 + 视锥剔除收集）→ 被 <code>Renderer</code> 消费。<code>serialize.py</code> 提供 JSON 热重载 watcher。</p>
+
+<h2>4. 关键技术决策与踩坑（精选，均真机复现）</h2>
+<table>
+  <tr><th>主题</th><th>决策 / 结论</th></tr>
+  <tr><td>环境贴图</td><td>等距柱状 equirect（非立方体贴图，pyglet 无 CubeMap 类）</td></tr>
+  <tr><td>IBL 镜面</td><td>逐 mip 级 GGX 重要性采样 + <code>textureLod(roughness*maxLod)</code>，非单张大模糊核</td></tr>
+  <tr><td>G-buffer</td><td>MRT 两张（HDR 颜色 + 视空间法线/线性深度），非全延迟</td></tr>
+  <tr><td>debug_gl</td><td>关掉 <code>pyglet.options['debug_gl']</code>（每 GL 调用 glGetError 往返占每帧 Python 耗时 ~44%）→ 基准 28.7→114.7 fps</td></tr>
+  <tr><td><strong>P0 模型矩阵 uniform 去重 bug</strong></td><td><code>Mesh.draw()</code> 原按「本网格上次传了什么」去重，导致第 2 帧起多网格共用 program 级 uniform 互相覆盖，画面塌到最后一物。修复：去重键改为「该 program 当前装着的矩阵」（模块级 <code>_MODEL_UNIFORM</code>）；守卫 <code>test_gl_multimesh_frame_stability</code>（连续三帧逐字节一致）。</td></tr>
+  <tr><td>横向依赖清理</td><td><code>unit_cube/unit_sphere</code> 曾被 6 个内核横向 import（游戏 A 依赖游戏 B），迁至 <code>engine.baked_mesh</code>；「删定义」与「补 import」必须在同一次改动完成（否则 <code>NameError</code> 被 Cordis Loader 吞成「服务不就绪」）。</td></tr>
+  <tr><td>可逆副作用</td><td>Cordis <code>ctx.effect</code> 绑定 fiber，dispose 时统一回滚；内核 GL 资源经 <code>render.release</code> + <code>ctx.effect</code> 注册，卸载即回收。</td></tr>
+  <tr><td>headless 验证</td><td><code>render_core</code> 不真开 GL 也完整执行记账/回滚语义；CI 用 <code>PYGLET_HEADLESS=1</code> + EGL(llvmpipe) 跑无显示器用例。</td></tr>
+  <tr><td>DPI 坑</td><td>统一 <code>pyglet.options['dpi_scaling']='real'</code>（否则 viewport 乘 scale 渲染放大裁切）。</td></tr>
+</table>
+
+<h2>5. 质量保障（门禁 + 测试 + CI）</h2>
+<ul>
+  <li><strong>scripts/verify.py（15 条，&lt;1 秒，pre-commit 跑）</strong>：「同一事实写在两处必须相等」——README 测试命令表 ↔ <code>run_all_tests.MODULES</code>、测试计数、配置树/内核/共同核计数、<code>docs/README.md</code> 新鲜度、文档相对链接、CLI 命令可达、<code>pyrefs</code> 模块存在、<code>scaffold</code> 模板真 import 并跑到 <code>won</code>、workflows 结构。<code>--selfcheck</code> 逐条注入破坏并断言变红（16/16 全拦得住）。</li>
+  <li><strong>scripts/check_imports.py</strong>：<code>world3d/</code> 下 162 模块逐个 import（单测只覆盖被引用模块，这是「改漏」唯一防线）；落有不变量「仓库内自带 <code>__init__.py</code> 的目录不许出现在 <code>sys.path</code>」（曾因 <code>world3d/platform/</code> 遮蔽标准库 <code>platform</code> 触发 <code>AttributeError</code>）。</li>
+  <li><strong>测试套件</strong>：逻辑层 65 项、共同核 17 项、引擎层 30 项、着色器 5、噪声 8、回放 9、行为树 10、地牢 6、城镇 5、CA 9、曲线 9、3D 物理 12、L-System 10、WFC 7、蒙皮 8、GPU 剔除 7、帧图 v1/v2 各 17、地形 LOD 18、双贪心网格 13、几何 clipmap 15、Jolt 17、Box2D 6、ozz 12、材质缓存 11、glTF 11、RID 11、reflect 11…（45 个聚合模块，由 <code>run_all_tests.py</code> 跑）。</li>
+  <li><strong>CI</strong>：<code>windows-latest</code>（真窗口真驱动，GL 真跑）+ <code>ubuntu-latest</code>（无显示器/无 GPU 经 EGL 软渲），挂 <code>verify.py</code> + <code>check_imports.py</code>。</li>
+</ul>
+
+<h2>6. 模块清单速查（按层）</h2>
+<table>
+  <tr><th>层</th><th>关键模块</th></tr>
+  <tr><td>host/cli</td><td>tree · registry · pipeline · cli/config_boot · cli/frame_plan</td></tr>
+  <tr><td>games (9)</td><td>void · tower_defense · godhand · fps(+maze) · puzzle(+grid) · storm · hall · pulse · brickward</td></tr>
+  <tr><td>core (15)</td><td>contracts · render_core · terrain_core · entity_core · pathing_core · economy_core · audio_core · timeline_core · particles_core · rules_core · sdf_core · inventory_core · skills_core · loot_core · (input/hud 部分已具备)</td></tr>
+  <tr><td>engine</td><td>renderer · scene · mesh · material · shaders · targets · postfx · csm · volumetrics · dof · motionblur · oit · pointcloud · gpu_cull · compute · framegraph · terrain_lod · terrain_clipmap · gltf · geometry · proctex · serialize · camera · frustum · picking · physics · rid · timeline · animation · skeleton · skin · ozz_lite · shot · audio · adaptive_music · mathkit · perf · fsm · orchestration · reflect · hud · fonts · platform/app · presentation/* · importers/source2</td></tr>
+  <tr><td>logic</td><td>terrain · voxel · waves · blocks · wfc · ca · lsystem · noise · curves · dungeon · town · boids · behavior_tree · physics3d · fov · choreography · kkrieger · fusion_audio · kkrieger_audio · nordic_* · liminall_* · kid_a · sandward</td></tr>
+  <tr><td>runtime</td><td>pyglet 2.1.16 · OpenGL · PyYAML · watchdog · Python ≥3.11</td></tr>
+</table>
+
+<h2>7. 延伸阅读（docs/）</h2>
+<ul>
+  <li><code>引擎设计.md</code> — 模块地图 + 渲染管线 + 实测踩坑（最权威的引擎内部文档）</li>
+  <li><code>共同核契约手册.md</code> — 15 共同核契约总览（与 <code>core/contracts.py</code> 双向一致，受门禁 <code>cores-doc-pairs</code> 守护）</li>
+  <li><code>5_引擎化改造规划.md</code> — P0~P5 引擎化路线图（分层归位、命名、版本双轨）</li>
+  <li><code>cordis集成.md</code> — Cordis v4.0.0 接线细节</li>
+  <li><code>引擎源码架构调研/</code> · <code>开源引擎源码架构调研.md</code> — 外部引擎调研</li>
+  <li><code>借鉴记账.md</code> — 致敬/复刻来源与许可证（合规）</li>
+  <li><code>openapi.yaml</code> — 场景 JSON 契约的 OpenAPI v3 规范</li>
+</ul>
+
+<p style="margin-top:40px;color:#94a3b8;font-size:12px;">本文档由对 <code>D:\projects\repos\3dworld</code> 的源码（README.md、pyproject.toml、world3d/__init__.py、core/contracts.py、host/{registry,tree,pipeline}.py、engine/{__init__,app,renderer,scene_build}.py、platform/app.py、games/void/kernel.py、docs/引擎设计.md）静态分析生成。</p>
+</div>
+</body>
+</html>
