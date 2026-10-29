@@ -26,6 +26,7 @@ from world3d.engine.csm import (IDENTITY, MAX_CASCADES, cascade_corners, csm_gls
                         mat4_as_Mat4, mat4_transform_point, select_cascade,
                         split_scheme, texel_snap)
 from world3d.engine.mathkit import look_at_matrix, mat4_mul  # noqa: E402
+from tests._glctx import NoGL, gl_window  # noqa: E402
 
 ASPECT = 16 / 9
 FOV = 50.0
@@ -355,15 +356,10 @@ def test_csm_glsl_rejects_bad_n():
 def test_csm_glsl_compiles_on_this_driver():
     """真编译一次（能拿到 GL 上下文才跑）—— 字符串层面看不出驱动是否接受。"""
     try:
-        import pyglet
         from pyglet.graphics.shader import Shader, ShaderProgram
-        win = pyglet.window.Window(64, 64, visible=False)
-
-        @win.event
-        def on_draw():
-            pass
-    except Exception as e:                                  # noqa: BLE001
-        print(f'  SKIP: 拿不到 GL 上下文（{type(e).__name__}: {e}）')
+        win = gl_window(64, 64)
+    except NoGL as e:
+        print(f'  SKIP: 无可用 GL（{e}）')
         return
     try:
         vs = '''#version 330 core
@@ -384,8 +380,21 @@ void main() { o = vec4(vec3(csm_shadow(vec3(0.0), -5.0, 1.0)), 1.0); }''')
                            n=MAX_CASCADES)
         uniforms, splits = csm_uniforms(cas)
         for k, v in uniforms.items():
+            # pyglet 2.1.16 的 `prog.uniforms[k]` 是 **dict**：{'location','size','length'}，
+            # 期望数据量 = size × length（mat4 → 1×16=16）。
+            want = prog.uniforms[k]['size'] * prog.uniforms[k]['length']
+            assert len(v) == want, f'{k}: 驱动要 {want} 个分量，给了 {len(v)} 个'
             prog[k] = v
-        prog['u_csm_split'] = splits
+        # `u_csm_split[4]` 的**长度由驱动说了算**：Mesa 会把尾部没被用到的元素裁掉
+        # （实测 Linux runner 上只报 3 项），于是照 4 个传就报
+        # "Size of data (4) does not match size of the uniform: 3"。
+        # 这不是 CSM 写错 —— 裁掉的那一项本来也没人读，按驱动报的长度传即可。
+        sp = prog.uniforms['u_csm_split']
+        n_split = sp['size'] * sp['length']
+        if n_split != len(splits):
+            print(f'  note: 驱动把 u_csm_split[{len(splits)}] 报成 {n_split} 项'
+                  f'（尾部未被引用，被优化掉了），按 {n_split} 上传')
+        prog['u_csm_split'] = list(splits)[:n_split]
         prog['u_csm_pcf'] = 1.5
         print(f'  ok: {MAX_CASCADES} 级 GLSL 在本机驱动上**编译通过**，'
               f'{len(uniforms)} 个矩阵 uniform 上传成功')

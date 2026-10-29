@@ -24,15 +24,21 @@ from world3d.engine.camera import OrbitCamera                           # noqa: 
 from world3d.engine.frustum import Frustum                              # noqa: E402
 from world3d.engine.gpu_cull import (GpuCullSupport, GpuDrivenField,    # noqa: E402
                              MAX_LOD, cpu_lod, cpu_reference)
+from tests._glctx import NoGL, gl_window                        # noqa: E402
 
 _WIN = None
 
 
 def _win():
-    """共享一个隐藏窗口（GL 上下文）。"""
+    """共享一个隐藏窗口（GL 上下文）。**不可用时抛 `NoGL`**（由 main 记 SKIP）。
+
+    判据见 `tests/_glctx.py`：能建窗口 ≠ 能跑 GL。GitHub 的 windows runner 给的
+    OpenGL 1.1 通用上下文建得出窗口却没有 `glCreateShader`，compute/着色器用例
+    会以"glCreateShader is not exported"全红 —— 那是环境，不是回归。
+    """
     global _WIN
     if _WIN is None:
-        _WIN = pyglet.window.Window(160, 120, visible=False)
+        _WIN = gl_window(160, 120)
     return _WIN
 
 
@@ -70,7 +76,10 @@ LOD_DISTS = [10.0, 22.0]
 # ================================================================== 用例
 def test_support_detect():
     info = GpuCullSupport.detect(verbose=True)
-    assert info['available'], f"GPU-driven 不可用: {info['reason']}"
+    if not info['available']:
+        # 这台机器没有 compute 能力（无 GPU / 老驱动 / 无 GL 库）⇒ 跳过，不是失败。
+        # 契约的另一半（"不可用时回退 CPU"）由下面的 CPU 等价性用例守。
+        raise NoGL(f'GPU-driven 不可用：{info["reason"]}')
     assert 'gl_version' in info
     print(f"  ok: 能力探测 available=True  GL={info['gl_version'].split(' - ')[0]} "
           f"GLSL={info['glsl'].split(' - ')[0]}")
@@ -199,10 +208,15 @@ def main():
     print('GPU-Driven Rendering 测试（P3-1）')
     print('=' * 60)
     failed = []
+    skipped = []
     for t in TESTS:
         print(t.__name__)
         try:
             t()
+        except NoGL as e:
+            # 跳过 ≠ 通过：打印原因，不计入失败（这台机器没有能编着色器的 GL）
+            skipped.append((t.__name__, e))
+            print(f'  SKIP: {e}')
         except Exception as e:
             failed.append((t.__name__, e))
             import traceback
@@ -211,6 +225,9 @@ def main():
     print('-' * 60)
     for name, e in failed:
         print(f'FAILED {name}: {e}')
+    if skipped:
+        print(f'（{len(skipped)} 项因无可用 GL 跳过：'
+              f'{"、".join(n for n, _ in skipped)}）')
     if failed:
         print(f'{len(failed)}/{len(TESTS)} FAILED')
         return 1

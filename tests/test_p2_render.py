@@ -22,14 +22,22 @@ from world3d.engine.pointcloud import (EDL_NEIGHBORS, cpu_edl,           # noqa:
                                generate_terrain_cloud)
 from world3d.engine.soft_shadow import (DEFAULT_SAMPLES, cpu_pcss,      # noqa: E402
                                 pcss_glsl, poisson_disk)
+from tests._glctx import NoGL, gl_window                        # noqa: E402
 
 _WIN = None
 
 
 def _win():
+    """共享隐藏窗口。**不可用时抛 `NoGL`**（由 main 记 SKIP）。
+
+    ⚠ 不能直接 `pyglet.window.Window(...)`：GitHub 的 windows runner 没有 GPU，
+    GDI 给的 OpenGL 1.1 上下文建得出窗口却**没有 glCreateShader**，于是这里
+    往下走两步就炸 —— 症状像"着色器写错了"，其实是"这台机器跑不了 GL 用例"。
+    判据见 `tests/_glctx.py`（建窗口 + 真编一个最小着色器）。
+    """
     global _WIN
     if _WIN is None:
-        _WIN = pyglet.window.Window(160, 120, visible=False)
+        _WIN = gl_window(160, 120)
     return _WIN
 
 
@@ -159,10 +167,15 @@ def main():
     print('P2-1/2/4 渲染能力测试（PCSS / WBOIT / 点云+EDL）')
     print('=' * 60)
     failed = []
+    skipped = []
     for t in TESTS:
         print(t.__name__)
         try:
             t()
+        except NoGL as e:
+            # 跳过 ≠ 通过：打印原因，但不计入失败（这台机器就是没有能编着色器的 GL）
+            skipped.append((t.__name__, e))
+            print(f'  SKIP: {e}')
         except Exception as e:
             failed.append((t.__name__, e))
             import traceback
@@ -171,6 +184,9 @@ def main():
     print('-' * 60)
     for name, e in failed:
         print(f'FAILED {name}: {e}')
+    if skipped:
+        print(f'（{len(skipped)} 项因无可用 GL 跳过：'
+              f'{"、".join(n for n, _ in skipped)}）')
     if failed:
         print(f'{len(failed)}/{len(TESTS)} FAILED')
         return 1

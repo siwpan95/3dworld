@@ -56,10 +56,15 @@ class GpuCullSupport:
         """
         from ctypes import c_char_p, cast
 
-        import pyglet.gl as G
-
         out = {'available': False, 'gl_version': '?', 'glsl': '?', 'reason': ''}
         try:
+            # ⚠ `import pyglet.gl` 必须在 try 里：机器上压根没有 GL/EGL 库时它抛
+            # `ImportError: Library "EGL" not found.`（无头 Windows 实测），
+            # 而本方法的契约是"探测不到就报 reason、让调用方回退 CPU"，不是抛异常。
+            # 2026-10-29 修：原先这行在 try 之外，于是 `test_support_detect` 在
+            # 没有 GL 的 runner 上直接 FAIL，看着像能力探测写错了。
+            import pyglet.gl as G
+
             gv = cast(G.glGetString(G.GL_VERSION), c_char_p).value
             sv = cast(G.glGetString(G.GL_SHADING_LANGUAGE_VERSION), c_char_p).value
             out['gl_version'] = gv.decode() if gv else '?'
