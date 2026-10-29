@@ -9,7 +9,7 @@
 ## 0. 目标与原则
 
 用 `3dworld` 已有的图形/音频/动画能力，复刻一批**早期单机代表作**的**玩法机制**。
-三条硬原则（与 `G:\allin` 治理铁律一致）：
+三条硬原则（与 `<PATH>` 治理铁律一致）：
 
 1. **复刻机制，不复制 IP**——原创美术、原创命名、原创世界观，做"向经典致敬的玩法复刻"。
    （前车之鉴：开源项目 Stratagus 最早叫 *FreeCraft*，意图复刻 Warcraft II 引擎，
@@ -1072,7 +1072,7 @@ Liminal Universe / Liminal Point / Liminalcore）均不同名，且证实「循�
 
 ### 18.1 实证基础（2026-10-14 已完成，全链路可复现）
 
-**链路打通**（研究器材在隔离 venv：`C:\Users\psw\.workbuddy\binaries\python\envs\default`
+**链路打通**（研究器材在隔离 venv：`<PATH>`
 + node workspace 的 `meshoptimizer@1.3.0`；临时探针 `_vpk_*` / `_kv3_*` / `_meshopt_*` / `_uv_*` 未入库）：
 
 ```

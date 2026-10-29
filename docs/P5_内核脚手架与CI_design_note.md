@@ -98,7 +98,7 @@ RUNNERS  = { 'td': run_td, ... }                            # 没在表里的 ki
 
 ```text
 $ python -c "import world3d.games.void.kernel; import platform; print(platform.__file__)"
-D:\projects\3dworld\world3d\platform\__init__.py          ← 标准库 platform 被遮蔽了
+<PATH>\world3d\platform\__init__.py          ← 标准库 platform 被遮蔽了
 
 $ python -c "import world3d.games.void.kernel; import platform; platform.system()"
 AttributeError: module 'platform' has no attribute 'system'

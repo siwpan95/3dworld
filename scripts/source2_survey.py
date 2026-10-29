@@ -28,8 +28,11 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-DEFAULT_VPK = ('D:/SteamLibrary/steamapps/common/Counter-Strike Global Offensive'
-               '/game/csgo/maps/de_dust2.vpk')
+# ⚠ 铁律 5（去符盘）：不写死盘符。用 `SOURCE2_VPK` 指定；未给时按用户主目录下的
+# 常见 Steam 安装位置猜（`~/SteamLibrary/...`，无盘符、跨机器可读）。
+DEFAULT_VPK = os.environ.get('SOURCE2_VPK') or os.path.join(
+    os.path.expanduser('~'), 'SteamLibrary', 'steamapps', 'common',
+    'Counter-Strike Global Offensive', 'game', 'csgo', 'maps', 'de_dust2.vpk')
 
 
 # ------------------------------------------------------------ 梯度解算 --

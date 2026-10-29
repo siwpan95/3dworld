@@ -1,6 +1,6 @@
 # Source 2 UV 对拍报告（§18.7）
 
-- 数据源：`D:/SteamLibrary/steamapps/common/Counter-Strike Global Offensive/game/csgo/maps/de_dust2.vpk`（12 个网格样本）
+- 数据源：`<PATH>/.../de_dust2.vpk`（CS:GO 安装目录下的 `game/csgo/maps/`，用 `SOURCE2_VPK` 覆盖）（12 个网格样本）
 
 - 方法：逐三角形解面内 UV 梯度 ∇u/∇v（Gram 矩阵 2×2）；
   密度 = 1/|∇u|（world units per UV）；轴对齐 = ∇u 方向 mod 90° ∈ [0°,5°]∪[85°,90°]。

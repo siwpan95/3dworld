@@ -7,7 +7,7 @@
 - **上游仓库**：`github.com/geohotstan/cordis-py`（pure Python port of cordiverse/cordis v4）
 - **import 名**：`cordis`（与现有 `host/pipeline.py` 一致：`from cordis import Context`）
 - **获取方式**：GitHub「Download ZIP」of `main` 分支 → 文件 `cordis-py-main.zip`
-  （落于 `G:/repos/3dworld/cordis-py-main.zip`，**请勿删除**，留作溯源）
+  （落于 `<PATH>/cordis-py-main.zip`，**请勿删除**，留作溯源）
 - **版本 / 提交锁定**：
   - 包版本 `__version__ = "4.0.0"`（pyproject `version = "4.0.0"`），与 vendored 源码一致 ✓
   - 分支 `main`，下载日期 **2026-10-09**
@@ -59,7 +59,7 @@ v4.0.0 的 `Context` 采用 **fiber 属性式 API**：`provide` / `inject` / `ef
 
 1. **已为本 venv 挂 .pth**（推荐，已做）：
    `.venv/Lib/site-packages/zz_vendor_cordis.pth` 含一行
-   `G:/repos/3dworld/vendor/cordis/src` → 任意 `.venv` 下代码直接 `import cordis`。
+   `<PATH>/vendor/cordis/src` → 任意 `.venv` 下代码直接 `import cordis`。
 2. **临时加路径**（换环境/CI）：
    ```python
    import sys, os
