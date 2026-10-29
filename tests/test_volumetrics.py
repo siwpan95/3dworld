@@ -21,9 +21,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from world3d.engine.volumetrics import (FOG_GLSL_UNIFORMS, IGN_A, IGN_B, IGN_C,  # noqa: E402
+                                NOISE3_NORM,
                                 dither_offset,
                                 height_fog_column, height_fog_segment,
-                                henyey_greenstein, step_weights,
+                                henyey_greenstein, noise3_glsl, step_weights,
                                 volumetric_glsl)
 
 
@@ -295,6 +296,51 @@ void main() {
         win.close()
 
 
+def test_volumetric_glsl_noise_branch():
+    """密度噪声：函数齐全、**默认关闭**、均值 1 的调制、两侧常数同源。
+
+    这条挡的是三类"画面只是有点闷/有点淡"的静默走样：
+    1. 调制乘子均值不是 1 ⇒ 一开噪声整幅雾变浓或变淡（不是崩溃，是"好像变通透了"）；
+    2. 忘了 ``u_fog_noise > 0.0`` 的门 ⇒ 关噪声也照付每步 3×8 次哈希的 ALU；
+    3. ``NOISE3_NORM`` 与逻辑层漂开 ⇒ 离线烘焙的噪声体和实时采样的长得不一样。
+    """
+    g = volumetric_glsl('vol_fog')
+    for helper in ('_hash3', '_grad3', '_noise3', '_fbm3'):
+        assert f'vol_fog{helper}' in g, f'缺噪声辅助函数 vol_fog{helper}'
+    # **默认关闭**：调制必须在 u_fog_noise 的门内，且强度 0 时整段跳过
+    assert 'u_fog_noise > 0.0' in g, '缺"关闭即跳过"的门（关噪声也照付 ALU）'
+    assert 'vol_fog_fbm3(pos * u_fog_noise_scale)' in g, '噪声没按世界坐标 × 频率采样'
+    # 均值 1 的重映射：`1 + (nz-0.5)*2*strength`，少了 2.0 就只有半个身位
+    assert '1.0 + (nz - 0.5) * 2.0 * u_fog_noise' in g, '调制式不是均值 1 的那条'
+    # 两侧归一化常数必须相等（engine 不 import 逻辑层，靠这条断言把事实钉住）
+    from world3d.logic import noise as N
+    assert NOISE3_NORM == N._PERLIN3_NORM, \
+        f'volumetrics.NOISE3_NORM={NOISE3_NORM} 与 logic.noise._PERLIN3_NORM='\
+        f'{N._PERLIN3_NORM} 漂开了（CPU/GPU 的噪声体不再是同一个幅度）'
+    assert f'const float vol_fog_NORM3 = {NOISE3_NORM!r};' in g, \
+        'GLSL 里的归一化常数没有由 Python 侧生成（两处会各自漂）'
+    # 独立片段可复用：换前缀后不留占位符
+    solo = noise3_glsl('mynoise')
+    assert 'mynoise_noise3' in solo and 'mynoise_fbm3' in solo
+    assert '{fn}' not in solo and '{norm}' not in solo, '占位符没被替换干净'
+    # ⚠ 双花括号守卫（实测踩过）：`_NOISE3_GLSL` 是**普通字符串**（占位符走 replace，
+    # 不走 .format），所以花括号必须写单个。写成 f-string 习惯的 `{{` 时，GLSL 会把它
+    # 解析成**嵌套语句块** —— 语法合法、编译通过、画面看起来也对，属于"编译器不会告状"的
+    # 静默错误。这条断言是它唯一的防线。
+    for text, label in ((solo, '独立片段'), (g, '整段体积雾')):
+        assert '{{' not in text and '}}' not in text, \
+            f'{label}里出现了双花括号（f-string 的写法漏进了普通字符串）'
+    for bad in ('1bad', 'has space', ''):
+        try:
+            noise3_glsl(bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f'噪声片段函数名 {bad!r} 竟然通过')
+    print(f'  ok: 4 个噪声辅助函数齐全、门内默认关闭、均值 1 调制、'
+          f'两侧 NORM3={NOISE3_NORM!r} 同源；独立片段可换前缀且拒绝非法名')
+
+
 # ------------------------------------------------------------------ runner --
 def main() -> int:
     tests = [
@@ -319,6 +365,7 @@ def main() -> int:
          test_volumetric_glsl_declares_exactly_one_sampler),
         ('test_volumetric_glsl_rejects_bad_fn_name',
          test_volumetric_glsl_rejects_bad_fn_name),
+        ('test_volumetric_glsl_noise_branch', test_volumetric_glsl_noise_branch),
         ('test_volumetric_glsl_composes_with_csm_and_compiles',
          test_volumetric_glsl_composes_with_csm_and_compiles),
     ]

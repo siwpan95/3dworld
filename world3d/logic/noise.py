@@ -1,12 +1,24 @@
 # -*- coding: utf-8 -*-
 """噪声库：value / perlin / simplex / fBm / worley / 域扭曲（纯标准库标量版）。
 
+**2D 与 3D 是两套并列的入口**：``value_noise`` / ``perlin_noise`` / ``fbm`` / 
+``worley_noise`` 吃 ``(x, y)``；``perlin3`` / ``fbm3`` 吃 ``(x, y, z)``。
+3D 那一套不是 2D 的参数化封装，而是**另一套算法**（8 角点 + 12 梯度集 +
+五次 fade），用于体积雾、实体纹理、3D 密度场这类"按世界坐标采样"的场合。
+
 借鉴记账（铁律 10）
 ------------------
 - **算法与整数哈希移植自 ``procgen``**（MIT，<https://gitee.com/siwpan/procgen>，
   ``procgen/noise.py``）：value / perlin / fbm / fractal / simplex 五个函数与
   ``_hash2`` 整数格点哈希。借用范围：算法与哈希常数；numpy 向量化实现按本仓
   「纯标准库 + 标量」立场重写。
+- **3D 梯度噪声依 Ken Perlin《Improving Noise》(SIGGRAPH 2002) 的算法定义**，
+  参考实现见作者在 NYU 的公开页 <https://cs.nyu.edu/~perlin/noise/>。借用范围：
+  **12 个梯度方向与五次 fade 多项式 ``6t⁵−15t⁴+10t³``**（论文公开的数学定义，
+  不含可版权的代码表达）—— 本实现的哈希、``period`` 环绕、归一化与裁剪口径
+  均为自写，未复制其代码行。许可备注：Perlin **未**对 classic noise 申请专利
+  （2001 年那项专利覆盖的是 simplex 的 3D+ 实现），参考实现标注
+  ``COPYRIGHT 2002 KEN PERLIN`` 并在论文中公开发表。
 - **simplex 置换表交叉参考 ``mc-clone/MC2``**（MIT，``mcclone/core/noise.py``）：
   用 ``random.Random(seed)`` 构建置换表（stdlib 确定性，禁全局 random/时间/
   urandom）。procgen 原版用 ``numpy.random.RandomState`` —— 两者置换表不同，
@@ -24,6 +36,9 @@
   与 procgen 的 numpy.int64 运算逐位一致 —— value/perlin/fbm 的输出因此与
   procgen 原版**逐位相同**（交叉验证过）。
 - **输出统一 0..1**：perlin/simplex 按理论最大幅度归一化后裁剪，与 procgen 一致。
+  3D 的 ``perlin3`` 同样是"归一化 + 裁剪"，并且**在整数格点上恰好返回 0.5**
+  （梯度噪声的定义性质：角点处位移向量为零 ⇒ 点积为零）—— 这条比任何 golden
+  都更能证明"这是梯度噪声而不是值噪声"。
 """
 from __future__ import annotations
 
@@ -33,6 +48,7 @@ import random
 __all__ = [
     'value_noise', 'perlin_noise', 'simplex_noise', 'fbm', 'fractal_noise',
     'worley_noise', 'domain_warp', 'heightmap',
+    'perlin3', 'fbm3',
 ]
 
 # ------------------------------------------------------------------ 整数哈希 --
@@ -252,3 +268,134 @@ def heightmap(w: int, h: int, scale: float = 0.1, seed: int = 0,
     return [[fbm(xx * scale, yy * scale, octaves=octaves,
                  lacunarity=lacunarity, gain=gain, seed=seed)
              for xx in range(w)] for yy in range(h)]
+
+
+# ============================================================== 3D 梯度噪声 ==
+# 与上面 2D 那套并列的另一套算法（Perlin 2002）。差别不只是"多一个坐标"：
+#
+#   2D 版（perlin_noise）    每个格点一个**角度** → cos/sin 变成梯度向量 → 4 角点
+#   3D 版（perlin3）         每个格点一个**哈希整数** → 查 12 梯度的位技巧 → 8 角点
+#
+# 3D 版不在格点上存 256 个随机单位向量（那是 1985 年的做法）：随机梯度会成簇，
+# 邻近梯度方向靠近时出现成片亮斑（splotchy）。2002 改进版固定 12 个方向
+# （立方体 12 条棱的中点），彼此不会靠得太近，而且点积退化成加法。
+
+#: 3D 归一化常数 = **实测可达的理论最大值 1.0**（与 2D 版用 √2/2 同口径：
+#: 都按"能取到的最大幅度"归一，而不是按典型幅度缩放到好看）。
+#:
+#: 为什么不是 2（单角点 ``|g·d|`` 的粗上界）：8 个角点的权重由 fade 的乘积给出、
+#: 和恒为 1，靠得越近的那个角点权重越小 —— 单个角点吃不到 2。真正取到 1.0 的配置
+#: 是 x 方向落在格界、y/z 落在格心，八个角点的梯度交替成棋盘（``±1,±1,0`` 全在
+#: 梯度集里），此时 8 份贡献同号相加。穷举 16³ 格 × 11³ 内点实测 argmax =
+#: ``perlin3(-4.0, -2.5, -3.5, seed=7) = 1.0``，由 ``tests/test_noise.py`` 钉住。
+_PERLIN3_NORM = 1.0
+
+
+def _fade(t: float) -> float:
+    """五次淡入淡出 ``6t⁵−15t⁴+10t³``（一阶、二阶导在两端都为 0）。
+
+    对照：更常见的三次式 ``t*t*(3-2t)`` 只保证一阶导连续，二阶导在格点边界
+    跳变 —— 拿去做凹凸/法线会看见格子边的折角，这正是 2002 版换五次的原因。
+    """
+    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+
+
+def _grad3(h: int, x: float, y: float, z: float) -> float:
+    """Perlin 2002 的梯度点积（位技巧版：16 个槽位复用 12 个方向）。
+
+    12 个方向的分量只取 -1/0/1，所以点积就是"挑两个分量相加再定符号"，
+    没有乘法 —— 这是论文里"顺手也更快"的那部分。
+    """
+    h &= 15
+    u = x if h < 8 else y
+    v = y if h < 4 else (x if h == 12 or h == 14 else z)
+    return (-u if h & 1 else u) + (-v if h & 2 else v)
+
+
+def _hash3(ix: int, iy: int, iz: int, seed: int) -> int:
+    """整数格点 -> 哈希整数（与 ``_hash2`` 同族的整数位运算，int64 回绕）。
+
+    为什么不像 ``engine/proctex.py`` 那样用 ``fract(sin(x)*43758.5)``：
+    ``sin`` 的大参数精度跨平台不一致，而位运算在所有平台逐位相同 —— 噪声库
+    要能当 golden 基准，就不能依赖浮点超越函数。
+    """
+    h = _wrap64(ix * 374761393 + iy * 668265263 + iz * 2654435761
+                + seed * 1013904223)
+    h = _wrap64((h ^ (h >> 13)) * 1274126177)
+    return h ^ (h >> 16)
+
+
+def perlin3(x: float, y: float, z: float, seed: int = 0,
+            period: int = 0) -> float:
+    """3D Perlin 梯度噪声，返回 0..1（**0.5 = 整数格点上的零交叉**）。
+
+    参数：
+        seed:   可选种子（换种子得到另一套梯度查表）
+        period: >0 时格点索引按 ``period`` 环绕 ⇒ 在 ``period`` 立方体内
+                **无缝可铺贴**。体积雾/实体纹理要"平铺不接缝"时必给
+                （对应 GLSL 侧 ``fract`` 采样；不给就只是连续、不一定无缝）。
+
+    为什么值得单独一套：2D 版本只能做高度场（一张图决定一个 y），
+    而 3D 版本能吃**世界坐标** ``(x, y, z)``，于是同一份代码可以生成
+    体积雾密度、大理石实体纹理、体素洞穴的 3D 密度场 —— 都不需要 UV。
+    """
+    if period < 0:
+        raise ValueError(f'period 不能为负，收到 {period}')
+    fx = math.floor(x)
+    fy = math.floor(y)
+    fz = math.floor(z)
+    tx, ty, tz = x - fx, y - fy, z - fz
+    xi, yi, zi = int(fx), int(fy), int(fz)
+
+    if period:
+        x0 = xi % period
+        y0 = yi % period
+        z0 = zi % period
+        x1 = (x0 + 1) % period
+        y1 = (y0 + 1) % period
+        z1 = (z0 + 1) % period
+    else:
+        x0, y0, z0 = xi, yi, zi
+        x1, y1, z1 = xi + 1, yi + 1, zi + 1
+
+    u, v, w = _fade(tx), _fade(ty), _fade(tz)
+
+    n000 = _grad3(_hash3(x0, y0, z0, seed), tx, ty, tz)
+    n100 = _grad3(_hash3(x1, y0, z0, seed), tx - 1.0, ty, tz)
+    n010 = _grad3(_hash3(x0, y1, z0, seed), tx, ty - 1.0, tz)
+    n110 = _grad3(_hash3(x1, y1, z0, seed), tx - 1.0, ty - 1.0, tz)
+    n001 = _grad3(_hash3(x0, y0, z1, seed), tx, ty, tz - 1.0)
+    n101 = _grad3(_hash3(x1, y0, z1, seed), tx - 1.0, ty, tz - 1.0)
+    n011 = _grad3(_hash3(x0, y1, z1, seed), tx, ty - 1.0, tz - 1.0)
+    n111 = _grad3(_hash3(x1, y1, z1, seed), tx - 1.0, ty - 1.0, tz - 1.0)
+
+    z0_plane = _lerp(_lerp(n000, n100, u), _lerp(n010, n110, u), v)
+    z1_plane = _lerp(_lerp(n001, n101, u), _lerp(n011, n111, u), v)
+    n = _lerp(z0_plane, z1_plane, w)
+    return _clip01((n / _PERLIN3_NORM + 1.0) / 2.0)
+
+
+def fbm3(x: float, y: float, z: float, octaves: int = 4,
+         lacunarity: float = 2.0, gain: float = 0.5, seed: int = 0,
+         period: int = 0) -> float:
+    """3D 分形布朗运动：多层 ``perlin3`` 叠加，返回 0..1。
+
+    ``period`` 是**最粗那层**的格点周期；第 ``o`` 层自动用
+    ``period * lacunarity**o``（取整），所以只要 ``period`` 与 ``lacunarity``
+    搭配得当（默认 2.0），**每一层都各自无缝**，叠起来仍是无缝的。
+
+    ⚠ 层间用 ``seed + o`` 去相关（与 2D 的 ``fbm`` 同口径）—— 少了这一步，
+    各层会在同一处起伏，叠出来只是"更陡的单层"，看不出分形细节。
+    """
+    total = 0.0
+    amp = 1.0
+    freq = 1.0
+    maxv = 0.0
+    for o in range(octaves):
+        p = int(round(period * freq)) if period else 0
+        total += amp * perlin3(x * freq, y * freq, z * freq,
+                               seed=seed + o, period=p)
+        maxv += amp
+        amp *= gain
+        freq *= lacunarity
+    return _clip01(total / maxv)

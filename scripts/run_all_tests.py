@@ -108,6 +108,8 @@ MODULES = [
      'RID 不透明句柄表 / 代际失效 / 槽位复用（Godot RID 思路，零 GL）'),
     ('tests.test_reflect', 'ALL_REFLECT_TESTS_PASSED',
      '反射注册表一物多用：序列化 / 检视 / 脚本绑定 / 校验（ClassDB 思路）'),
+    ('tests.test_solidtex', 'ALL_SOLIDTEX_TESTS_PASSED', 'solidtex'),
+    ('tests.test_cave3d', 'ALL_CAVE3D_TESTS_PASSED', 'cave3d'),
 ]
 
 

@@ -74,7 +74,10 @@ world3d/              **唯一的顶层包**（P2-4 收口；发行名 3dworld /
     terrain.py         程序化地形：值噪声 fBm 高程场 + 分层烘焙色 + 逐行网格发射
                        （2026-10-15 自 terrain_flyover 演示上提；渐进重建的数学
                        保证由 test_terrain_row_emitter 钉住）
-    voxel.py           体素世界：高度图生成 + 面剔除网格化（可分段）
+    voxel.py           体素世界：高度图生成 + 面剔除网格化（可分段）；
+                       **另含 3D 密度场世界**（洞穴/悬垂 + 六向剔除，见 `cave_occupancy`）
+    solidtex.py        实体纹理：按**世界坐标**求材质（无 UV、无接缝、无图集），
+                       五种材质 + 顶点色批量烘焙（消费方：洞穴世界岩层配色）
                        （2026-10-15 自 voxel_terrain 演示上提；剔除率与可复现性
                        由 test_voxel_mesh_invariants 钉住）
     blocks.py          方块世界逻辑：像素材质像素 / 世界生成 / 网格化 / 生物步态 / 昼夜
@@ -114,7 +117,7 @@ scripts/
                        demo 脚手架已随 demo 迁往 3dworld-demos）
   new_kernel.py        脚手架：生成新玩法内核 + 配置树 + 单测，并登记三张表（--undo 可撤销）
   check_imports.py     全仓可达性门禁：world3d/ 下每个模块都 import 一遍（+ sys.path 不变量）
-  run_all_tests.py     45 个测试模块的聚合 runner（数字由 readme-test-modules 门禁钉住）
+  run_all_tests.py     47 个测试模块的聚合 runner（数字由 readme-test-modules 门禁钉住）
   migrate_p2_4.py      P2-4 的一次性迁移工具（保留以便复查改了什么）
 tests/               逻辑层无窗口单测：python -m tests.run_tests
 docs/                设计文档（渲染验证截图已随 demo 迁往 3dworld-demos）
@@ -147,6 +150,10 @@ docs/                设计文档（渲染验证截图已随 demo 迁往 3dworld
   - **PCSS 软阴影**（`soft_shadow.py`）：blocker search → 半影估计 → 可变半径 PCF（Poisson 盘）
   - **WBOIT 顺序无关透明**（`oit.py`）：一趟写 accum/reveal 两张 MRT 再合成，无需排序
   - **点云 + EDL**（`pointcloud.py`）：程序化点云 + imposter 圆盘 + 深度轮廓增强
+  - **3D 梯度噪声**（`logic/noise.py` → `perlin3` / `fbm3`；GLSL 侧 `volumetrics.noise3_glsl`）：
+    Perlin 2002 的 12 梯度集 + 五次 fade，`period` 环绕可无缝铺贴；GPU 用 32 位 uint 哈希、
+    CPU 用 int64 口径（**结构同式、数值不同**）。首个消费方是体积雾密度调制
+    （`u_fog_noise` 默认 0 = 关闭），实体纹理 / 3D 密度场可复用同一片段
 
 综合演示（把上面全部跑一遍的演示程序）已随 demo 迁往独立仓
 [siwpan/3dworld-demos](https://gitee.com/siwpan/3dworld-demos)（`examples/engine_showcase.py`，
@@ -293,7 +300,9 @@ python -m tests.run_tests           逻辑层无窗口单测（65 项）
 python -m tests.test_cores          共同核契约（17 项，含 P1-⑤ 玩法模块）
 python -m tests.test_engine         引擎层无窗口单测（30 项，含 model uniform 作用域 + 多网格连续三帧逐字节一致）
 python -m tests.test_shaders       着色器库：注册表静态核对 + 契约核对 + 全量编译（5 项，GL 不可用记 SKIP）
-python -m tests.test_noise          噪声库：golden 交叉验证（与 procgen numpy 逐位一致）+ 确定性 + 值域 + 算法性质（8 项）
+python -m tests.test_noise          噪声库：golden 与 procgen numpy 逐位一致 + 3D 梯度噪声 + 确定性 + 值域 + 算法性质（13 项）
+python -m tests.test_solidtex       实体纹理：按世界坐标求材质 + 无 UV 接缝 + 五种材质可辨 + 顶点色烘焙（6 项，零 GL）
+python -m tests.test_cave3d         三维密度场世界：悬垂/洞穴判据 + 2.5D 对照 + 面剔除解析值 + 实体纹理配色（6 项，零 GL）
 python -m tests.test_replay         回放系统：浏览面 + 确定性自检（含反向用例）（9 项）
 python -m tests.test_behavior_tree  行为树：组合/装饰/叶子语义 + 声明式构造 + 假时钟超时（10 项）
 python -m tests.test_dungeon         地牢/洞穴：连通性洪水填充验证 + 确定性 + 结构约束（6 项）
@@ -317,7 +326,7 @@ python -m tests.test_sandward       沙垒演示场：路线/巡游/碰撞/UV �
 python -m tests.test_proctex        程序化纹理 × PBR 图集：通道打包逐像素（4 项，零 GL）
 python -m tests.test_heightfield    heightfield 地形生成器：XZ 高度场拓扑/范围/UV/高程线性映射/法线朝向 + validate 放行与拦截二维 hm（7 项，零 GL）
 python -m tests.test_csm            级联阴影 CSM（20 项：分割/角点/光盒/纹素吸附/GLSL 展开）
-python -m tests.test_volumetrics    体积雾/光轴（12 项：闭式积分可加性/HG 归一/抖动同式/GLSL 组合）
+python -m tests.test_volumetrics    体积雾/光轴（13 项：闭式积分可加性/HG 归一/抖动同式/3D 密度噪声/GLSL 组合）
 python -m tests.test_dof            景深 DoF（12 项：CoC/超焦距/景深端点恒等式/散景面积均匀）
 python -m tests.test_motionblur     运动模糊（9 项：静止零运动/1÷z 律/纯旋转与深度无关/三模块共存）
 python -m tests.test_framegraph     帧图（17 项：物理顺序/剔除/直通/别名/环与死链校验）

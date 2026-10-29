@@ -17,29 +17,43 @@
 2. **相函数不能省**。各向同性散射（g=0）看不见"光轴"；真实雾的强前向散射
    （g≈0.7~0.9）才是"太阳在柱子后面出现光柱"的成因。`henyey_greenstein()` 就是它。
 
+3. **"一层均匀灰"不是雾**。前两条做对了，画面仍然是一条从地面往上均匀变淡的灰 ——
+   真实雾有团块、有空洞、有被光穿出来的絮。`u_fog_noise` 就是那层 3D 密度调制：
+   每个采样段用 `fbm` 乘一个**均值恰为 1** 的因子，于是"开关它不整体改变浓度，
+   只把灰变成絮"。它默认 0（关闭），不开就不付噪声的 ALU。
+
+> ⚠ 开噪声后**浓度对步数有温和依赖**（噪声按段中点采样，步数越细越接近真值）——
+> 上面第 1 条"改步数不改变浓度"只对纯高度雾成立。这是所有"3D 噪声 + raymarch"
+> 的共同性质，不是本实现的缺陷；但把它当成 bug 去查会白查半天，所以写在这里。
+
 ## 提供什么
 
 * **纯数学**（全部可 headless 断言）：`height_fog_segment` / `height_fog_column` /
   `henyey_greenstein` / `step_weights` / `dither_offset`；
 * **可注入的 GLSL**：`volumetric_glsl()` —— 沿射线推进、在每步查阴影图求"被遮挡多少"、
-  按相函数加权累加散射，**并且用的是同一个解析积分**（CPU 与 GPU 同式）。
+  按相函数加权累加散射，**并且用的是同一个解析积分**（CPU 与 GPU 同式）；
+* **可复用的 GLSL 片段**：`noise3_glsl()` —— Perlin 2002 的 3D 噪声（12 梯度 + 五次 fade），
+  本模块自己拼进体积雾，别处（实体纹理 / SDF 密度场）也能直接用。
 
 **合规**：思路来自公开文献（高度雾解析积分是 Frostbite/UE 的经典做法；HG 相函数是
-1888 年的老东西），**独立实现**，不复制任何具体仓库代码。
+1888 年的老东西），**独立实现**，不复制任何具体仓库代码。3D 噪声的梯度集与 fade
+多项式出自 Ken Perlin《Improving Noise》(SIGGRAPH 2002) 的公开定义（借用范围见
+`world3d/logic/noise.py` 的借鉴记账；Perlin 未对 classic noise 申请专利）。
 """
 from __future__ import annotations
 
 import math
 
 __all__ = ['height_fog_segment', 'height_fog_column', 'henyey_greenstein',
-           'step_weights', 'dither_offset', 'volumetric_glsl',
-           'FOG_GLSL_UNIFORMS']
+           'step_weights', 'dither_offset', 'volumetric_glsl', 'noise3_glsl',
+           'FOG_GLSL_UNIFORMS', 'NOISE3_NORM']
 
 #: 顶点/片段着色器里**必须**声明的 uniform 名字（demo 与测试共用，避免两边漂开）
 FOG_GLSL_UNIFORMS = (
     'u_fog_depth', 'u_inv_vp', 'u_fog_cam', 'u_fog_light_dir', 'u_fog_light_color',
     'u_fog_density', 'u_fog_falloff', 'u_fog_base', 'u_fog_ambient',
     'u_fog_phase_g', 'u_fog_steps', 'u_fog_max_dist', 'u_fog_analytic', 'u_fog_shafts',
+    'u_fog_noise', 'u_fog_noise_scale',
 )
 
 #: 交错梯度噪声的两个魔数（CPU 侧 `dither_offset` 与 GLSL 辅助函数**必须同式**，
@@ -143,6 +157,86 @@ def dither_offset(px: int, py: int, frame: int = 0, size: int = 8) -> float:
 
 
 # ------------------------------------------------------------------ GLSL --
+#: 3D 噪声的归一化常数。**必须与 `world3d.logic.noise._PERLIN3_NORM` 相等** ——
+#: 两处漂开后"CPU 侧算出 0.62、GPU 侧算出 0.55"不会报错，只会让离线烘焙的
+#: 噪声体和实时采样的噪声体长得不一样。这里不 import 逻辑层（engine 不该反向
+#: 依赖 logic 的私有量），改由 `tests/test_volumetrics.py` 断言两处相等。
+NOISE3_NORM = 1.0
+
+#: 3D 噪声的 GLSL 片段（`{fn}` / `{norm}` 是文本占位符，用 `str.replace` 填，
+#: 不走 `.format` —— 片段里全是花括号，走 format 会被当成字段名）。
+_NOISE3_GLSL = '''// ---- 3D 密度噪声（Perlin 2002：12 梯度集 + 五次 fade）----
+// 为什么内联算、不采样 3D 纹理：本引擎没有 3D 纹理通道（pyglet 侧只走 2D）；
+// 内联只有 ALU 成本、不占显存，代价是每个采样点几十条指令 —— 所以它**默认关闭**
+// （u_fog_noise = 0 时下面那个 if 整段跳过，不开就不付钱）。
+// ⚠ 与 CPU 侧 `world3d.logic.noise.perlin3` **结构同式、数值不同**：GPU 只有
+//   32 位 uint 哈希，CPU 侧是 int64 回绕语义。两边都确定性，但不要跨端比数值。
+const float {fn}_NORM3 = {norm};
+
+uint {fn}_hash3(ivec3 c) {
+    uint h = uint(c.x) * 374761393u + uint(c.y) * 668265263u
+           + uint(c.z) * 2654435761u + 1013904223u;
+    h ^= h >> 13;
+    h *= 1274126177u;
+    h ^= h >> 16;
+    return h;
+}
+
+// 12 个梯度方向（立方体 12 条棱的中点）用 16 个槽位 + 位掩码选中，
+// 省掉 `% 12` 的整除（论文里"顺手也更快"的那部分：分量只有 -1/0/1 ⇒ 点积退化成加法）
+float {fn}_grad3(uint h, vec3 d) {
+    uint i = h & 15u;
+    float u = (i < 8u) ? d.x : d.y;
+    float v = (i < 4u) ? d.y : ((i == 12u || i == 14u) ? d.x : d.z);
+    return ((i & 1u) == 0u ? u : -u) + ((i & 2u) == 0u ? v : -v);
+}
+
+// 单层 3D Perlin（≈[-1,1]；**整数格点上恰好 0**，与 CPU 侧同一性质）
+float {fn}_noise3(vec3 p) {
+    vec3 fl = floor(p);
+    ivec3 c = ivec3(fl);
+    vec3 d = p - fl;
+    vec3 w = d * d * d * (d * (d * 6.0 - 15.0) + 10.0);
+    float n[8];
+    for (int k = 0; k < 8; ++k) {
+        ivec3 o = ivec3(k & 1, (k >> 1) & 1, (k >> 2) & 1);
+        n[k] = {fn}_grad3({fn}_hash3(c + o), d - vec3(o));
+    }
+    float lo = mix(mix(n[0], n[1], w.x), mix(n[2], n[3], w.x), w.y);
+    float hi = mix(mix(n[4], n[5], w.x), mix(n[6], n[7], w.x), w.y);
+    return mix(lo, hi, w.z) / {fn}_NORM3;
+}
+
+// 3 层 fBm 并重映射到 0..1（**均值 ≈ 0.5**，下面的调制依赖这条：均值不是 0.5
+// 的话，一开噪声整幅雾就会整体变浓或变淡，而画面只表现为"好像变通透了"）
+float {fn}_fbm3(vec3 p) {
+    float sum = 0.0, amp = 1.0, norm = 0.0;
+    vec3 q = p;
+    for (int i = 0; i < 3; ++i) {
+        sum += amp * {fn}_noise3(q);
+        norm += amp;
+        amp *= 0.5;
+        q *= 2.0;
+    }
+    return clamp(sum / norm * 0.5 + 0.5, 0.0, 1.0);
+}
+'''
+
+
+def noise3_glsl(fn: str) -> str:
+    """把 3D 噪声片段渲染成带前缀的 GLSL（`fn_hash3` / `fn_grad3` / `fn_noise3` / `fn_fbm3`）。
+
+    `fn` **必填**（没有默认值）：前缀就是命名空间，给个默认值会让调用方拿到
+    `vol_fog_noise_hash3` 这种既不像雾又不像噪声的名字。本模块自己用 `vol_fog`，
+    别处（实体纹理 / SDF 密度场）各给各的前缀。
+
+    单独暴露是为了让它能用在别处而不用把整段体积雾拖过去。
+    """
+    if fn.isidentifier() is False:
+        raise ValueError(f'函数名必须是合法标识符，收到 {fn!r}')
+    return _NOISE3_GLSL.replace('{fn}', fn).replace('{norm}', repr(NOISE3_NORM))
+
+
 def volumetric_glsl(fn: str = 'volumetric_fog', shadow_fn: str = None) -> str:
     """生成可注入的 GLSL 片段。
 
@@ -156,6 +250,9 @@ def volumetric_glsl(fn: str = 'volumetric_fog', shadow_fn: str = None) -> str:
       **阴影图由那个函数自己带**（它知道自己的采样器和级选择）—— 本模块**不再重复声明**
       一个 `u_fog_shadow`：声明了如果没被采样就会被驱动优化掉，而 pyglet 给"不存在的
       uniform"赋值会抛异常（症状与体积雾毫无字面关系）。
+    * 密度噪声要 `u_fog_noise`（强度，0 = 关闭）与 `u_fog_noise_scale`（频率，世界单位⁻¹）
+      **配套给**；只给强度不给频率等于在 `(0,0,0)` 固定点采样（噪声退化成常数）。
+      两个都默认 0，所以老调用方不设它们也安全 —— 只是没有团块。
 
     ⚠ 两条与 `engine/csm.py` 同源的坑（那里踩过一次，这里照抄注释）：
 
@@ -175,6 +272,7 @@ def volumetric_glsl(fn: str = 'volumetric_fog', shadow_fn: str = None) -> str:
     scatter = (f'        float lit = 1.0 - {shadow_fn}(pos, z_here, ndl_here);'
                if need_shadow else
                '        float lit = 1.0;   // 不接阴影函数 ⇒ 只有高度雾，没有光轴')
+    noise = noise3_glsl(fn)
     return f'''// ---- 体积雾 / 光轴（生成自 `world3d.engine.volumetrics`，不要手改）----
 // ⚠ 调用方负责写版本声明（片段里重复声明版本号是编译错误；本片段**不含**它）
 // ⚠ 本片段**只声明一个采样器**（u_fog_depth）。光轴要用到的阴影图由 `shadow_fn`
@@ -194,6 +292,8 @@ uniform float u_fog_steps;         // 采样步数（用 float 传，省得再�
 uniform float u_fog_max_dist;
 uniform float u_fog_analytic;      // 1 = 闭式高度雾积分；0 = 每步矩形（对照组）
 uniform float u_fog_shafts;        // 1 = 记入单次散射（光轴）；0 = 只有雾
+uniform float u_fog_noise;         // 密度噪声强度：**0 = 关闭（默认，不付 ALU）**，1 = 常规
+uniform float u_fog_noise_scale;   // 噪声采样频率（世界单位⁻¹，常见 0.05~0.3；与上一项配套给）
 
 // 一段射线的光学厚度 —— **闭式解**，与 CPU 侧 `height_fog_segment` 同式。
 // 逐步矩形求和会在低步数时出现层状条纹，而且"改步数会让整幅雾变浓变淡"。
@@ -233,6 +333,7 @@ float {fn}_scene_dist(vec2 uv) {{
     return min(texture(u_fog_depth, uv).r, u_fog_max_dist);
 }}
 
+{noise}
 // 沿射线积分：返回 (散射 RGB, 透射率)。调用方用它合成 scene*trans + scatter。
 vec4 {fn}(vec2 uv, float scene_dist, float dither) {{
     float steps = max(2.0, u_fog_steps);
@@ -254,8 +355,17 @@ vec4 {fn}(vec2 uv, float scene_dist, float dither) {{
             ? {fn}_segment(p0.y, p1.y, dt)                       // 闭式
             : u_fog_density * exp(-u_fog_falloff * (p0.y - u_fog_base)) * dt;  // 逐步矩形
         if (ext <= 0.0) {{ jitter = t1; continue; }}
-        trans *= exp(-ext);                     // 先衰减，再加本段散射（能量守恒的顺序）
         vec3 pos = (p0 + p1) * 0.5;             // 散射源项变化平缓，中点即可
+        // 密度噪声：绕开 0 之外什么都不做（u_fog_noise 默认 0 ⇒ 整段跳过，
+        // 不开噪声的场景不付这几十条指令）。乘子的均值是 1 ⇒ 开关它不整体改变
+        // 雾的浓度，只把"一层均匀灰"打散成团块。
+        // ⚠ 这一项是**按段中点采样**的：步数越多噪声越细（收敛到真值），
+        //   所以"改步数不改变浓度"那条性质只对纯高度雾成立，开了噪声就有温和依赖。
+        if (u_fog_noise > 0.0) {{
+            float nz = {fn}_fbm3(pos * u_fog_noise_scale);
+            ext *= max(1.0 + (nz - 0.5) * 2.0 * u_fog_noise, 0.0);
+        }}
+        trans *= exp(-ext);                     // 先衰减，再加本段散射（能量守恒的顺序）
         float z_here = -(d0 + dt * 0.5);
         float ndl_here = 1.0;
 {scatter}
