@@ -359,6 +359,47 @@ def build_cave_mesh(occ, seed=0, w=CAVE_W, h=CAVE_H, d=CAVE_D,
     return pos, col, faces
 
 
+def cave_mesh_greedy(occ, seed=0, w=CAVE_W, h=CAVE_H, d=CAVE_D,
+                     kind='rock', color_fn=None):
+    """三维占用位图 → **贪心合并**网格（`engine/voxel_mesh.greedy_mesh_3d` 的 `MeshData`）。
+
+    与 `build_cave_mesh` 的分工：
+
+    * `build_cave_mesh`：逐面发射 + 六向剔除（**零依赖**，`array('f')` 直出，喂顶点色着色器）。
+      它的价值是"没有 numpy 也能出网格"，也是贪心版的对照组；
+    * 本函数：三轴贪心合并（同向共面的相邻格并成一个大矩形）+ 逐顶点 AO。
+      面数能降一个数量级 —— 洞里大片同材质的岩壁本来就是整块，逐面发纯属浪费。
+
+    **为什么可以依赖 numpy/engine**：2026-10-29 起 numpy 是项目的硬依赖
+    （9 个分发模块在顶层 import 它），而 `logic/` 里 `animation` / `camera` /
+    `audio` 等早已 import `engine/`。所以"逻辑层纯标准库"这条只对**不碰大数组**的
+    模块继续成立：`build_cave_mesh` 保持零依赖，重活交给这里。
+
+    颜色仍是实体纹理按世界坐标求值（`color_fn` 可覆盖）；注意 AO 会乘进 RGB，
+    所以颜色与 `build_cave_mesh` 的逐格值**不会逐位相等**（那边没有 AO）。
+    """
+    import numpy as np
+
+    from world3d.engine.voxel_mesh import greedy_mesh_3d
+    from world3d.logic.solidtex import sample as _solid_sample
+
+    # 位图下标是 (y·d + z)·w + x，reshape 成 (h, d, w) 正好是 greedy_mesh_3d 要的
+    # **voxels[y][z][x]** 序（它文档里写死了这个顺序，别按 numpy 习惯想成 zyx）
+    vox = np.frombuffer(bytes(occ), dtype=np.uint8).reshape(h, d, w)
+    cols = np.zeros((h, d, w, 3), dtype=np.float64)
+    for y in range(h):
+        for z in range(d):
+            for x in range(w):
+                if not vox[y, z, x]:
+                    continue
+                if color_fn is not None:
+                    rgb = color_fn(x, y, z)
+                else:
+                    rgb = _solid_sample(x + 0.5, y + 0.5, z + 0.5, kind, seed)[:3]
+                cols[y, z, x] = rgb
+    return greedy_mesh_3d(vox, size=1.0, colors=cols, name='cave3d')
+
+
 # ================================================================== 着色器 ==
 # 顶点色已含分层色与逐面亮度；片元直通。
 VERTEX_SRC = '''#version 330 core

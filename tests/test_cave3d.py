@@ -152,6 +152,29 @@ def test_colors_come_from_solidtex_by_world_position():
           f'整片世界 {len(uniq)} 种颜色（>20，随位置变化）')
 
 
+def test_greedy_mesh_merges_coplanar_faces():
+    """贪心合并的**解析判据**：3³ 实心块的六个面各并成 **1 个 quad**。
+
+    逐面剔除给出 6×9=54 面（上一用例的解析值），贪心合并给出 **6**。
+    这个数字没有解释空间：合并错了要么多（没并上）、要么少（并过头吃掉了面）。
+    """
+    w = h = d = 5
+    occ = _solid_block(w, h, d, 1, 3)
+    mesh = V.cave_mesh_greedy(occ, seed=1, w=w, h=h, d=d)
+    quads = len(mesh.indices) // 6
+    assert quads == 6, f'3³ 块应并成 6 个 quad（每面 1 个），实际 {quads}'
+    assert mesh.triangle_count == 12 and mesh.vertex_count == 24
+    # 真世界上的收益：必须显著少于"逐面剔除"，但也不能少于三角形的最小面数
+    occ_w, st = _world()
+    real = V.cave_mesh_greedy(occ_w, seed=_SEED, w=_W, h=_H, d=_D)
+    _p, _c, culled = V.build_cave_mesh(occ_w, seed=_SEED, w=_W, h=_H, d=_D)
+    q_real = len(real.indices) // 6
+    assert q_real * 2 < culled, f'贪心合并收益不足：{q_real} quad vs {culled} 面'
+    assert min(real.positions[i] for i in range(1, len(real.positions), 3)) >= 0.0
+    print(f'  ok: 3³ 块 54 面 → 6 quad（解析值）；真世界 {culled} 面 → {q_real} quad'
+          f'（降 {100 * (1 - q_real / culled):.0f}%）')
+
+
 def test_bad_arguments_are_rejected():
     """坏参数要报错（静默返回一个"看起来很合理"的世界最难查）。"""
     cases = (
@@ -180,6 +203,8 @@ def main() -> int:
         ('test_mesh_geometry_is_well_formed', test_mesh_geometry_is_well_formed),
         ('test_colors_come_from_solidtex_by_world_position',
          test_colors_come_from_solidtex_by_world_position),
+        ('test_greedy_mesh_merges_coplanar_faces',
+         test_greedy_mesh_merges_coplanar_faces),
         ('test_bad_arguments_are_rejected', test_bad_arguments_are_rejected),
     ]
     failed = []

@@ -3,6 +3,40 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [未发布] — 2026-10-29 · 噪声向量化收编 / 去符盘 / 洞穴贪心网格
+
+### Added
+
+- **`logic/noise_vec.py` 收进仓库**（此前一直躺在工作区、**没提交**，而
+  `probes/gobi_scene.py` 已经在 import 它 —— 别人 clone 下来跑 probes 必炸）。
+  它是 worldbuilder 侧噪声的 numpy 向量化**复制**（三仓「复制优于共享」：
+  3dworld 不再 import worldbuilder，只以 worldspec v1 文件契约为集成点）；
+  probes 里四处 `sys.path.insert(..., 'worldbuilder')` 随之删除。
+  - 顺带修掉复制品的一个真缺陷：`fbm` 用 `np.zeros_like(x)` 定累加器形状，
+    `x=(H,1)`、`y=(1,W)` 的网格写法会报 non-broadcastable；三个入口改为先
+    `np.broadcast_arrays`（同形输入数值逐位不变）。
+  - 新增 `test_noise_vec_matches_scalar_bitwise`：与标量版
+    **逐位一致（差 0.0）**。复制品的最大风险就是只改一边，而那会让 2.5D 世界生成
+    与 probes 离线烘焙悄悄分叉。`test_noise` 13 → 14 项。
+- **`logic/voxel.py::cave_mesh_greedy`** —— 洞穴世界接上贪心合并
+  （`engine/voxel_mesh.greedy_mesh_3d`，三轴合并 + 逐顶点 AO）。
+  实测 32×16×32 世界：逐面剔除 **6186 面 → 2276 quad（降 63%）**；
+  3³ 实心块的解析判据是 **6 quad**（每面并成 1 个，对照组 54 面）。
+  `build_cave_mesh`（零依赖、`array('f')` 直出）保留为对照组 —— 没有 numpy 的环境
+  仍然能出洞穴网格。`test_cave3d` 6 → 7 项。
+  > 层间依赖说明：`logic/` 早有 `animation` / `camera` / `audio` import `engine/`，
+  > 而 numpy 自 0.7.0 起是硬依赖，所以"逻辑层纯标准库"只对**不碰大数组**的模块继续成立。
+
+### Changed
+
+- **铁律 5 去符盘一次清完**：12 个文件 / 29 处 → **0**。
+  - 口径：绝对路径 → `<PATH>`（README 已声明），保留有意义的尾段；
+    凭据目录另设 `<凭据目录>` 并在分发指南里说明它也是占位符。
+  - 代码里的默认值不止换字符串：`scripts/source2_survey.py` 的 `DEFAULT_VPK`
+    原本写死 `D:/SteamLibrary/...`，改成 `SOURCE2_VPK` 环境变量 + 主目录相对回退。
+  - ⚠ 教训：`git ls-files` **默认转义中文文件名**，第一遍扫漏了 6 个中文名文档，
+    差点报"清完了"。全仓扫描必须用 `git ls-files -z`。
+
 ## [0.7.1] — 2026-10-29 · 同日补丁：`detect()` 不再抛异常 + CI 首次全绿
 
 > 0.7.0 的 wheel 是先构建后提交的，所以发布物里**不含**下面那条 `gpu_cull` 修复；

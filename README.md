@@ -78,7 +78,8 @@ world3d/              **唯一的顶层包**（P2-4 收口；发行名 3dworld /
                        （2026-10-15 自 terrain_flyover 演示上提；渐进重建的数学
                        保证由 test_terrain_row_emitter 钉住）
     voxel.py           体素世界：高度图生成 + 面剔除网格化（可分段）；
-                       **另含 3D 密度场世界**（洞穴/悬垂 + 六向剔除，见 `cave_occupancy`）
+                       **另含 3D 密度场世界**（洞穴/悬垂 + 六向剔除的零依赖网格器
+                       `build_cave_mesh` + 贪心合并 `cave_mesh_greedy`，见 v3 说明）
     solidtex.py        实体纹理：按**世界坐标**求材质（无 UV、无接缝、无图集），
                        五种材质 + 顶点色批量烘焙（消费方：洞穴世界岩层配色）
                        （2026-10-15 自 voxel_terrain 演示上提；剔除率与可复现性
@@ -305,7 +306,7 @@ python -m tests.test_engine         引擎层无窗口单测（30 项，含 mode
 python -m tests.test_shaders       着色器库：注册表静态核对 + 契约核对 + 全量编译（5 项，GL 不可用记 SKIP）
 python -m tests.test_noise          噪声库：golden 与 procgen numpy 逐位一致 + 3D 梯度噪声 + 向量化=标量逐位一致 + 确定性 + 值域 + 算法性质（14 项）
 python -m tests.test_solidtex       实体纹理：按世界坐标求材质 + 无 UV 接缝 + 五种材质可辨 + 顶点色烘焙（6 项，零 GL）
-python -m tests.test_cave3d         三维密度场世界：悬垂/洞穴判据 + 2.5D 对照 + 面剔除解析值 + 实体纹理配色（6 项，零 GL）
+python -m tests.test_cave3d         三维密度场世界：悬垂/洞穴判据 + 2.5D 对照 + 面剔除/贪心合并解析值 + 实体纹理配色（7 项，零 GL）
 python -m tests.test_replay         回放系统：浏览面 + 确定性自检（含反向用例）（9 项）
 python -m tests.test_behavior_tree  行为树：组合/装饰/叶子语义 + 声明式构造 + 假时钟超时（10 项）
 python -m tests.test_dungeon         地牢/洞穴：连通性洪水填充验证 + 确定性 + 结构约束（6 项）
