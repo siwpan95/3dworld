@@ -28,8 +28,7 @@ import wave
 _HERE = os.path.dirname(os.path.abspath(__file__))
 PROBES = os.path.dirname(_HERE)
 ROOT = os.path.dirname(PROBES)
-for _p in (ROOT, PROBES, _HERE, os.path.join(os.path.dirname(ROOT),
-                                             'worldbuilder')):
+for _p in (ROOT, PROBES, _HERE):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 

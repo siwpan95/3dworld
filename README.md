@@ -72,6 +72,9 @@ world3d/              **唯一的顶层包**（P2-4 收口；发行名 3dworld /
     playback.py        播放控制器：播放/暂停/循环/倍速/seek
     skeleton.py        节点级层级动画（转台→大臂→小臂→夹爪）
     terrain.py         程序化地形：值噪声 fBm 高程场 + 分层烘焙色 + 逐行网格发射
+    noise.py           噪声库（纯标准库标量）：value/perlin/simplex/worley/fBm + **3D（perlin3/fbm3）**
+    noise_vec.py       同一套噪声的 **numpy 向量化版**（与标量版逐位一致，由 test_noise 钉住）；
+                       复制自兄弟仓 worldbuilder，使本仓不再 import 它
                        （2026-10-15 自 terrain_flyover 演示上提；渐进重建的数学
                        保证由 test_terrain_row_emitter 钉住）
     voxel.py           体素世界：高度图生成 + 面剔除网格化（可分段）；
@@ -300,7 +303,7 @@ python -m tests.run_tests           逻辑层无窗口单测（65 项）
 python -m tests.test_cores          共同核契约（17 项，含 P1-⑤ 玩法模块）
 python -m tests.test_engine         引擎层无窗口单测（30 项，含 model uniform 作用域 + 多网格连续三帧逐字节一致）
 python -m tests.test_shaders       着色器库：注册表静态核对 + 契约核对 + 全量编译（5 项，GL 不可用记 SKIP）
-python -m tests.test_noise          噪声库：golden 与 procgen numpy 逐位一致 + 3D 梯度噪声 + 确定性 + 值域 + 算法性质（13 项）
+python -m tests.test_noise          噪声库：golden 与 procgen numpy 逐位一致 + 3D 梯度噪声 + 向量化=标量逐位一致 + 确定性 + 值域 + 算法性质（14 项）
 python -m tests.test_solidtex       实体纹理：按世界坐标求材质 + 无 UV 接缝 + 五种材质可辨 + 顶点色烘焙（6 项，零 GL）
 python -m tests.test_cave3d         三维密度场世界：悬垂/洞穴判据 + 2.5D 对照 + 面剔除解析值 + 实体纹理配色（6 项，零 GL）
 python -m tests.test_replay         回放系统：浏览面 + 确定性自检（含反向用例）（9 项）

@@ -21,7 +21,6 @@ PROBES = os.path.dirname(_HERE)
 ROOT = os.path.dirname(PROBES)
 sys.path.insert(0, ROOT)
 sys.path.insert(0, PROBES)
-sys.path.insert(0, os.path.join(os.path.dirname(ROOT), 'worldbuilder'))
 
 import numpy as np                                             # noqa: E402
 

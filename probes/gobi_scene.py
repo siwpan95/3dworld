@@ -26,14 +26,15 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-sys.path.insert(0, os.path.join(os.path.dirname(ROOT), 'worldbuilder'))
 
 import numpy as np                                              # noqa: E402
 
 ROAD_HM = 0.30            # 走廊高度图基准值
 TERRAIN_H = 7.0           # heightfield 高度
 Y0 = ROAD_HM * TERRAIN_H  # 路面高程（world y）
-from worldbuilder.noise import fractal_noise, value_noise       # noqa: E402
+# 向量化分形噪声：本仓自研（按「复制优于共享」自 worldbuilder.noise 复制，
+# 使 3dworld 不 import worldbuilder —— 三仓仅以 worldspec v1 文件契约为集成点）。
+from world3d.logic.noise_vec import fractal_noise              # noqa: E402
 
 
 # --------------------------------------------------------------- 地形 --

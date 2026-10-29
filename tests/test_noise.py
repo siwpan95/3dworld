@@ -257,6 +257,39 @@ def test_fbm3_mean_and_octaves():
 
 
 # ------------------------------------------------- 四份实现的契约（不整合的凭据）--
+def test_noise_vec_matches_scalar_bitwise():
+    """向量化噪声（numpy）与标量版必须**逐位一致**。
+
+    `logic/noise_vec.py` 是为了"3dworld 不再 import 兄弟仓 worldbuilder"而**复制**过来
+    的向量化实现（同一套 `_hash2` 常数、同一套归一化）。复制就有漂移风险：
+    有人改了标量版的哈希而忘了向量版，两条路径会静默地给出**不同的世界** ——
+    它们分别被 2.5D 世界生成与 probes 的离线烘焙用着，谁也不会立刻发现。
+
+    这条用例是"复制"这个决定的守卫：要么两边一起改，要么一起别改。
+    """
+    import numpy as np
+
+    from world3d.logic import noise_vec as V
+    pts = [0.0, 3.7, -2.1, 0.123456789, -12345.6, 1000000000.5, -1e-9]
+    xs = np.array(pts)
+    ys = np.array(pts[::-1])
+    for label, vec_fn, scl_fn in (('value', V.value_noise, N.value_noise),
+                                  ('perlin', V.perlin_noise, N.perlin_noise)):
+        got = vec_fn(xs, ys, 42)
+        want = np.array([scl_fn(x, y, 42) for x, y in zip(xs, ys)])
+        diff = float(np.max(np.abs(got - want)))
+        assert diff == 0.0, f'{label} 向量化与标量最大差 {diff:.3e}（哈希漂了？）'
+    got = V.fbm(xs, ys, 4, 2.0, 0.5, 42)
+    want = np.array([N.fbm(x, y, 4, 2.0, 0.5, 42) for x, y in zip(xs, ys)])
+    assert float(np.max(np.abs(got - want))) == 0.0, 'fbm 向量化与标量不一致'
+    # 形状与值域：批量接口要能吃任何同形数组
+    grid = V.fbm(np.linspace(-3, 3, 24)[:, None], np.linspace(-3, 3, 17)[None, :], 4)
+    assert grid.shape == (24, 17), grid.shape
+    assert 0.0 <= grid.min() and grid.max() <= 1.0
+    print(f'  ok: noise_vec 与标量版 value/perlin/fbm 逐位一致（{len(pts)} 点，差 0.0）；'
+          f'24×17 网格形状与值域正确')
+
+
 def test_four_noise_impls_agree_on_contract():
     """四份噪声实现（noise / terrain / blocks / proctex）**该一致的部分**必须一致。
 
@@ -271,6 +304,10 @@ def test_four_noise_impls_agree_on_contract():
     统一哈希 = 每个既有世界重排一遍（视觉全变），而它们本来没有"互相相等"的诉求。
     所以这里只钉**契约**：值域、确定性、``octaves=1`` 退化成单层、层数真的生效。
     数值本身**刻意不同** —— 最后一条断言就是这条决定的守卫（见下面的注释）。
+
+    第五份 ``logic/noise_vec.py`` 不在这张表里：它不是"另一套算法"，而是
+    ``noise.py`` 的 **numpy 向量化复制**，要求**逐位一致**（见
+    ``test_noise_vec_matches_scalar_bitwise``）—— 判据与上面四份正好相反。
     """
     from world3d.engine import proctex
     from world3d.logic import blocks, terrain
@@ -334,6 +371,7 @@ def main() -> int:
         test_perlin3_period_is_seamless,
         test_perlin3_range_and_continuity,
         test_fbm3_mean_and_octaves,
+        test_noise_vec_matches_scalar_bitwise,
         test_four_noise_impls_agree_on_contract,
     ]
     failed = []
