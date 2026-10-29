@@ -610,8 +610,13 @@ def g_kernel_scaffold(root, verbose):
 
 #: 允许在任何 `python -c` 里出现的**非标准库**模块（标准库由 `sys.stdlib_module_names` 判定，
 #: 不必在这里一个个列 —— 早先手维护这份名单，结果文档里写一句
-#: `python -c "import zipfile, hashlib; …"` 就被判成"模块不存在"）
-_STDLIB_HINTS = {'pyglet', 'yaml', 'cordis'}
+#: `python -c "import zipfile, hashlib; …"` 就被判成"模块不存在"）。
+#:
+#: 收录标准：**它随本项目的依赖一起装进来**（不是"本仓模块"，也不是标准库）。
+#: 2026-10-29 加 numpy：CI 的"依赖自检"步骤要断言 `pip install -r requirements.txt`
+#: 真的把 numpy 带进来了 —— 那一步的写法必须是一行式 `python -c "import numpy"`，
+#: 否则断言不到点上。名单短是有意的：每加一个都意味着文档里多一处"仓库外的东西"。
+_STDLIB_HINTS = {'pyglet', 'yaml', 'cordis', 'numpy'}
 
 
 @gate('workflows-valid', 'CI workflow 可解析 / 结构完整 / 里面的命令都可达')

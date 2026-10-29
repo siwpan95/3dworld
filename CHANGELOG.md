@@ -3,7 +3,23 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## [未发布] — 3D 梯度噪声 + 体积雾密度噪声（2026-10-29）
+## [0.7.0] — 2026-10-29 · 3D 噪声 / 体积雾密度 / 实体纹理 / 洞穴世界
+
+### Fixed（依赖缺失：numpy 从未被声明，也从未被安装）
+
+- **`numpy` 补进 `[project] dependencies`**。它不是"测试时才用"：**9 个随 wheel 分发的
+  模块在顶层就 `import numpy`** —— `asset/gltf_lite`（glTF 2.0 真实 loader）、
+  `engine/terrain_lod`、`engine/terrain_clipmap`、`engine/voxel_mesh`、
+  `physics/jolt_lite`、`physics/box2d_lite`、`anim/ozz_lite`、`bridge`、`logic/noise_vec`。
+  此前 `pip install 3dworld` 之后这些功能一 import 就 `ModuleNotFoundError`。
+- 症状之所以长期没被当回事：本机 `.venv` 里**也没有** numpy（`include-system-site-packages
+  = false`，看不到系统 Python 的 numpy），于是 `run_all_tests` 10 个模块、`check_imports`
+  9 个模块一直在红，却被当成"环境问题"绕过去。补上后：**check_imports 163/163**、
+  **run_all_tests 47/47 模块 / 615 项**。
+- `requirements-dev.txt` 与 pyproject 的 `dev` extra 同步列入；
+  `requirements.txt` **不另列**（它转发 `-e .`，另列就是第二份清单）；
+  CI 两个 job 各加一步**依赖自检**（`import numpy` 断言），而不是重复 `pip install numpy` ——
+  谁把 requirements.txt 从 `-e .` 改掉，那一步会立刻红。
 
 ### Added（3D 噪声与体积雾密度调制 · 2026-10-29）
 

@@ -38,9 +38,12 @@ def collect() -> dict:
     # ---- 依赖 ----
     # 用发行版元数据取版本：不是每个包都暴露 __version__
     # （实测 watchdog 4.x 就没有，`import watchdog; watchdog.__version__` 会 AttributeError）
+    # numpy 2026-10-29 补进来：9 个随包分发的模块在顶层 import 它（此前一直漏声明，
+    # 导致 `pip install 3dworld` 之后那些功能一 import 就 ModuleNotFoundError）。
+    # 自检漏报它的话，"依赖齐不齐"这件事就只能靠人记得——正是这次踩的坑。
     from importlib.metadata import version as _v
     deps = {}
-    for dist in ('pyglet', 'PyYAML', 'watchdog'):
+    for dist in ('pyglet', 'PyYAML', 'watchdog', 'numpy'):
         deps[dist] = _try(lambda d=dist: _v(d))
     info['dependencies'] = deps
     info['cordis'] = _try(lambda: __import__('cordis').__file__)

@@ -11,3 +11,9 @@ ruff>=0.17.0
 
 # 覆盖率
 coverage>=7.0
+
+# numpy：**运行期就要**（pyproject 的 dependencies 里有一份，见那里的注释），
+# 这里再列一次是为了让"只装 dev 依赖"这条命令自己站得住 ——
+# `pip install -r requirements-dev.txt` 之后能直接跑全量测试与 check_imports。
+# ⚠ 版本区间与 pyproject.toml 的 dev extra 保持一致；两处漂了没有门禁会报，改的时候一起改。
+numpy>=2.0

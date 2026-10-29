@@ -1,6 +1,6 @@
 # 3dworld · 架构与设计文档
 
-> 分析对象：`D:\projects\repos\3dworld`（导入包 `world3d`，发行名 `3dworld`，v0.6.0）
+> 分析对象：`<PATH>`（导入包 `world3d`，发行名 `3dworld`，v0.7.0）
 > 性质：**纯 Python + pyglet 2.x / OpenGL** 的「程序化优先、确定性、可 headless 验证」3D 场景·动画引擎（零外部素材）。
 > 配套图：`3dworld_architecture.svg`（分层架构）、`3dworld_dataflow.svg`（核心数据流）。
 

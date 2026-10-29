@@ -39,6 +39,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: 依赖自检（numpy 必须随运行时依赖进来）
+        # 2026-10-29：numpy 曾被漏声明 —— 9 个模块在**顶层** import 它，
+        # 于是 check_imports 与 10 个测试模块长期红着，被当成"环境问题"绕过去了。
+        # 这里不重复 `pip install numpy`（那会成为第二份清单），而是**断言**
+        # `-r requirements.txt` 这条链真的把 numpy 带进来了；谁把 requirements.txt
+        # 从 `-e .` 改掉，这一步会立刻红。
+        run: python -c "import numpy, platform; print('numpy', numpy.__version__, platform.python_version())"
+
       - name: 验证 vendored cordis 自动接线（不设 CORDIS_SRC）
         shell: bash
         run: |
@@ -102,6 +110,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      - name: 依赖自检（numpy 同上，Linux 侧单独验一遍）
+        run: python -c "import numpy, platform; print('numpy', numpy.__version__, platform.python_version())"
 
       - name: 环境自检（渲染器 / 依赖 / cordis / 配置树）
         # `world3d-info` 的每一项都有兜底（缺 GL 只打印 `<异常>` 字符串，不失败），

@@ -1,11 +1,18 @@
 # 3dworld 运行时依赖 —— **以 pyproject.toml 为单一事实来源**
 #
 # 本文件已改为"转发"：装上本项目自身即等于装上它的全部运行依赖
-# （pyglet 2.1.16 + PyYAML + watchdog —— 后两者是 vendored cordis 的硬依赖，
+# （pyglet 2.1.16 + PyYAML + watchdog + numpy —— PyYAML/watchdog 是 vendored cordis 的
+#  硬依赖；numpy 是 9 个随包分发的模块在**顶层**就 import 的（gltf_lite / terrain_lod /
+#  terrain_clipmap / voxel_mesh / jolt_lite / box2d_lite / ozz_lite / bridge / noise_vec）。
 #  成因说明见 pyproject.toml 的 dependencies 注释与 docs/cordis集成.md）。
 #
 # 这样做的原因：此前 requirements.txt 与项目元数据是**两份清单**，必然漂移
 # （上线前全检的 P0 发布阻断就是"依赖没声明全"）。现在只有一份。
+#
+# ⚠ 2026-10-29：numpy 前一版确实漏了，而且漏得很隐蔽 —— 本机 .venv 里也没有它，
+# 于是 `run_all_tests` 有 10 个模块、`check_imports` 有 9 个模块长期红着，
+# 却被当成"环境问题"绕过去了。这里**不再单独列 numpy**：它已经在 pyproject 的
+# dependencies 里，加在这里就是第二份清单（正是上面那段要消灭的东西）。
 #
 # 用法（与 pip install -e . 等价，保留本文件是为了兼容既有文档与 CI）：
 -e .

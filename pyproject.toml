@@ -15,7 +15,7 @@ build-backend = "setuptools.build_meta"
 # ============================================================================
 [project]
 name = "3dworld"
-version = "0.6.0"
+version = "0.7.0"
 description = "程序化优先、确定性、可 headless 验证的纯 Python 3D 场景/动画引擎（零外部素材）"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -44,10 +44,19 @@ dependencies = [
   #  且模块级把可能为 None 的 FileSystemEventHandler 当基类用）。详见 requirements.txt 的历史注释。
   "PyYAML>=6.0,<7",
   "watchdog>=4.0,<7",
+  # numpy：**随 wheel 分发的 9 个模块在顶层就 import 它**，不是"测试时才用"——
+  #   asset/gltf_lite（glTF 2.0 真实 loader）、engine/terrain_lod、engine/terrain_clipmap、
+  #   engine/voxel_mesh、physics/jolt_lite、physics/box2d_lite、anim/ozz_lite、
+  #   bridge、logic/noise_vec。
+  # 2026-10-29 之前它**既没声明也没装**，于是 `pip install 3dworld` 之后这些功能
+  # 一 import 就 ModuleNotFoundError（本机 .venv 同样缺，10 个测试模块因此长期红着）。
+  # ⚠ 若哪天把上面这些模块改成"try/except 可选导入 + AVAILABLE_* 标志"，
+  #   这一行就该降级成 optional-dependencies 的 extra，而不是直接删。
+  "numpy>=2.0",
 ]
 
 [project.optional-dependencies]
-dev = ["ruff>=0.17.0", "coverage>=7.0"]
+dev = ["ruff>=0.17.0", "coverage>=7.0", "numpy>=2.0"]
 # cocos2d 兼容路线备用（见 requirements-pyglet1x.txt）：pyglet 1.x 锁版
 pyglet1x = ["pyglet==1.5.30"]
 
