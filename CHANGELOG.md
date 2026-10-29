@@ -3,6 +3,38 @@
 本项目采用 CalVer（`YYYY.MM.DD`），与既有 tag `v2026.10.09` 一脉相承。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.7.1] — 2026-10-29 · 同日补丁：`detect()` 不再抛异常 + CI 首次全绿
+
+> 0.7.0 的 wheel 是先构建后提交的，所以发布物里**不含**下面那条 `gpu_cull` 修复；
+> 0.7.1 把它带上，二进制内容与源一致。同日第二个发行版，CalVer 加序号
+> （`2026.10.29.1`）以便区分。
+
+### Fixed
+
+- **`engine/gpu_cull.py::GpuCullSupport.detect()` 在"机器上压根没有 GL/EGL 库"时抛
+  `ImportError: Library "EGL" not found.`**，而它的契约是"探测不到就报 `reason`、
+  让调用方回退 CPU"。根因是 `import pyglet.gl` 写在 `try` 之外 —— 已移入。
+  症状是能力探测这一步直接把调用方带崩，而不是安静地降级。
+
+### CI（GitHub 两个 job 首次全绿，此前 3 次运行全红）
+
+三处都是"环境看起来像回归"，逐个查清：
+
+- **Windows `契约自检` 永远红**：runner 控制台是 cp1252，而那是 CI 里唯一一条
+  没有 `_force_utf8_stdout()` 兜底的 `python -c "…print(中文)…"` ⇒
+  `UnicodeEncodeError` 退出 1。修法：两个 job 加 job 级 `PYTHONIOENCODING: utf-8`。
+- **Windows 上 `test_p2_render`(3/7)、`test_gpu_cull`(7/7) 全红**：runner 没有 GPU，
+  GDI 给的是 OpenGL **1.1** 上下文 —— `Window()` 建得出、`gl_info` 读得到，但
+  **`glCreateShader` 没导出**，于是所有编译 GLSL 的用例报"着色器创建失败"。
+  新增 `tests/_glctx.py`：判据 = 建窗口 **+ 真编一个最小 `#version 330 core` 着色器**；
+  不可用抛 `NoGL`，各模块 `main` 里 catch 成 **SKIP（打印原因、不计失败）**。
+- **Linux 上 `test_csm` 的 GL 用例报 `Size of data (4) does not match size of the
+  uniform: 3`**：Mesa 把 `u_csm_split[4]` 尾部未被引用的元素优化掉了，只报 3 项。
+  改为按 `prog.uniforms[k]['size'] * ['length']` 的实际值上传并打印 note
+  （顺带纠正：pyglet 2.1.16 的 `uniforms[k]` 是 **dict**，不是对象属性）。
+- `run_all_tests.py` 失败时给 GitHub 发 `::error` 注解 —— 动机很实际：
+  `/actions/jobs/{id}/logs` **匿名访问 403**，而注解就在 run 页面最上面。
+
 ## [0.7.0] — 2026-10-29 · 3D 噪声 / 体积雾密度 / 实体纹理 / 洞穴世界
 
 ### Fixed（依赖缺失：numpy 从未被声明，也从未被安装）
