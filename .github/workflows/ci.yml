@@ -27,6 +27,15 @@ jobs:
     # 说明：本项目渲染层基于 pyglet + OpenGL，开发与验收均在 Windows 上完成。
     # Windows runner 有真实的显示服务器与驱动，GL 用例是**真跑**而不是 SKIP。
     runs-on: windows-latest
+    env:
+      # Windows 控制台的默认编码不是 UTF-8（US runner 上是 cp1252），而本项目所有
+      # 输出都是中文。`scripts/*.py` 里有 `_force_utf8_stdout()` 兜底，但
+      # **`python -c "…"` 这种一行式命令没有** —— 2026-10-29 实测：
+      # `python -c "import world3d.core.contracts as c; print(c.status_table())"`
+      # 在 cp1252 下直接 UnicodeEncodeError 退出 1（本机用 PYTHONIOENCODING=cp1252
+      # 复现），于是"契约自检"那一步永远红，而失败原因和契约本身毫无关系。
+      # 放在 job 级而不是逐 step 加，是因为下一个写一行式命令的人不会记得这事。
+      PYTHONIOENCODING: 'utf-8'
     steps:
       - uses: actions/checkout@v4
 
@@ -75,6 +84,9 @@ jobs:
   regression-linux:
     runs-on: ubuntu-latest
     env:
+      # 与 windows job 同因（那边是 cp1252）：统一钉成 UTF-8，别让编码问题
+      # 伪装成"某个 test 挂了"。Linux 默认本来就是 UTF-8，这条是**对齐**不是修复。
+      PYTHONIOENCODING: 'utf-8'
       # pyglet 在 Linux 默认走 Xlib，没有 DISPLAY 时第一次 import 显示后端就抛
       #   pyglet.display.xlib.NoSuchDisplayException: Cannot connect to "None"
       # `pyglet.options['headless'] = True` 让它改走 EGL；已核实**本仓锁定的

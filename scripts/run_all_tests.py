@@ -139,6 +139,23 @@ def run_one(mod: str, marker: str, quiet: bool):
     return ok, _count_ok(out), out, err
 
 
+def _gha_error(title: str, msg: str) -> None:
+    """在 GitHub Actions 里发一条 **error 注解**（`::error::` 是 workflow command 语法）。
+
+    为什么需要：CI 的原始日志要么翻页要么下载（**匿名 API 取 `/logs` 直接 403**），
+    而注解就挂在 run 页面最上面那张卡片里 —— 用户报"两个 job 都 exit 1"时，
+    第一步能看到的就是"哪个模块、什么错"。脚本本来就会把失败原因逐字打印，
+    这里只是把同一条信息再发一遍给 workflow 解析。
+
+    本地跑（没有 `GITHUB_ACTIONS`）时**完全静默** —— 不往终端里塞 `::` 开头的噪音。
+    注解是单行的且有长度上限，所以压空白、截断。
+    """
+    if not os.environ.get('GITHUB_ACTIONS'):
+        return
+    flat = ' '.join(str(msg).split())[:900]
+    print(f'::error title={title}::{flat}')
+
+
 def main() -> int:
     _force_utf8_stdout()
     ap = argparse.ArgumentParser(description='3dworld 一键回归入口')
@@ -167,6 +184,7 @@ def main() -> int:
         else:
             failed.append((mod, err))
             print(f'  [FAIL] {mod:<20} {n:>3} 项  ({desc})  {err}')
+            _gha_error(f'回归失败 {mod}', err)
 
     print('=' * 62)
     print(f'[run_all_tests] 模块 {passed_mods}/{len(MODULES)} 通过，'
